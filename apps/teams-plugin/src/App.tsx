@@ -226,7 +226,7 @@ function GuideCanvas({
       for (const node of nodes) {
         const selected = node.id === selectedStepId;
         const focused = focusStepIds.includes(node.id);
-        drawNode(context, node, selected, focused, view.pulse);
+        drawNode(context, node, selected, focused);
         hitTargets.push({
           id: node.id,
           x: node.x - 92,
@@ -334,27 +334,21 @@ function drawNode(
   node: NodePoint,
   selected: boolean,
   focused: boolean,
-  pulse: number,
 ) {
   const width = 184;
   const height = 76;
   const x = node.x - width / 2;
   const y = node.y - height / 2;
   const radius = 8;
-  const glow = focused ? 16 + Math.sin(pulse * 2) * 5 : selected ? 12 : 0;
   const accentColor = statusColor[node.status] ?? '#6264a7';
 
   context.save();
-  context.shadowColor = focused ? 'rgba(15, 108, 189, 0.32)' : 'rgba(0, 0, 0, 0.12)';
-  context.shadowBlur = glow;
-  context.shadowOffsetY = focused || selected ? 7 : 3;
-  context.fillStyle = selected ? '#f4f3ff' : '#ffffff';
+  context.fillStyle = selected || focused ? '#f7f8ff' : '#ffffff';
   roundRect(context, x, y, width, height, radius);
   context.fill();
 
-  context.shadowBlur = 0;
   context.lineWidth = focused ? 3 : selected ? 2 : 1;
-  context.strokeStyle = focused ? '#0f6cbd' : selected ? '#6264a7' : '#d0d4e4';
+  context.strokeStyle = focused ? '#0f6cbd' : selected ? '#6264a7' : '#b8bfd6';
   roundRect(context, x, y, width, height, radius);
   context.stroke();
 
@@ -362,13 +356,13 @@ function drawNode(
   roundRect(context, x + 12, y + 12, 10, 38, 4);
   context.fill();
 
-  context.fillStyle = '#242424';
+  context.fillStyle = '#1f1f1f';
   context.font = '650 15px Segoe UI, sans-serif';
   context.fillText(trimText(context, node.title, 138), x + 32, y + 26);
-  context.fillStyle = '#616161';
+  context.fillStyle = '#424242';
   context.font = '12px Segoe UI, sans-serif';
   context.fillText(trimText(context, node.summary, 132), x + 32, y + 47);
-  context.fillStyle = accentColor;
+  context.fillStyle = '#303030';
   context.font = '600 11px Segoe UI, sans-serif';
   context.fillText(`${statusLabel[node.status]} | ${node.childIds.length} sub`, x + 32, y + 64);
   context.restore();
@@ -412,20 +406,17 @@ export default function App() {
   const [graph, setGraph] = useState<GuideGraph | null>(null);
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [focusStepIds, setFocusStepIds] = useState<string[]>([]);
-  const [sources, setSources] = useState<KnowledgeSource[]>([]);
+  const [, setSources] = useState<KnowledgeSource[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>(emptyMessages);
+  const [expandedEvidenceIds, setExpandedEvidenceIds] = useState<string[]>([]);
   const [draft, setDraft] = useState('');
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
+  const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false);
+  const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isChatLoading, setIsChatLoading] = useState(false);
 
-  const selectedStep = useMemo(
-    () => graph?.steps.find((step) => step.id === selectedStepId) ?? null,
-    [graph?.steps, selectedStepId],
-  );
   const breadcrumbs = useMemo(() => getBreadcrumbs(graph, selectedStepId), [graph, selectedStepId]);
-  const sourceIds = new Set(selectedStep?.sourceIds ?? []);
-  const relevantSources = sources.filter((source) => sourceIds.has(source.id));
 
   const loadGuide = useCallback(
     async (sessionId: string) => {
@@ -494,21 +485,43 @@ export default function App() {
     }
   }
 
-  async function handleExpandStep() {
-    if (!activeSessionId || !selectedStep) {
+  async function handleNavigateToStep(stepId: string) {
+    setSelectedStepId(stepId);
+    setFocusStepIds([stepId]);
+    setIsRightPanelCollapsed(true);
+
+    if (!activeSessionId) {
+      return;
+    }
+
+    const step = graph?.steps.find((candidate) => candidate.id === stepId);
+    if (!step || step.childIds.length > 0) {
       return;
     }
 
     const response = await expandStep({
       sessionId: activeSessionId,
-      stepId: selectedStep.id,
+      stepId,
       webSearchEnabled,
     });
     setGraph(response.graph);
     setSources((current) => mergeSources(current, response.graph.sources));
-    const focusId = response.focusStepId ?? selectedStep.id;
+    const focusId = response.focusStepId ?? stepId;
     setSelectedStepId(focusId);
     setFocusStepIds([focusId]);
+  }
+
+  function handleLocateStep(stepId: string) {
+    setSelectedStepId(stepId);
+    setFocusStepIds([stepId]);
+  }
+
+  function toggleEvidence(messageId: string) {
+    setExpandedEvidenceIds((current) =>
+      current.includes(messageId)
+        ? current.filter((id) => id !== messageId)
+        : [...current, messageId],
+    );
   }
 
   async function handleSendMessage(event: React.FormEvent<HTMLFormElement>) {
@@ -547,34 +560,52 @@ export default function App() {
   }
 
   return (
-    <main className="app-shell">
+    <main
+      className={[
+        'app-shell',
+        isLeftPanelCollapsed ? 'left-collapsed' : '',
+        isRightPanelCollapsed ? 'right-collapsed' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
+    >
       <aside className="session-rail" aria-label="Onboarding sessions">
-        <div>
-          <p className="eyebrow">Teams onboarding</p>
-          <h1>Guidance workspace</h1>
-        </div>
-        <button className="primary-button" onClick={() => void handleCreateSession()}>
-          + New session
-        </button>
-        <nav className="session-list">
-          {sessions.map((session) => (
-            <button
-              className={session.id === activeSessionId ? 'session-item active' : 'session-item'}
-              key={session.id}
-              onClick={() => setActiveSessionId(session.id)}
-            >
-              <span>{session.title}</span>
-              <small>{formatTime(session.updatedAt)}</small>
-            </button>
-          ))}
-        </nav>
         <button
-          className="ghost-button danger"
-          disabled={!activeSessionId || sessions.length <= 1}
-          onClick={() => activeSessionId && void handleDeleteSession(activeSessionId)}
+          aria-label={isLeftPanelCollapsed ? 'Expand sessions panel' : 'Collapse sessions panel'}
+          className="panel-toggle"
+          onClick={() => setIsLeftPanelCollapsed((current) => !current)}
+          type="button"
         >
-          Delete current
+          {isLeftPanelCollapsed ? '>' : '<'}
         </button>
+        <div className="panel-content">
+          <div>
+            <p className="eyebrow">Teams onboarding</p>
+            <h1>Guidance workspace</h1>
+          </div>
+          <button className="primary-button" onClick={() => void handleCreateSession()}>
+            + New session
+          </button>
+          <nav className="session-list">
+            {sessions.map((session) => (
+              <button
+                className={session.id === activeSessionId ? 'session-item active' : 'session-item'}
+                key={session.id}
+                onClick={() => setActiveSessionId(session.id)}
+              >
+                <span>{session.title}</span>
+                <small>{formatTime(session.updatedAt)}</small>
+              </button>
+            ))}
+          </nav>
+          <button
+            className="ghost-button danger"
+            disabled={!activeSessionId || sessions.length <= 1}
+            onClick={() => activeSessionId && void handleDeleteSession(activeSessionId)}
+          >
+            Delete current
+          </button>
+        </div>
       </aside>
 
       <section className="workspace" aria-busy={isLoading}>
@@ -584,97 +615,86 @@ export default function App() {
               <span>Loading guide</span>
             ) : (
               breadcrumbs.map((crumb, index) => (
-                <button key={crumb.id} onClick={() => setSelectedStepId(crumb.id)}>
+                <button key={crumb.id} onClick={() => handleLocateStep(crumb.id)} type="button">
                   {index > 0 ? <span aria-hidden="true">/</span> : null}
                   {crumb.title}
                 </button>
               ))
             )}
           </div>
-          <label className="toggle">
-            <input
-              checked={webSearchEnabled}
-              onChange={(event) => setWebSearchEnabled(event.target.checked)}
-              type="checkbox"
-            />
-            <span>Web search</span>
-          </label>
         </header>
 
-        <div className="experience-grid">
-          <GuideCanvas
-            focusStepIds={focusStepIds}
-            graph={graph}
-            onSelectStep={(stepId) => {
-              setSelectedStepId(stepId);
-              setFocusStepIds([stepId]);
-            }}
-            selectedStepId={selectedStepId}
-          />
-
-          <aside className="detail-panel" aria-label="Selected step details">
-            {selectedStep ? (
-              <>
-                <div>
-                  <p className="eyebrow">Selected step</p>
-                  <h2>{selectedStep.title}</h2>
-                  <span className={`status-pill ${selectedStep.status}`}>
-                    {statusLabel[selectedStep.status]}
-                  </span>
-                </div>
-                <p>{selectedStep.detail ?? selectedStep.summary}</p>
-                <button className="primary-button" onClick={() => void handleExpandStep()}>
-                  Expand step
-                </button>
-                <div className="substep-list">
-                  <h3>Sub-steps</h3>
-                  {selectedStep.childIds.length === 0 ? (
-                    <p>No sub-steps loaded yet.</p>
-                  ) : (
-                    selectedStep.childIds.map((childId) => {
-                      const child = graph?.steps.find((step) => step.id === childId);
-                      return child ? (
-                        <button key={child.id} onClick={() => setSelectedStepId(child.id)}>
-                          <span>{child.title}</span>
-                          <small>{statusLabel[child.status]}</small>
-                        </button>
-                      ) : null;
-                    })
-                  )}
-                </div>
-                <div className="source-mini">
-                  <h3>Step sources</h3>
-                  {relevantSources.length === 0 ? (
-                    <p>Sources will appear when the server returns citations.</p>
-                  ) : (
-                    relevantSources.map((source) => (
-                      <a href={source.uri} key={source.id} rel="noreferrer" target="_blank">
-                        {source.title}
-                      </a>
-                    ))
-                  )}
-                </div>
-              </>
-            ) : (
-              <p>Select a guide node to inspect its details.</p>
-            )}
-          </aside>
-        </div>
+        <GuideCanvas
+          focusStepIds={focusStepIds}
+          graph={graph}
+          onSelectStep={(stepId) => {
+            void handleNavigateToStep(stepId);
+          }}
+          selectedStepId={selectedStepId}
+        />
       </section>
 
       <aside className="assistant-panel" aria-label="Chat assistant and sources">
+        <button
+          aria-label={isRightPanelCollapsed ? 'Expand assistant panel' : 'Collapse assistant panel'}
+          className="panel-toggle"
+          onClick={() => setIsRightPanelCollapsed((current) => !current)}
+          type="button"
+        >
+          {isRightPanelCollapsed ? '<' : '>'}
+        </button>
         <section className="chat-panel">
           <div className="panel-heading">
             <p className="eyebrow">Assistant</p>
             <h2>Ask, locate, focus</h2>
           </div>
           <div className="message-list" role="log">
-            {messages.map((message) => (
-              <article className={`message ${message.role}`} key={message.id}>
-                <p>{message.content}</p>
-                {message.focusStepIds?.length ? <small>Focused matching guide step.</small> : null}
-              </article>
-            ))}
+            {messages.map((message) => {
+              const messageSources = message.sources ?? [];
+              const evidenceExpanded = expandedEvidenceIds.includes(message.id);
+              return (
+                <article className={`message ${message.role}`} key={message.id}>
+                  {message.focusStepIds?.length ? (
+                    <div className="message-header">
+                      <small>Focused matching guide step.</small>
+                    </div>
+                  ) : null}
+                  <p>{message.content}</p>
+                  {message.role === 'assistant' && messageSources.length > 0 ? (
+                    <div className="message-evidence">
+                      <button onClick={() => toggleEvidence(message.id)} type="button">
+                        {evidenceExpanded
+                          ? 'Hide sources'
+                          : `${messageSources.length} source${
+                              messageSources.length === 1 ? '' : 's'
+                            } available`}
+                      </button>
+                      {evidenceExpanded ? (
+                        <div className="evidence-list">
+                          {messageSources.map((source) => (
+                            <article className="evidence-item" key={source.id}>
+                              <span>
+                                {source.kind === 'web' || source.sourceType === 'web'
+                                  ? 'Web'
+                                  : 'Knowledge base'}
+                              </span>
+                              {source.uri ? (
+                                <a href={source.uri} rel="noreferrer" target="_blank">
+                                  {source.title}
+                                </a>
+                              ) : (
+                                <strong>{source.title}</strong>
+                              )}
+                              <p>{source.excerpt}</p>
+                            </article>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </article>
+              );
+            })}
             {isChatLoading ? <article className="message assistant">Thinking...</article> : null}
           </div>
           <form className="chat-form" onSubmit={(event) => void handleSendMessage(event)}>
@@ -685,33 +705,20 @@ export default function App() {
               value={draft}
             />
             <button
+              aria-pressed={webSearchEnabled}
+              className={`web-search-button ${webSearchEnabled ? 'active' : ''}`}
+              onClick={() => setWebSearchEnabled((current) => !current)}
+              type="button"
+            >
+              Web
+            </button>
+            <button
               className="primary-button"
               disabled={draft.trim().length === 0 || isChatLoading}
             >
               Send
             </button>
           </form>
-        </section>
-
-        <section className="source-tray" aria-label="Knowledge sources">
-          <div className="panel-heading">
-            <p className="eyebrow">Sources</p>
-            <h2>Evidence tray</h2>
-          </div>
-          <div className="source-list">
-            {sources.map((source) => (
-              <article className="source-card" key={source.id}>
-                <span>{source.kind === 'web' ? 'Web' : 'Knowledge base'}</span>
-                <h3>{source.title}</h3>
-                <p>{source.excerpt}</p>
-                {source.uri ? (
-                  <a href={source.uri} rel="noreferrer" target="_blank">
-                    Open source
-                  </a>
-                ) : null}
-              </article>
-            ))}
-          </div>
         </section>
       </aside>
     </main>
