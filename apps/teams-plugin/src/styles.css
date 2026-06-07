@@ -1,0 +1,75 @@
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #f5f5f5;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
+.shell {
+  display: grid;
+  gap: 16px;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 32px 20px;
+}
+
+h1 {
+  margin: 0;
+  color: #242424;
+  font-size: 24px;
+  font-weight: 650;
+}
+
+.prompt-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+input,
+button {
+  min-height: 40px;
+  border-radius: 6px;
+  font: inherit;
+}
+
+input {
+  border: 1px solid #c7c7c7;
+  padding: 0 12px;
+}
+
+button {
+  border: 0;
+  padding: 0 18px;
+  background: #6264a7;
+  color: #ffffff;
+  cursor: pointer;
+}
+
+button:disabled {
+  background: #bdbde6;
+  cursor: not-allowed;
+}
+
+.answer {
+  border: 1px solid #d1d1d1;
+  border-radius: 8px;
+  padding: 16px;
+  background: #ffffff;
+}
+
+.answer p {
+  margin: 0;
+}
+
+.sources {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+  color: #424242;
+}
