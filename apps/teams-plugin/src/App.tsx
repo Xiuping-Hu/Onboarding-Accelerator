@@ -423,10 +423,7 @@ export default function App() {
     () => graph?.steps.find((step) => step.id === selectedStepId) ?? null,
     [graph?.steps, selectedStepId],
   );
-  const breadcrumbs = useMemo(
-    () => getBreadcrumbs(graph, selectedStepId),
-    [graph, selectedStepId],
-  );
+  const breadcrumbs = useMemo(() => getBreadcrumbs(graph, selectedStepId), [graph, selectedStepId]);
   const sourceIds = new Set(selectedStep?.sourceIds ?? []);
   const relevantSources = sources.filter((source) => sourceIds.has(source.id));
 
@@ -687,7 +684,10 @@ export default function App() {
               placeholder="Ask for the next action, visual location, or a plain-English answer."
               value={draft}
             />
-            <button className="primary-button" disabled={draft.trim().length === 0 || isChatLoading}>
+            <button
+              className="primary-button"
+              disabled={draft.trim().length === 0 || isChatLoading}
+            >
               Send
             </button>
           </form>

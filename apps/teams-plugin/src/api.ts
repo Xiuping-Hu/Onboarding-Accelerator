@@ -15,32 +15,42 @@ import type {
 } from '@onboarding/shared';
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3978';
-const useMockApi =
-  (import.meta.env.VITE_USE_MOCK_API ?? 'true').toLocaleLowerCase() !== 'false';
+const useMockApi = (import.meta.env.VITE_USE_MOCK_API ?? 'true').toLocaleLowerCase() !== 'false';
 
 const now = () => new Date().toISOString();
 const id = (prefix: string) =>
   `${prefix}-${Math.random().toString(36).slice(2, 8)}-${Date.now().toString(36)}`;
 
+function emptyGuide() {
+  return {
+    rootNodeIds: [],
+    nodes: {},
+    expandedNodeIds: [],
+  };
+}
+
 const sourceLibrary: KnowledgeSource[] = [
   {
     id: 'kb-benefits',
     title: 'Benefits onboarding handbook',
-    excerpt: 'New hires should enroll in benefits during their first month and review coverage options with HR.',
+    excerpt:
+      'New hires should enroll in benefits during their first month and review coverage options with HR.',
     uri: 'https://contoso.example/handbook/benefits',
     kind: 'knowledge-base',
   },
   {
     id: 'kb-teams',
     title: 'Teams workspace setup guide',
-    excerpt: 'Join your department team, pin onboarding channels, and validate notifications for priority channels.',
+    excerpt:
+      'Join your department team, pin onboarding channels, and validate notifications for priority channels.',
     uri: 'https://contoso.example/it/teams-setup',
     kind: 'knowledge-base',
   },
   {
     id: 'web-security',
     title: 'Microsoft security training guidance',
-    excerpt: 'Security awareness programs should include phishing, device hygiene, data handling, and reporting practices.',
+    excerpt:
+      'Security awareness programs should include phishing, device hygiene, data handling, and reporting practices.',
     uri: 'https://learn.microsoft.com/security/',
     kind: 'web',
   },
@@ -52,6 +62,9 @@ let mockSessions: OnboardingSession[] = [
     title: 'First week path',
     createdAt: now(),
     updatedAt: now(),
+    settings: { webSearchEnabled: false },
+    chatHistory: [],
+    guide: emptyGuide(),
   },
 ];
 
@@ -100,7 +113,8 @@ function makeRootGraph(sessionId: string): GuideGraph {
       status: 'ready',
       depth: 1,
       parentId: rootId,
-      detail: 'Confirm single sign-on, device compliance, and workspace membership before starting role-specific work.',
+      detail:
+        'Confirm single sign-on, device compliance, and workspace membership before starting role-specific work.',
       childIds: [],
       sourceIds: ['kb-teams'],
     },
@@ -111,7 +125,8 @@ function makeRootGraph(sessionId: string): GuideGraph {
       status: 'ready',
       depth: 1,
       parentId: rootId,
-      detail: 'Use Teams channels and org resources to understand who can unblock setup, benefits, security, and role questions.',
+      detail:
+        'Use Teams channels and org resources to understand who can unblock setup, benefits, security, and role questions.',
       childIds: [],
       sourceIds: ['kb-teams', 'kb-benefits'],
     },
@@ -122,7 +137,8 @@ function makeRootGraph(sessionId: string): GuideGraph {
       status: 'locked',
       depth: 1,
       parentId: rootId,
-      detail: 'This track expands into required learning based on role, location, and policy context.',
+      detail:
+        'This track expands into required learning based on role, location, and policy context.',
       childIds: [],
       sourceIds: ['kb-benefits', 'web-security'],
     },
@@ -161,9 +177,15 @@ function expandMockStep({ sessionId, stepId, webSearchEnabled }: ExpandStepReque
 
   const nextDepth = step.depth + 1;
   const childTemplates = [
-    ['Locate visual reference', 'Find the relevant Teams page, policy visual, or checklist artifact.'],
+    [
+      'Locate visual reference',
+      'Find the relevant Teams page, policy visual, or checklist artifact.',
+    ],
     ['Do the action', 'Complete the concrete task and capture anything that needs follow-up.'],
-    ['Confirm with assistant', 'Ask for verification, risks, or a shorter explanation before moving on.'],
+    [
+      'Confirm with assistant',
+      'Ask for verification, risks, or a shorter explanation before moving on.',
+    ],
   ] as const;
 
   const children = childTemplates.map(([title, summary], index): GuideStep => {
@@ -197,7 +219,10 @@ function expandMockStep({ sessionId, stepId, webSearchEnabled }: ExpandStepReque
     graph.sources.push(sourceLibrary[2] as KnowledgeSource);
   }
 
-  return { graph: { ...graph, steps: [...graph.steps], edges: [...graph.edges] }, focusStepId: children[0]?.id };
+  return {
+    graph: { ...graph, steps: [...graph.steps], edges: [...graph.edges] },
+    focusStepId: children[0]?.id,
+  };
 }
 
 export async function listSessions(): Promise<ListSessionsResponse> {
@@ -222,6 +247,9 @@ export async function createSession(payload: CreateSessionRequest): Promise<Crea
       title: payload.title?.trim() || `Onboarding path ${mockSessions.length + 1}`,
       createdAt: now(),
       updatedAt: now(),
+      settings: { webSearchEnabled: payload.settings?.webSearchEnabled ?? false },
+      chatHistory: [],
+      guide: emptyGuide(),
     };
     mockSessions = [session, ...mockSessions];
     mockGraphs.set(session.id, makeRootGraph(session.id));
@@ -254,7 +282,10 @@ export async function getRootGuide(payload: GuideRequest): Promise<GuideResponse
     if (payload.webSearchEnabled && !graph.sources.some((source) => source.id === 'web-security')) {
       graph.sources.push(sourceLibrary[2] as KnowledgeSource);
     }
-    return { graph: { ...graph, steps: [...graph.steps], edges: [...graph.edges] }, focusStepId: graph.rootId };
+    return {
+      graph: { ...graph, steps: [...graph.steps], edges: [...graph.edges] },
+      focusStepId: graph.rootId,
+    };
   }
 }
 
