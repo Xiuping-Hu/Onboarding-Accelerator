@@ -10,11 +10,13 @@
   ],
   "scripts": {
     "build": "npm run build -w @onboarding/shared && npm run build -w @onboarding/server && npm run build -w @onboarding/teams-plugin",
-    "dev": "concurrently -n server,teams -c blue,green \"npm run dev -w @onboarding/server\" \"npm run dev -w @onboarding/teams-plugin\"",
+    "dev": "node scripts/dev.mjs",
     "docs:harness:update": "node scripts/update-harness-docs.mjs",
     "format": "prettier . --write",
     "format:check": "prettier . --check",
     "lint": "eslint .",
+    "test": "npm run test -w @onboarding/server && npm run test -w @onboarding/teams-plugin",
+    "validate:manifest": "node -e \"JSON.parse(require('fs').readFileSync('apps/teams-plugin/appPackage/manifest.json','utf8'));\"",
     "prepare": "husky"
   },
   "devDependencies": {
@@ -23,7 +25,6 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.0.0",
-    "concurrently": "^9.1.2",
     "eslint": "^9.28.0",
     "eslint-config-prettier": "^10.1.5",
     "eslint-plugin-react": "^7.37.5",
@@ -39,6 +40,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
+    "jose": "^5.10.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "zod": "^3.25.51"

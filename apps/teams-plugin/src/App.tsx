@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Component, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ErrorInfo, ReactNode } from 'react';
 import type {
   ChatMessage,
   GuideEdge,
@@ -18,6 +19,31 @@ import {
 
 type NodePoint = GuideStep & { x: number; y: number };
 type HitTarget = { id: string; x: number; y: number; width: number; height: number };
+
+class AppErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  override state = { error: null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  override componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('Unhandled Teams onboarding UI error', error.message, info.componentStack);
+  }
+
+  override render() {
+    if (this.state.error) {
+      return (
+        <main className="fatal-error" role="alert">
+          <h1>Something went wrong</h1>
+          <p>The onboarding workspace could not recover. Refresh Teams and try again.</p>
+        </main>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 const statusLabel: Record<GuideStep['status'], string> = {
   locked: 'Locked',
@@ -60,7 +86,49 @@ function mergeSources(existing: KnowledgeSource[], incoming: KnowledgeSource[]) 
   return [...byId.values()];
 }
 
-function getNodeLayout(graph: GuideGraph | null): NodePoint[] {
+export function getVisibleGraph(
+  graph: GuideGraph | null,
+  selectedStepId: string | null,
+): GuideGraph | null {
+  if (!graph || !selectedStepId) {
+    return graph;
+  }
+
+  const stepsById = new Map(graph.steps.map((step) => [step.id, step]));
+  const visibleIds = new Set<string>();
+  let current = stepsById.get(selectedStepId);
+
+  while (current) {
+    visibleIds.add(current.id);
+    current = current.parentId ? stepsById.get(current.parentId) : undefined;
+  }
+
+  const visitDescendants = (stepId: string) => {
+    const step = stepsById.get(stepId);
+    if (!step) {
+      return;
+    }
+
+    for (const childId of step.childIds) {
+      visibleIds.add(childId);
+      visitDescendants(childId);
+    }
+  };
+
+  visitDescendants(selectedStepId);
+
+  if (selectedStepId === graph.rootId) {
+    visibleIds.add(graph.rootId);
+  }
+
+  return {
+    ...graph,
+    steps: graph.steps.filter((step) => visibleIds.has(step.id)),
+    edges: graph.edges.filter((edge) => visibleIds.has(edge.from) && visibleIds.has(edge.to)),
+  };
+}
+
+export function getNodeLayout(graph: GuideGraph | null): NodePoint[] {
   if (!graph) {
     return [];
   }
@@ -400,7 +468,7 @@ function trimText(context: CanvasRenderingContext2D, text: string, maxWidth: num
   return `${next}...`;
 }
 
-export default function App() {
+function AppContent() {
   const [sessions, setSessions] = useState<OnboardingSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [graph, setGraph] = useState<GuideGraph | null>(null);
@@ -415,19 +483,27 @@ export default function App() {
   const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isChatLoading, setIsChatLoading] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
 
   const breadcrumbs = useMemo(() => getBreadcrumbs(graph, selectedStepId), [graph, selectedStepId]);
+  const visibleGraph = useMemo(
+    () => getVisibleGraph(graph, selectedStepId),
+    [graph, selectedStepId],
+  );
 
   const loadGuide = useCallback(
     async (sessionId: string) => {
       setIsLoading(true);
       try {
+        setApiError(null);
         const response = await getRootGuide({ sessionId, webSearchEnabled });
         setGraph(response.graph);
         setSources((current) => mergeSources(current, response.graph.sources));
         const focusId = response.focusStepId ?? response.graph.rootId;
         setSelectedStepId(focusId);
         setFocusStepIds([focusId]);
+      } catch (error) {
+        setApiError(formatError(error, 'Could not load the guide from the onboarding service.'));
       } finally {
         setIsLoading(false);
       }
@@ -438,19 +514,26 @@ export default function App() {
   useEffect(() => {
     void (async () => {
       setIsLoading(true);
-      const response = await listSessions();
-      let nextSessions = response.sessions;
+      try {
+        setApiError(null);
+        const response = await listSessions();
+        let nextSessions = response.sessions;
 
-      if (nextSessions.length === 0) {
-        const created = await createSession({ title: 'First week path' });
-        nextSessions = [created.session];
-      }
+        if (nextSessions.length === 0) {
+          const created = await createSession({ title: 'First week path' });
+          nextSessions = [created.session];
+        }
 
-      setSessions(nextSessions);
-      const firstSession = nextSessions[0];
-      if (firstSession) {
-        setActiveSessionId(firstSession.id);
-        await loadGuide(firstSession.id);
+        setSessions(nextSessions);
+        const firstSession = nextSessions[0];
+        if (firstSession) {
+          setActiveSessionId(firstSession.id);
+          await loadGuide(firstSession.id);
+        }
+      } catch (error) {
+        setApiError(formatError(error, 'Could not load onboarding sessions.'));
+      } finally {
+        setIsLoading(false);
       }
     })();
   }, [loadGuide]);
@@ -462,26 +545,36 @@ export default function App() {
   }, [activeSessionId, loadGuide, webSearchEnabled]);
 
   async function handleCreateSession() {
-    const created = await createSession({ title: `Onboarding path ${sessions.length + 1}` });
-    setSessions((current) => [created.session, ...current]);
-    setActiveSessionId(created.session.id);
-    setMessages(emptyMessages);
-    setSources([]);
+    try {
+      setApiError(null);
+      const created = await createSession({ title: `Onboarding path ${sessions.length + 1}` });
+      setSessions((current) => [created.session, ...current]);
+      setActiveSessionId(created.session.id);
+      setMessages(emptyMessages);
+      setSources([]);
+    } catch (error) {
+      setApiError(formatError(error, 'Could not create a new session.'));
+    }
   }
 
   async function handleDeleteSession(sessionId: string) {
-    await deleteSession(sessionId);
-    const remaining = sessions.filter((session) => session.id !== sessionId);
-    setSessions(remaining);
+    try {
+      setApiError(null);
+      await deleteSession(sessionId);
+      const remaining = sessions.filter((session) => session.id !== sessionId);
+      setSessions(remaining);
 
-    if (activeSessionId === sessionId) {
-      const next = remaining[0] ?? null;
-      setActiveSessionId(next?.id ?? null);
-      setGraph(null);
-      setSelectedStepId(null);
-      if (next) {
-        await loadGuide(next.id);
+      if (activeSessionId === sessionId) {
+        const next = remaining[0] ?? null;
+        setActiveSessionId(next?.id ?? null);
+        setGraph(null);
+        setSelectedStepId(null);
+        if (next) {
+          await loadGuide(next.id);
+        }
       }
+    } catch (error) {
+      setApiError(formatError(error, 'Could not delete the session.'));
     }
   }
 
@@ -495,20 +588,25 @@ export default function App() {
     }
 
     const step = graph?.steps.find((candidate) => candidate.id === stepId);
-    if (!step || step.childIds.length > 0) {
+    if (!step || step.childIds.length > 0 || step.canExpand === false) {
       return;
     }
 
-    const response = await expandStep({
-      sessionId: activeSessionId,
-      stepId,
-      webSearchEnabled,
-    });
-    setGraph(response.graph);
-    setSources((current) => mergeSources(current, response.graph.sources));
-    const focusId = response.focusStepId ?? stepId;
-    setSelectedStepId(focusId);
-    setFocusStepIds([focusId]);
+    try {
+      setApiError(null);
+      const response = await expandStep({
+        sessionId: activeSessionId,
+        stepId,
+        webSearchEnabled,
+      });
+      setGraph(response.graph);
+      setSources((current) => mergeSources(current, response.graph.sources));
+      const focusId = response.focusStepId ?? stepId;
+      setSelectedStepId(focusId);
+      setFocusStepIds([focusId]);
+    } catch (error) {
+      setApiError(formatError(error, 'Could not expand that guide step.'));
+    }
   }
 
   function handleLocateStep(stepId: string) {
@@ -542,6 +640,7 @@ export default function App() {
     setIsChatLoading(true);
 
     try {
+      setApiError(null);
       const response = await sendChat({
         sessionId: activeSessionId,
         message: userMessage.content,
@@ -554,6 +653,16 @@ export default function App() {
         setFocusStepIds(response.focusStepIds);
         setSelectedStepId(response.focusStepIds[0] ?? selectedStepId);
       }
+    } catch (error) {
+      setMessages((current) => [
+        ...current,
+        {
+          id: `assistant-error-${Date.now()}`,
+          role: 'assistant',
+          content: formatError(error, 'The assistant could not answer right now.'),
+          createdAt: new Date().toISOString(),
+        },
+      ]);
     } finally {
       setIsChatLoading(false);
     }
@@ -624,9 +733,15 @@ export default function App() {
           </div>
         </header>
 
+        {apiError ? (
+          <div className="app-error" role="alert">
+            {apiError}
+          </div>
+        ) : null}
+        {isLoading ? <div className="loading-state">Loading onboarding workspace...</div> : null}
         <GuideCanvas
           focusStepIds={focusStepIds}
-          graph={graph}
+          graph={visibleGraph}
           onSelectStep={(stepId) => {
             void handleNavigateToStep(stepId);
           }}
@@ -723,4 +838,16 @@ export default function App() {
       </aside>
     </main>
   );
+}
+
+export default function App() {
+  return (
+    <AppErrorBoundary>
+      <AppContent />
+    </AppErrorBoundary>
+  );
+}
+
+function formatError(error: unknown, fallback: string): string {
+  return error instanceof Error ? `${fallback} ${error.message}` : fallback;
 }

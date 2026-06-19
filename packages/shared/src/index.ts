@@ -17,6 +17,7 @@ export interface SourceProvenance {
   kind?: LegacySourceKind;
   score?: number;
   confidence?: number;
+  metadata?: Record<string, string | number | boolean | undefined>;
 }
 
 export type KnowledgeSource = SourceProvenance;
@@ -57,6 +58,8 @@ export interface GuideNode {
   depth: number;
   status: 'generated' | 'expanded';
   sources: SourceProvenance[];
+  canExpand: boolean;
+  maxDepth: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -118,6 +121,8 @@ export interface GuideStep {
   detail?: string;
   childIds: string[];
   sourceIds?: string[];
+  canExpand?: boolean;
+  maxDepth?: number;
 }
 
 export interface GuideEdge {

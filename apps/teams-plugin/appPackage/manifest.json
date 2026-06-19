@@ -2,12 +2,12 @@
   "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.19/MicrosoftTeams.schema.json",
   "manifestVersion": "1.19",
   "version": "0.1.0",
-  "id": "00000000-0000-0000-0000-000000000000",
+  "id": "6c7f3e39-78f6-4f89-a00a-9a9cc5d8f3aa",
   "developer": {
     "name": "Onboarding Accelerator",
-    "websiteUrl": "https://localhost:5173",
-    "privacyUrl": "https://localhost:5173/privacy",
-    "termsOfUseUrl": "https://localhost:5173/terms"
+    "websiteUrl": "https://onboarding-accelerator.contoso.com",
+    "privacyUrl": "https://onboarding-accelerator.contoso.com/privacy",
+    "termsOfUseUrl": "https://onboarding-accelerator.contoso.com/terms"
   },
   "name": {
     "short": "Onboarding",
@@ -22,10 +22,10 @@
     {
       "entityId": "onboarding",
       "name": "Onboarding",
-      "contentUrl": "https://localhost:5173",
-      "websiteUrl": "https://localhost:5173",
+      "contentUrl": "https://onboarding-accelerator.contoso.com",
+      "websiteUrl": "https://onboarding-accelerator.contoso.com",
       "scopes": ["personal"]
     }
   ],
-  "validDomains": ["localhost"]
+  "validDomains": ["onboarding-accelerator.contoso.com"]
 }

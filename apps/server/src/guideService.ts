@@ -15,18 +15,20 @@ export class GuideOrchestrationService {
   constructor(
     private readonly sessions: SessionRepository,
     private readonly rag: RagService,
+    private readonly maxDepth = 2,
   ) {}
 
   async generateRoot(
     sessionId: string,
     request: GenerateGuideRootRequest,
+    ownerId: string,
   ): Promise<GenerateGuideRootResponse> {
-    const session = await this.sessions.get(sessionId);
+    const session = await this.sessions.get(sessionId, ownerId);
     const prompt = request.prompt?.trim() || 'Create an onboarding guide for a new teammate';
     const webSearchEnabled = request.webSearchEnabled ?? session.settings.webSearchEnabled;
     const retrieval = await this.rag.retrieve(prompt, { webSearchEnabled });
     const now = new Date().toISOString();
-    const rootNodes = createRootNodes(retrieval.sources, now);
+    const rootNodes = createRootNodes(retrieval.sources, now, this.maxDepth);
 
     for (const node of rootNodes) {
       session.guide.nodes[node.id] = node;
@@ -49,12 +51,42 @@ export class GuideOrchestrationService {
   async expand(
     sessionId: string,
     request: ExpandGuideStepRequest,
+    ownerId: string,
   ): Promise<ExpandGuideStepResponse> {
-    const session = await this.sessions.get(sessionId);
+    const session = await this.sessions.get(sessionId, ownerId);
     const parent = session.guide.nodes[request.nodeId];
 
     if (!parent) {
       throw new GuideNodeNotFoundError(request.nodeId);
+    }
+
+    if (parent.children.length > 0) {
+      const existingChildren = parent.children
+        .map((childId) => session.guide.nodes[childId])
+        .filter((node): node is GuideNode => Boolean(node));
+
+      return {
+        parentNodeId: parent.id,
+        childNodeIds: existingChildren.map((node) => node.id),
+        nodes: existingChildren,
+        session,
+        sources: existingChildren.flatMap((node) => node.sources),
+      };
+    }
+
+    if (parent.depth >= this.maxDepth) {
+      parent.canExpand = false;
+      parent.updatedAt = new Date().toISOString();
+      session.guide.selectedNodeId = parent.id;
+      const savedSession = await this.sessions.save(touchSession(session));
+
+      return {
+        parentNodeId: parent.id,
+        childNodeIds: [],
+        nodes: [],
+        session: savedSession,
+        sources: [],
+      };
     }
 
     const prompt =
@@ -63,7 +95,7 @@ export class GuideOrchestrationService {
     const webSearchEnabled = request.webSearchEnabled ?? session.settings.webSearchEnabled;
     const retrieval = await this.rag.retrieve(`${parent.title}. ${prompt}`, { webSearchEnabled });
     const now = new Date().toISOString();
-    const childNodes = createChildNodes(parent, retrieval.sources, now);
+    const childNodes = createChildNodes(parent, retrieval.sources, now, this.maxDepth);
 
     for (const node of childNodes) {
       session.guide.nodes[node.id] = node;
@@ -71,6 +103,7 @@ export class GuideOrchestrationService {
 
     parent.children.push(...childNodes.map((node) => node.id));
     parent.status = 'expanded';
+    parent.canExpand = false;
     parent.updatedAt = now;
     parent.detail = parent.detail || buildDetail(parent.title, retrieval.sources);
     session.guide.selectedNodeId = parent.id;
@@ -95,7 +128,11 @@ export class GuideNodeNotFoundError extends Error {
   }
 }
 
-function createRootNodes(sources: SourceProvenance[], now: string): GuideNode[] {
+function createRootNodes(
+  sources: SourceProvenance[],
+  now: string,
+  maxDepth: number,
+): GuideNode[] {
   const fallbackTitles = [
     'Set up access',
     'Meet the team',
@@ -116,6 +153,7 @@ function createRootNodes(sources: SourceProvenance[], now: string): GuideNode[] 
       depth: 0,
       sources: source ? [source] : [],
       now,
+      maxDepth,
     });
   });
 }
@@ -124,6 +162,7 @@ function createChildNodes(
   parent: GuideNode,
   sources: SourceProvenance[],
   now: string,
+  maxDepth: number,
 ): GuideNode[] {
   const sourceBacked = sources.slice(0, 3).map((source, index) =>
     createNode({
@@ -134,6 +173,7 @@ function createChildNodes(
       sources: [source],
       now,
       detail: buildDetail(source.title, [source], index + 1),
+      maxDepth,
     }),
   );
 
@@ -150,6 +190,7 @@ function createChildNodes(
       sources: [],
       now,
       detail: buildDetail(title, [], index + 1),
+      maxDepth,
     }),
   );
 }
@@ -160,6 +201,7 @@ function createNode(input: {
   depth: number;
   sources: SourceProvenance[];
   now: string;
+  maxDepth: number;
   parentId?: string;
   detail?: string;
 }): GuideNode {
@@ -173,6 +215,8 @@ function createNode(input: {
     depth: input.depth,
     status: 'generated',
     sources: input.sources,
+    canExpand: input.depth < input.maxDepth,
+    maxDepth: input.maxDepth,
     createdAt: input.now,
     updatedAt: input.now,
   };

@@ -5,7 +5,11 @@ import type {
   CreateSessionRequest,
   CreateSessionResponse,
   ExpandStepRequest,
+  ExpandGuideStepResponse,
+  GenerateGuideRootResponse,
   GuideGraph,
+  GuideGraphState,
+  GuideNode,
   GuideRequest,
   GuideResponse,
   GuideStep,
@@ -14,12 +18,20 @@ import type {
   OnboardingSession,
 } from '@onboarding/shared';
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3978';
-const useMockApi = (import.meta.env.VITE_USE_MOCK_API ?? 'true').toLocaleLowerCase() !== 'false';
+const viteEnv = import.meta.env ?? {};
+const apiBaseUrl = viteEnv.VITE_API_BASE_URL ?? 'http://localhost:3978';
+const useMockApi = (viteEnv.VITE_USE_MOCK_API ?? 'false').toLocaleLowerCase() === 'true';
+
+declare global {
+  interface Window {
+    __ONBOARDING_AUTH_TOKEN__?: string;
+  }
+}
 
 const now = () => new Date().toISOString();
 const id = (prefix: string) =>
   `${prefix}-${Math.random().toString(36).slice(2, 8)}-${Date.now().toString(36)}`;
+const mockMaxDepth = 2;
 
 function emptyGuide() {
   return {
@@ -75,6 +87,7 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: {
       'Content-Type': 'application/json',
+      ...getAuthHeaders(),
       ...init?.headers,
     },
   });
@@ -92,6 +105,15 @@ function shouldMock(error: unknown) {
   }
 }
 
+function getAuthHeaders(): Record<string, string> {
+  const token = window.__ONBOARDING_AUTH_TOKEN__ ?? window.sessionStorage.getItem('onboardingAuthToken');
+  const userId = window.sessionStorage.getItem('onboardingUserId');
+  return {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(userId ? { 'X-User-ID': userId } : {}),
+  };
+}
+
 function makeRootGraph(sessionId: string): GuideGraph {
   const rootId = `${sessionId}-root`;
   const steps: GuideStep[] = [
@@ -105,6 +127,8 @@ function makeRootGraph(sessionId: string): GuideGraph {
         'Start here to understand the onboarding map. Expand any step to reveal more precise actions from the knowledge base or web results.',
       childIds: [`${sessionId}-access`, `${sessionId}-people`, `${sessionId}-learning`],
       sourceIds: ['kb-teams'],
+      canExpand: false,
+      maxDepth: mockMaxDepth,
     },
     {
       id: `${sessionId}-access`,
@@ -117,6 +141,8 @@ function makeRootGraph(sessionId: string): GuideGraph {
         'Confirm single sign-on, device compliance, and workspace membership before starting role-specific work.',
       childIds: [],
       sourceIds: ['kb-teams'],
+      canExpand: true,
+      maxDepth: mockMaxDepth,
     },
     {
       id: `${sessionId}-people`,
@@ -129,6 +155,8 @@ function makeRootGraph(sessionId: string): GuideGraph {
         'Use Teams channels and org resources to understand who can unblock setup, benefits, security, and role questions.',
       childIds: [],
       sourceIds: ['kb-teams', 'kb-benefits'],
+      canExpand: true,
+      maxDepth: mockMaxDepth,
     },
     {
       id: `${sessionId}-learning`,
@@ -141,6 +169,8 @@ function makeRootGraph(sessionId: string): GuideGraph {
         'This track expands into required learning based on role, location, and policy context.',
       childIds: [],
       sourceIds: ['kb-benefits', 'web-security'],
+      canExpand: true,
+      maxDepth: mockMaxDepth,
     },
   ];
 
@@ -171,7 +201,10 @@ function expandMockStep({ sessionId, stepId, webSearchEnabled }: ExpandStepReque
   const graph = getGraph(sessionId);
   const step = graph.steps.find((candidate) => candidate.id === stepId);
 
-  if (!step || step.childIds.length > 0) {
+  if (!step || step.childIds.length > 0 || step.depth >= (step.maxDepth ?? mockMaxDepth)) {
+    if (step) {
+      step.canExpand = false;
+    }
     return { graph, focusStepId: stepId };
   }
 
@@ -200,11 +233,14 @@ function expandMockStep({ sessionId, stepId, webSearchEnabled }: ExpandStepReque
       detail: `${summary} This node can be expanded again when the server returns more detailed sub-steps.`,
       childIds: [],
       sourceIds: webSearchEnabled ? ['kb-teams', 'web-security'] : ['kb-teams'],
+      canExpand: nextDepth < (step.maxDepth ?? mockMaxDepth),
+      maxDepth: step.maxDepth ?? mockMaxDepth,
     };
   });
 
   step.childIds = children.map((child) => child.id);
   step.status = 'in-progress';
+  step.canExpand = false;
   graph.steps.push(...children);
   graph.edges.push(
     ...children.map((child) => ({
@@ -269,13 +305,17 @@ export async function deleteSession(sessionId: string): Promise<void> {
 
 export async function getRootGuide(payload: GuideRequest): Promise<GuideResponse> {
   try {
-    return await requestJson<GuideResponse>(
-      `/api/sessions/${encodeURIComponent(payload.sessionId)}/guide`,
+    const response = await requestJson<GenerateGuideRootResponse>(
+      `/api/sessions/${encodeURIComponent(payload.sessionId)}/guide/root`,
       {
         method: 'POST',
         body: JSON.stringify({ webSearchEnabled: payload.webSearchEnabled }),
       },
     );
+    return {
+      graph: toGuideGraph(response.session.guide, response.sources, response.session.id),
+      focusStepId: `${response.session.id}-guide-root`,
+    };
   } catch (error) {
     shouldMock(error);
     const graph = getGraph(payload.sessionId);
@@ -291,19 +331,98 @@ export async function getRootGuide(payload: GuideRequest): Promise<GuideResponse
 
 export async function expandStep(payload: ExpandStepRequest): Promise<GuideResponse> {
   try {
-    return await requestJson<GuideResponse>(
-      `/api/sessions/${encodeURIComponent(payload.sessionId)}/guide/steps/${encodeURIComponent(
-        payload.stepId,
-      )}/expand`,
+    const response = await requestJson<ExpandGuideStepResponse>(
+      `/api/sessions/${encodeURIComponent(payload.sessionId)}/guide/expand`,
       {
         method: 'POST',
-        body: JSON.stringify({ webSearchEnabled: payload.webSearchEnabled }),
+        body: JSON.stringify({
+          nodeId: payload.stepId,
+          webSearchEnabled: payload.webSearchEnabled,
+        }),
       },
     );
+    return {
+      graph: toGuideGraph(response.session.guide, response.sources, response.session.id),
+      focusStepId: response.childNodeIds[0] ?? response.parentNodeId,
+    };
   } catch (error) {
     shouldMock(error);
     return expandMockStep(payload);
   }
+}
+
+function toGuideGraph(
+  guide: GuideGraphState,
+  sources: KnowledgeSource[],
+  sessionId: string,
+): GuideGraph {
+  const rootId = `${sessionId}-guide-root`;
+  const sourceById = new Map<string, KnowledgeSource>();
+
+  for (const source of sources) {
+    sourceById.set(source.id, source);
+  }
+  for (const node of Object.values(guide.nodes)) {
+    for (const source of node.sources) {
+      sourceById.set(source.id, source);
+    }
+  }
+
+  const steps: GuideStep[] = [
+    {
+      id: rootId,
+      title: 'Begin onboarding',
+      summary: 'Choose the next setup path.',
+      status: 'in-progress',
+      depth: 0,
+      detail: 'Start here to focus the onboarding guide.',
+      childIds: guide.rootNodeIds,
+      sourceIds: [...sourceById.keys()],
+      canExpand: false,
+      maxDepth: Math.max(0, ...Object.values(guide.nodes).map((node) => node.maxDepth ?? 0)) + 1,
+    },
+    ...Object.values(guide.nodes).map((node) => toGuideStep(node, rootId)),
+  ];
+
+  const edges = [
+    ...guide.rootNodeIds.map((nodeId) => ({
+      id: `${rootId}-${nodeId}`,
+      from: rootId,
+      to: nodeId,
+      label: 'start',
+    })),
+    ...Object.values(guide.nodes).flatMap((node) =>
+      node.children.map((childId) => ({
+        id: `${node.id}-${childId}`,
+        from: node.id,
+        to: childId,
+        label: node.canExpand ? 'next' : 'detail',
+      })),
+    ),
+  ];
+
+  return {
+    rootId,
+    steps,
+    edges,
+    sources: [...sourceById.values()],
+  };
+}
+
+function toGuideStep(node: GuideNode, rootId: string): GuideStep {
+  return {
+    id: node.id,
+    title: node.title,
+    summary: node.summary,
+    status: node.status === 'expanded' ? 'in-progress' : 'ready',
+    depth: node.depth + 1,
+    parentId: node.parentId ?? rootId,
+    detail: node.detail,
+    childIds: node.children,
+    sourceIds: node.sources.map((source) => source.id),
+    canExpand: node.canExpand,
+    maxDepth: node.maxDepth + 1,
+  };
 }
 
 export async function sendChat(payload: ChatRequest): Promise<ChatResponse> {

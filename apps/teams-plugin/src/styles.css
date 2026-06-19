@@ -206,9 +206,41 @@ h3 {
 
 .workspace {
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto auto auto 1fr;
   min-width: 0;
   min-height: 100vh;
+}
+
+.fatal-error,
+.app-error,
+.loading-state {
+  border: 1px solid #d7dbea;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #424242;
+}
+
+.fatal-error {
+  display: grid;
+  place-content: center;
+  min-height: 100vh;
+  padding: 24px;
+  text-align: center;
+}
+
+.app-error {
+  margin: 12px 16px 0;
+  border-color: #f1b8be;
+  padding: 10px 12px;
+  background: #fff4f4;
+  color: #8a0f1f;
+  font-weight: 600;
+}
+
+.loading-state {
+  margin: 12px 16px 0;
+  padding: 10px 12px;
+  font-weight: 600;
 }
 
 .topbar {

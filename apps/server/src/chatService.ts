@@ -7,6 +7,7 @@ import type {
   OnboardingSession,
 } from '@onboarding/shared';
 import type { RagService } from './ragService.js';
+import type { OpenAiService } from './openAiService.js';
 import type { SessionRepository } from './sessionRepository.js';
 import { touchSession } from './sessionRepository.js';
 
@@ -14,10 +15,11 @@ export class ChatOrchestrationService {
   constructor(
     private readonly sessions: SessionRepository,
     private readonly rag: RagService,
+    private readonly openAi: OpenAiService,
   ) {}
 
-  async chat(sessionId: string, request: ChatRequest): Promise<ChatResponse> {
-    const session = await this.sessions.get(sessionId);
+  async chat(sessionId: string, request: ChatRequest, ownerId: string): Promise<ChatResponse> {
+    const session = await this.sessions.get(sessionId, ownerId);
     const webSearchEnabled = request.webSearchEnabled ?? session.settings.webSearchEnabled;
     const retrieval = await this.rag.retrieve(request.message, { webSearchEnabled });
     const guideNodeIds = findRelevantGuideNodeIds(session, request.message);
@@ -31,7 +33,7 @@ export class ChatOrchestrationService {
     const assistantMessage: ChatMessage = {
       id: randomUUID(),
       role: 'assistant',
-      content: composeAnswer(request.message, retrieval.sources, guideNodeIds),
+      content: await this.composeAnswer(session, request.message, retrieval.sources, guideNodeIds),
       createdAt: now,
       sources: retrieval.sources,
       guideNodeIds,
@@ -47,16 +49,40 @@ export class ChatOrchestrationService {
       guideNodeIds,
     };
   }
+
+  private async composeAnswer(
+    session: OnboardingSession,
+    prompt: string,
+    sources: ChatMessage['sources'] = [],
+    guideNodeIds: string[],
+  ): Promise<string> {
+    try {
+      const modelAnswer = await this.openAi.answer({
+        prompt,
+        sources,
+        chatHistory: session.chatHistory,
+        guideNodeIds,
+      });
+
+      if (modelAnswer) {
+        return modelAnswer;
+      }
+    } catch (error) {
+      console.error(error);
+    }
+
+    return composeFallbackAnswer(prompt, sources, guideNodeIds);
+  }
 }
 
-function composeAnswer(
+function composeFallbackAnswer(
   prompt: string,
   sources: ChatMessage['sources'] = [],
   guideNodeIds: string[],
 ): string {
   const sourceSummary = sources
     .slice(0, 3)
-    .map((source) => source.title)
+    .map((source) => `[${source.title}]`)
     .join(', ');
   const guideReference =
     guideNodeIds.length > 0
@@ -64,8 +90,11 @@ function composeAnswer(
       : '';
 
   return (
-    `Based on the onboarding knowledge base, here is a starting answer for "${prompt}". ` +
-    `Use ${sourceSummary || 'the available onboarding sources'} as the grounding context and refine this response through the model layer when connected.` +
+    `Based on the retrieved onboarding sources, here is a starting answer for "${prompt}". ` +
+    (sourceSummary
+      ? `Grounding sources: ${sourceSummary}. `
+      : 'No matching onboarding source was retrieved, so I cannot verify the answer from company material. ') +
+    `If you need a policy-specific answer, add the missing source content or connect the model layer. ` +
     guideReference
   );
 }

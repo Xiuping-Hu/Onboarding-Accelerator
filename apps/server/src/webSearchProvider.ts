@@ -5,7 +5,15 @@ export interface WebSearchProvider {
 }
 
 export class DisabledWebSearchProvider implements WebSearchProvider {
+  constructor(private readonly enabled = false) {}
+
   async search(): Promise<SourceProvenance[]> {
+    if (this.enabled) {
+      console.warn(
+        'WEB_SEARCH_ALLOWED is true, but no production web search provider is configured. Returning no web results.',
+      );
+    }
+
     return [];
   }
 }

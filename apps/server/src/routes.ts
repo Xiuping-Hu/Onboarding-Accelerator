@@ -2,8 +2,11 @@ import { Router, type NextFunction, type Request, type Response } from 'express'
 import { z } from 'zod';
 import type { HealthResponse } from '@onboarding/shared';
 import { answerQuestion } from './agent.js';
+import { requireUser } from './auth.js';
 import type { ChatOrchestrationService } from './chatService.js';
 import { GuideNodeNotFoundError, type GuideOrchestrationService } from './guideService.js';
+import type { OpenAiService } from './openAiService.js';
+import type { RagService } from './ragService.js';
 import { SessionNotFoundError, type SessionRepository } from './sessionRepository.js';
 
 const userSettingsSchema = z.object({
@@ -42,12 +45,15 @@ const askRequestSchema = z.object({
   question: z.string().min(1),
   userId: z.string().optional(),
   conversationId: z.string().optional(),
+  webSearchEnabled: z.boolean().optional(),
 });
 
 export interface RouteDependencies {
   sessions: SessionRepository;
   chat: ChatOrchestrationService;
   guide: GuideOrchestrationService;
+  openAi: OpenAiService;
+  rag: RagService;
 }
 
 export function createRoutes(dependencies: RouteDependencies): Router {
@@ -58,9 +64,9 @@ export function createRoutes(dependencies: RouteDependencies): Router {
     response.json(payload);
   });
 
-  router.get('/api/sessions', async (_request, response, next) => {
+  router.get('/api/sessions', async (request, response, next) => {
     try {
-      response.json({ sessions: await dependencies.sessions.list() });
+      response.json({ sessions: await dependencies.sessions.list(requireUser(request).id) });
     } catch (error) {
       next(error);
     }
@@ -69,7 +75,9 @@ export function createRoutes(dependencies: RouteDependencies): Router {
   router.post('/api/sessions', async (request, response, next) => {
     try {
       const payload = createSessionRequestSchema.parse(request.body);
-      response.status(201).json(await dependencies.sessions.create(payload));
+      response
+        .status(201)
+        .json({ session: await dependencies.sessions.create(payload, requireUser(request).id) });
     } catch (error) {
       next(error);
     }
@@ -77,7 +85,7 @@ export function createRoutes(dependencies: RouteDependencies): Router {
 
   router.get('/api/sessions/:sessionId', async (request, response, next) => {
     try {
-      response.json(await dependencies.sessions.get(request.params.sessionId));
+      response.json(await dependencies.sessions.get(request.params.sessionId, requireUser(request).id));
     } catch (error) {
       next(error);
     }
@@ -86,7 +94,9 @@ export function createRoutes(dependencies: RouteDependencies): Router {
   router.patch('/api/sessions/:sessionId', async (request, response, next) => {
     try {
       const payload = updateSessionRequestSchema.parse(request.body);
-      response.json(await dependencies.sessions.update(request.params.sessionId, payload));
+      response.json(
+        await dependencies.sessions.update(request.params.sessionId, payload, requireUser(request).id),
+      );
     } catch (error) {
       next(error);
     }
@@ -94,7 +104,7 @@ export function createRoutes(dependencies: RouteDependencies): Router {
 
   router.delete('/api/sessions/:sessionId', async (request, response, next) => {
     try {
-      await dependencies.sessions.delete(request.params.sessionId);
+      await dependencies.sessions.delete(request.params.sessionId, requireUser(request).id);
       response.status(204).send();
     } catch (error) {
       next(error);
@@ -105,11 +115,15 @@ export function createRoutes(dependencies: RouteDependencies): Router {
     try {
       const payload = chatRequestSchema.parse(request.body);
       response.json(
-        await dependencies.chat.chat(request.params.sessionId, {
-          ...payload,
-          sessionId: request.params.sessionId,
-          webSearchEnabled: payload.webSearchEnabled ?? false,
-        }),
+        await dependencies.chat.chat(
+          request.params.sessionId,
+          {
+            ...payload,
+            sessionId: request.params.sessionId,
+            webSearchEnabled: payload.webSearchEnabled ?? false,
+          },
+          requireUser(request).id,
+        ),
       );
     } catch (error) {
       next(error);
@@ -119,7 +133,9 @@ export function createRoutes(dependencies: RouteDependencies): Router {
   router.post('/api/sessions/:sessionId/guide/root', async (request, response, next) => {
     try {
       const payload = guideRootRequestSchema.parse(request.body);
-      response.json(await dependencies.guide.generateRoot(request.params.sessionId, payload));
+      response.json(
+        await dependencies.guide.generateRoot(request.params.sessionId, payload, requireUser(request).id),
+      );
     } catch (error) {
       next(error);
     }
@@ -128,7 +144,9 @@ export function createRoutes(dependencies: RouteDependencies): Router {
   router.post('/api/sessions/:sessionId/guide/expand', async (request, response, next) => {
     try {
       const payload = guideExpandRequestSchema.parse(request.body);
-      response.json(await dependencies.guide.expand(request.params.sessionId, payload));
+      response.json(
+        await dependencies.guide.expand(request.params.sessionId, payload, requireUser(request).id),
+      );
     } catch (error) {
       next(error);
     }
@@ -137,7 +155,7 @@ export function createRoutes(dependencies: RouteDependencies): Router {
   router.post('/api/ask', async (request, response, next) => {
     try {
       const payload = askRequestSchema.parse(request.body);
-      response.json(await answerQuestion(payload));
+      response.json(await answerQuestion(payload, dependencies.rag, dependencies.openAi));
     } catch (error) {
       next(error);
     }
