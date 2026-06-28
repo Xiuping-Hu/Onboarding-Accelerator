@@ -9,6 +9,7 @@ import { createAuthMiddleware } from './auth.js';
 import { createRoutes } from './routes.js';
 import type { ChatOrchestrationService } from './chatService.js';
 import type { GuideOrchestrationService } from './guideService.js';
+import { NoopLogService } from './logService.js';
 import type { OpenAiService } from './openAiService.js';
 import type { RagService, RetrievalContext, RetrievalOptions } from './ragService.js';
 import { InMemorySessionRepository } from './sessionRepository.js';
@@ -30,6 +31,7 @@ void test('/api/sessions wraps created session in response contract', async () =
       chat: {} as ChatOrchestrationService,
       guide: {} as GuideOrchestrationService,
       openAi: {} as OpenAiService,
+      logs: new NoopLogService(),
     }),
   );
 
@@ -92,6 +94,7 @@ void test('/api/ask retrieves sources through RagService', async () => {
       chat: {} as ChatOrchestrationService,
       guide: {} as GuideOrchestrationService,
       openAi: { answer: async () => undefined } as unknown as OpenAiService,
+      logs: new NoopLogService(),
     }),
   );
 
@@ -132,6 +135,7 @@ void test('non-health API routes require authentication', async () => {
       chat: {} as ChatOrchestrationService,
       guide: {} as GuideOrchestrationService,
       openAi: {} as OpenAiService,
+      logs: new NoopLogService(),
     }),
   );
 
@@ -172,6 +176,7 @@ function createTestConfig(): ServerConfig {
     authDisabled: false,
     apiAuthToken: 'test-token',
     sessionStorePath: 'unused',
+    logStorePath: 'unused',
     webSearchAllowed: false,
     openAiModel: 'test-model',
     openAiTimeoutMs: 100,

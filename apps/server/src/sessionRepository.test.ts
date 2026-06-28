@@ -35,3 +35,28 @@ void test('file session repository persists sessions across instances', async ()
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+void test('file session repository rewrites existing store after save operations', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'onboarding-sessions-'));
+  const storePath = join(directory, 'sessions.json');
+
+  try {
+    const repository = new FileSessionRepository(storePath);
+    const created = await repository.create({ title: 'Guide session' }, 'owner-a');
+    const saved = await repository.save({
+      ...created,
+      guide: {
+        ...created.guide,
+        rootNodeIds: ['root-node'],
+      },
+    });
+    const next = await repository.create({ title: 'Second session' }, 'owner-a');
+
+    assert.deepEqual(saved.guide.rootNodeIds, ['root-node']);
+    assert.equal((await repository.get(saved.id, 'owner-a')).guide.rootNodeIds[0], 'root-node');
+    assert.equal((await repository.get(next.id, 'owner-a')).title, 'Second session');
+    assert.equal((await repository.list('owner-a')).length, 2);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});

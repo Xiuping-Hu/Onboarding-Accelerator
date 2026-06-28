@@ -6,13 +6,17 @@ import type {
   GuideGraph,
   GuideStep,
   KnowledgeSource,
+  LogEventRecord,
+  LogSummaryResponse,
   OnboardingSession,
 } from '@onboarding/shared';
 import {
   createSession,
   deleteSession,
   expandStep,
+  getRecentLogs,
   getRootGuide,
+  getLogSummary,
   listSessions,
   sendChat,
 } from './api.js';
@@ -76,6 +80,48 @@ function formatTime(value: string) {
     hour: 'numeric',
     minute: '2-digit',
   }).format(new Date(value));
+}
+
+function formatTokens(value: number) {
+  return new Intl.NumberFormat(undefined).format(value);
+}
+
+function formatUsd(value: number) {
+  return new Intl.NumberFormat(undefined, {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: value > 0 && value < 0.01 ? 6 : 2,
+    maximumFractionDigits: 6,
+  }).format(value);
+}
+
+function getLogTypeLabel(event: LogEventRecord) {
+  if (event.type === 'ai_usage') {
+    return 'AI usage';
+  }
+
+  if (event.type === 'request') {
+    return 'Request';
+  }
+
+  return 'Error';
+}
+
+function getLogDetail(event: LogEventRecord) {
+  if (event.type === 'ai_usage' && event.usage) {
+    return `${event.operation ?? 'ai'} | ${event.usage.model} | ${formatTokens(
+      event.usage.totalTokens,
+    )} tokens | ${formatUsd(event.usage.estimatedFeeUsd)}`;
+  }
+
+  if (event.type === 'request') {
+    const status = event.statusCode ? String(event.statusCode) : 'pending';
+    const duration =
+      typeof event.durationMs === 'number' ? `${event.durationMs}ms` : 'duration n/a';
+    return `${event.method ?? 'HTTP'} ${event.path ?? 'unknown path'} | ${status} | ${duration}`;
+  }
+
+  return event.message ?? `${event.method ?? 'Error'} ${event.path ?? ''}`.trim();
 }
 
 function mergeSources(existing: KnowledgeSource[], incoming: KnowledgeSource[]) {
@@ -476,6 +522,8 @@ function AppContent() {
   const [focusStepIds, setFocusStepIds] = useState<string[]>([]);
   const [, setSources] = useState<KnowledgeSource[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>(emptyMessages);
+  const [logSummary, setLogSummary] = useState<LogSummaryResponse | null>(null);
+  const [logEvents, setLogEvents] = useState<LogEventRecord[]>([]);
   const [expandedEvidenceIds, setExpandedEvidenceIds] = useState<string[]>([]);
   const [draft, setDraft] = useState('');
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
@@ -490,6 +538,17 @@ function AppContent() {
     () => getVisibleGraph(graph, selectedStepId),
     [graph, selectedStepId],
   );
+
+  const refreshLogSummary = useCallback(async () => {
+    try {
+      const [summary, recentLogs] = await Promise.all([getLogSummary(), getRecentLogs(8)]);
+      setLogSummary(summary);
+      setLogEvents(recentLogs.events);
+    } catch {
+      setLogSummary(null);
+      setLogEvents([]);
+    }
+  }, []);
 
   const loadGuide = useCallback(
     async (sessionId: string) => {
@@ -537,6 +596,10 @@ function AppContent() {
       }
     })();
   }, [loadGuide]);
+
+  useEffect(() => {
+    void refreshLogSummary();
+  }, [refreshLogSummary]);
 
   useEffect(() => {
     if (activeSessionId) {
@@ -653,6 +716,7 @@ function AppContent() {
         setFocusStepIds(response.focusStepIds);
         setSelectedStepId(response.focusStepIds[0] ?? selectedStepId);
       }
+      void refreshLogSummary();
     } catch (error) {
       setMessages((current) => [
         ...current,
@@ -763,6 +827,45 @@ function AppContent() {
             <p className="eyebrow">Assistant</p>
             <h2>Ask, locate, focus</h2>
           </div>
+          {logSummary ? (
+            <div className="usage-summary" aria-label="AI usage summary">
+              <div className="usage-metric">
+                <small>AI requests</small>
+                <strong>{formatTokens(logSummary.aiUsage.requests)}</strong>
+              </div>
+              <div className="usage-metric">
+                <small>Total tokens</small>
+                <strong>{formatTokens(logSummary.aiUsage.totalTokens)}</strong>
+              </div>
+              <div className="usage-metric">
+                <small>AI fee</small>
+                <strong>{formatUsd(logSummary.aiUsage.estimatedFeeUsd)}</strong>
+              </div>
+            </div>
+          ) : null}
+          <section className="activity-log" aria-label="Recent log activity">
+            <div className="activity-heading">
+              <h3>Activity log</h3>
+              <button onClick={() => void refreshLogSummary()} type="button">
+                Refresh
+              </button>
+            </div>
+            {logEvents.length > 0 ? (
+              <div className="activity-list">
+                {logEvents.map((event) => (
+                  <article className={`log-entry ${event.level}`} key={event.id}>
+                    <header>
+                      <strong>{getLogTypeLabel(event)}</strong>
+                      <small>{formatTime(event.timestamp)}</small>
+                    </header>
+                    <p>{getLogDetail(event)}</p>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p className="empty-log">No log events yet.</p>
+            )}
+          </section>
           <div className="message-list" role="log">
             {messages.map((message) => {
               const messageSources = message.sources ?? [];
@@ -775,6 +878,13 @@ function AppContent() {
                     </div>
                   ) : null}
                   <p>{message.content}</p>
+                  {message.usage ? (
+                    <div className="message-usage">
+                      <span>{message.usage.model}</span>
+                      <span>{formatTokens(message.usage.totalTokens)} tokens</span>
+                      <span>{formatUsd(message.usage.estimatedFeeUsd)}</span>
+                    </div>
+                  ) : null}
                   {message.role === 'assistant' && messageSources.length > 0 ? (
                     <div className="message-evidence">
                       <button onClick={() => toggleEvidence(message.id)} type="button">

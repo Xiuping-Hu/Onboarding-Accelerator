@@ -18,11 +18,14 @@ export interface ServerConfig {
   authAudience?: string;
   authJwksUri?: string;
   sessionStorePath: string;
+  logStorePath: string;
   webSearchAllowed: boolean;
   openAiApiKey?: string;
   openAiModel: string;
   openAiTimeoutMs: number;
   openAiMaxRetries: number;
+  openAiInputCostPer1MTokens?: number;
+  openAiOutputCostPer1MTokens?: number;
   guideMaxDepth: number;
   ragSharedDirectory?: string;
   ragWebsiteAllowlist: string[];
@@ -44,11 +47,14 @@ export function loadConfig(): ServerConfig {
     authAudience: optionalString(process.env.AUTH_AUDIENCE),
     authJwksUri: optionalString(process.env.AUTH_JWKS_URI),
     sessionStorePath: process.env.SESSION_STORE_PATH ?? 'data/sessions.json',
+    logStorePath: process.env.LOG_STORE_PATH ?? 'data/events.jsonl',
     webSearchAllowed: process.env.WEB_SEARCH_ALLOWED === 'true',
     openAiApiKey: process.env.OPENAI_API_KEY,
     openAiModel: process.env.OPENAI_MODEL ?? 'gpt-4o-mini',
     openAiTimeoutMs: Number.parseInt(process.env.OPENAI_TIMEOUT_MS ?? '12000', 10),
     openAiMaxRetries: Number.parseInt(process.env.OPENAI_MAX_RETRIES ?? '2', 10),
+    openAiInputCostPer1MTokens: optionalNumber(process.env.OPENAI_INPUT_COST_PER_1M_TOKENS),
+    openAiOutputCostPer1MTokens: optionalNumber(process.env.OPENAI_OUTPUT_COST_PER_1M_TOKENS),
     guideMaxDepth: Number.parseInt(process.env.GUIDE_MAX_DEPTH ?? '2', 10),
     ragSharedDirectory: optionalString(process.env.RAG_SHARED_DIRECTORY),
     ragWebsiteAllowlist: parseList(process.env.RAG_WEBSITE_ALLOWLIST),
@@ -87,6 +93,16 @@ function hasJwtValidationConfig(config: ServerConfig): boolean {
 function optionalString(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
   return trimmed ? trimmed : undefined;
+}
+
+function optionalNumber(value: string | undefined): number | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const parsed = Number.parseFloat(trimmed);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function parseList(value: string | undefined): string[] {

@@ -8,6 +8,7 @@ import type {
 } from '@onboarding/shared';
 import type { RagService } from './ragService.js';
 import type { OpenAiService } from './openAiService.js';
+import { NoopLogService, type LogService } from './logService.js';
 import type { SessionRepository } from './sessionRepository.js';
 import { touchSession } from './sessionRepository.js';
 
@@ -16,6 +17,7 @@ export class ChatOrchestrationService {
     private readonly sessions: SessionRepository,
     private readonly rag: RagService,
     private readonly openAi: OpenAiService,
+    private readonly logs: LogService = new NoopLogService(),
   ) {}
 
   async chat(sessionId: string, request: ChatRequest, ownerId: string): Promise<ChatResponse> {
@@ -30,23 +32,40 @@ export class ChatOrchestrationService {
       content: request.message,
       createdAt: now,
     };
+    const answer = await this.composeAnswer(
+      session,
+      request.message,
+      retrieval.sources,
+      guideNodeIds,
+    );
     const assistantMessage: ChatMessage = {
       id: randomUUID(),
       role: 'assistant',
-      content: await this.composeAnswer(session, request.message, retrieval.sources, guideNodeIds),
+      content: answer.content,
       createdAt: now,
       sources: retrieval.sources,
       guideNodeIds,
+      usage: answer.usage,
     };
 
     session.chatHistory.push(userMessage, assistantMessage);
     const savedSession = await this.sessions.save(touchSession(session));
+
+    if (answer.usage) {
+      await this.logs.recordAiUsage({
+        operation: 'chat',
+        userId: ownerId,
+        sessionId,
+        usage: answer.usage,
+      });
+    }
 
     return {
       message: assistantMessage,
       session: savedSession,
       sources: retrieval.sources,
       guideNodeIds,
+      usage: answer.usage,
     };
   }
 
@@ -55,7 +74,7 @@ export class ChatOrchestrationService {
     prompt: string,
     sources: ChatMessage['sources'] = [],
     guideNodeIds: string[],
-  ): Promise<string> {
+  ): Promise<{ content: string; usage?: ChatMessage['usage'] }> {
     try {
       const modelAnswer = await this.openAi.answer({
         prompt,
@@ -65,13 +84,18 @@ export class ChatOrchestrationService {
       });
 
       if (modelAnswer) {
-        return modelAnswer;
+        return {
+          content: modelAnswer.content,
+          usage: modelAnswer.usage,
+        };
       }
     } catch (error) {
       console.error(error);
     }
 
-    return composeFallbackAnswer(prompt, sources, guideNodeIds);
+    return {
+      content: composeFallbackAnswer(prompt, sources, guideNodeIds),
+    };
   }
 }
 

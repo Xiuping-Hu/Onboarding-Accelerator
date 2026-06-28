@@ -1,10 +1,17 @@
-import type { ChatMessage, SourceProvenance } from '@onboarding/shared';
+import type { AiUsageStats, ChatMessage, SourceProvenance } from '@onboarding/shared';
 
 export interface OpenAiServiceConfig {
   apiKey?: string;
   model: string;
   timeoutMs: number;
   maxRetries: number;
+  inputCostPer1MTokens?: number;
+  outputCostPer1MTokens?: number;
+}
+
+export interface OpenAiAnswer {
+  content: string;
+  usage?: AiUsageStats;
 }
 
 export class OpenAiService {
@@ -15,7 +22,7 @@ export class OpenAiService {
     sources: SourceProvenance[];
     chatHistory?: ChatMessage[];
     guideNodeIds?: string[];
-  }): Promise<string | undefined> {
+  }): Promise<OpenAiAnswer | undefined> {
     if (!this.config.apiKey) {
       return undefined;
     }
@@ -55,7 +62,16 @@ export class OpenAiService {
     }
 
     const payload = (await response.json()) as OpenAiResponse;
-    return extractOutputText(payload);
+    const content = extractOutputText(payload);
+
+    if (!content) {
+      return undefined;
+    }
+
+    return {
+      content,
+      usage: extractUsageStats(payload, this.config),
+    };
   }
 }
 
@@ -66,6 +82,11 @@ interface OpenAiResponse {
       text?: string;
     }>;
   }>;
+  usage?: {
+    input_tokens?: number;
+    output_tokens?: number;
+    total_tokens?: number;
+  };
 }
 
 function formatHistory(chatHistory: ChatMessage[] = []) {
@@ -147,4 +168,43 @@ function extractOutputText(payload: OpenAiResponse): string | undefined {
     .filter((text): text is string => Boolean(text?.trim()))
     .join('\n')
     .trim();
+}
+
+function extractUsageStats(
+  payload: OpenAiResponse,
+  config: OpenAiServiceConfig,
+): AiUsageStats | undefined {
+  if (!payload.usage) {
+    return undefined;
+  }
+
+  const inputTokens = toSafeInteger(payload.usage.input_tokens);
+  const outputTokens = toSafeInteger(payload.usage.output_tokens);
+  const totalTokens = toSafeInteger(payload.usage.total_tokens) || inputTokens + outputTokens;
+
+  return {
+    model: config.model,
+    inputTokens,
+    outputTokens,
+    totalTokens,
+    estimatedFeeUsd: calculateEstimatedFeeUsd(inputTokens, outputTokens, config),
+  };
+}
+
+function calculateEstimatedFeeUsd(
+  inputTokens: number,
+  outputTokens: number,
+  config: OpenAiServiceConfig,
+): number {
+  const inputFee = (inputTokens / 1_000_000) * (config.inputCostPer1MTokens ?? 0);
+  const outputFee = (outputTokens / 1_000_000) * (config.outputCostPer1MTokens ?? 0);
+  return Number((inputFee + outputFee).toFixed(8));
+}
+
+function toSafeInteger(value: number | undefined): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.trunc(value));
 }

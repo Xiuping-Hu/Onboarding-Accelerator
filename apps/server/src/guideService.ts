@@ -128,11 +128,7 @@ export class GuideNodeNotFoundError extends Error {
   }
 }
 
-function createRootNodes(
-  sources: SourceProvenance[],
-  now: string,
-  maxDepth: number,
-): GuideNode[] {
+function createRootNodes(sources: SourceProvenance[], now: string, maxDepth: number): GuideNode[] {
   const fallbackTitles = [
     'Set up access',
     'Meet the team',

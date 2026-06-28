@@ -25,6 +25,7 @@ export type KnowledgeSource = SourceProvenance;
 export interface AskResponse {
   answer: string;
   sources: SourceProvenance[];
+  usage?: AiUsageStats;
 }
 
 export interface HealthResponse {
@@ -42,6 +43,7 @@ export interface ChatMessage {
   sources?: SourceProvenance[];
   guideNodeIds?: string[];
   focusStepIds?: string[];
+  usage?: AiUsageStats;
 }
 
 export interface UserSettings {
@@ -166,6 +168,7 @@ export interface ChatResponse {
   sources: SourceProvenance[];
   guideNodeIds?: string[];
   focusStepIds?: string[];
+  usage?: AiUsageStats;
 }
 
 export interface GenerateGuideRootRequest {
@@ -192,4 +195,54 @@ export interface ExpandGuideStepResponse {
   nodes: GuideNode[];
   session: OnboardingSession;
   sources: SourceProvenance[];
+}
+
+export interface AiUsageStats {
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  estimatedFeeUsd: number;
+}
+
+export interface AiUsageModelSummary extends AiUsageStats {
+  requests: number;
+}
+
+export interface AiUsageSummary extends AiUsageStats {
+  requests: number;
+  byModel: Record<string, AiUsageModelSummary>;
+}
+
+export interface LogSummaryResponse {
+  eventsTotal: number;
+  requestsTotal: number;
+  errorsTotal: number;
+  aiUsage: AiUsageSummary;
+  lastEventAt?: string;
+}
+
+export type LogEventLevel = 'info' | 'error';
+export type LogEventType = 'request' | 'ai_usage' | 'error';
+export type AiUsageOperation = 'ask' | 'chat';
+
+export interface LogEventRecord {
+  id: string;
+  timestamp: string;
+  level: LogEventLevel;
+  type: LogEventType;
+  requestId?: string;
+  method?: string;
+  path?: string;
+  statusCode?: number;
+  durationMs?: number;
+  userId?: string;
+  operation?: AiUsageOperation;
+  sessionId?: string;
+  message?: string;
+  usage?: AiUsageStats;
+}
+
+export interface LogEventsResponse {
+  events: LogEventRecord[];
 }

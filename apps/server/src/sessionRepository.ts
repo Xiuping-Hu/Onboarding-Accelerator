@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
 import type {
   CreateSessionRequest,
   GuideGraphState,
@@ -207,16 +208,24 @@ export class FileSessionRepository implements SessionRepository {
   }
 
   private async writeStore(store: Map<string, StoredSession>): Promise<void> {
-    this.writeQueue = this.writeQueue.then(async () => {
-      await mkdir(dirname(this.filePath), { recursive: true });
-      const tempPath = `${this.filePath}.${randomUUID()}.tmp`;
-      await writeFile(
-        tempPath,
-        `${JSON.stringify({ sessions: [...store.values()] }, null, 2)}\n`,
-        'utf8',
-      );
-      await rename(tempPath, this.filePath);
-    });
+    this.writeQueue = this.writeQueue
+      .catch(() => undefined)
+      .then(async () => {
+        await mkdir(dirname(this.filePath), { recursive: true });
+        const tempPath = `${this.filePath}.${randomUUID()}.tmp`;
+        await writeFile(
+          tempPath,
+          `${JSON.stringify({ sessions: [...store.values()] }, null, 2)}\n`,
+          'utf8',
+        );
+
+        try {
+          await replaceFile(tempPath, this.filePath);
+        } catch (error) {
+          await rm(tempPath, { force: true }).catch(() => undefined);
+          throw error;
+        }
+      });
 
     await this.writeQueue;
   }
@@ -261,4 +270,48 @@ function toPublicSession(session: StoredSession): OnboardingSession {
 
 function isNotFoundError(error: unknown): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT';
+}
+
+async function replaceFile(sourcePath: string, targetPath: string): Promise<void> {
+  let lastError: unknown;
+
+  for (const delayMs of [0, 25, 75, 150]) {
+    if (delayMs > 0) {
+      await sleep(delayMs);
+    }
+
+    try {
+      await rename(sourcePath, targetPath);
+      return;
+    } catch (error) {
+      lastError = error;
+
+      if (!isReplaceRetryableError(error)) {
+        throw error;
+      }
+    }
+
+    try {
+      await copyFile(sourcePath, targetPath);
+      await rm(sourcePath, { force: true });
+      return;
+    } catch (error) {
+      lastError = error;
+
+      if (!isReplaceRetryableError(error)) {
+        throw error;
+      }
+    }
+  }
+
+  throw lastError;
+}
+
+function isReplaceRetryableError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    ['EACCES', 'EBUSY', 'EPERM'].includes(String(error.code))
+  );
 }

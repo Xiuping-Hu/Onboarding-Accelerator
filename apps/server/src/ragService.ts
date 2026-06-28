@@ -23,13 +23,17 @@ export class RagService {
 
   async retrieve(query: string, options: RetrievalOptions): Promise<RetrievalContext> {
     const seedKnowledgeSources = await retrieveKnowledge(query);
-    const adapterSources = (await Promise.all(this.inputAdapters.map((adapter) => retrieveFromAdapter(adapter, query)))).flat();
+    const adapterSources = (
+      await Promise.all(this.inputAdapters.map((adapter) => retrieveFromAdapter(adapter, query)))
+    ).flat();
     const knowledgeBaseSources = [
       ...seedKnowledgeSources,
       ...adapterSources.filter((source) => source.sourceType !== 'web'),
     ];
     const websiteSources = adapterSources.filter((source) => source.sourceType === 'web');
-    const searchSources = options.webSearchEnabled ? await this.webSearchProvider.search(query) : [];
+    const searchSources = options.webSearchEnabled
+      ? await this.webSearchProvider.search(query)
+      : [];
     const webSources = [...websiteSources, ...searchSources];
     const sources = mergeAndRerankSources(knowledgeBaseSources, webSources);
 

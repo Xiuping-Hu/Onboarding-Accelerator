@@ -6,6 +6,7 @@ import { createAuthMiddleware } from './auth.js';
 import { ChatOrchestrationService } from './chatService.js';
 import { loadConfig } from './config.js';
 import { GuideOrchestrationService } from './guideService.js';
+import { FileLogService } from './logService.js';
 import { OpenAiService } from './openAiService.js';
 import { createRateLimitMiddleware } from './rateLimit.js';
 import { createConfiguredRagInputAdapters } from './ragAdapters/index.js';
@@ -17,17 +18,20 @@ import { DisabledWebSearchProvider } from './webSearchProvider.js';
 const config = loadConfig();
 const app = express();
 const sessions = new FileSessionRepository(config.sessionStorePath);
+const logs = new FileLogService(config.logStorePath);
 const openAi = new OpenAiService({
   apiKey: config.openAiApiKey,
   model: config.openAiModel,
   timeoutMs: config.openAiTimeoutMs,
   maxRetries: config.openAiMaxRetries,
+  inputCostPer1MTokens: config.openAiInputCostPer1MTokens,
+  outputCostPer1MTokens: config.openAiOutputCostPer1MTokens,
 });
 const rag = new RagService(
   new DisabledWebSearchProvider(config.webSearchAllowed),
   createConfiguredRagInputAdapters(config),
 );
-const chat = new ChatOrchestrationService(sessions, rag, openAi);
+const chat = new ChatOrchestrationService(sessions, rag, openAi, logs);
 const guide = new GuideOrchestrationService(sessions, rag, config.guideMaxDepth);
 const metrics = {
   startedAt: new Date().toISOString(),
@@ -55,46 +59,75 @@ app.use(
 );
 app.use(express.json({ limit: config.requestBodyLimit }));
 app.use(createAuthMiddleware(config));
-app.use(createRateLimitMiddleware({ windowMs: config.rateLimitWindowMs, max: config.rateLimitMax }));
-app.use((_request, response, next) => {
+app.use(
+  createRateLimitMiddleware({ windowMs: config.rateLimitWindowMs, max: config.rateLimitMax }),
+);
+app.use((request, response, next) => {
+  const startedAt = Date.now();
   metrics.requestsTotal += 1;
   response.on('finish', () => {
     metrics.responsesTotal += 1;
+    void logs
+      .recordRequest({
+        requestId: response.locals.requestId,
+        method: request.method,
+        path: request.path,
+        statusCode: response.statusCode,
+        durationMs: Date.now() - startedAt,
+        userId: request.user?.id,
+      })
+      .catch((error) => console.error('Failed to write request log', error));
   });
   next();
 });
 app.get('/metrics', (_request, response) => {
   response.json(metrics);
 });
-app.use(createRoutes({ sessions, chat, guide, openAi, rag }));
+app.use(createRoutes({ sessions, chat, guide, openAi, rag, logs }));
 
 app.get('/ready', (_request, response) => {
   response.json({ status: 'ok', service: 'onboarding-server' });
 });
 
-app.use((error: unknown, request: express.Request, response: express.Response, _next: express.NextFunction) => {
-  if (error instanceof ZodError) {
-    response.status(400).json({
-      error: 'Invalid request',
-      requestId: response.locals.requestId,
-      ...(config.nodeEnv === 'production' ? {} : { details: error.flatten() }),
-    });
-    return;
-  }
+app.use(
+  (
+    error: unknown,
+    request: express.Request,
+    response: express.Response,
+    _next: express.NextFunction,
+  ) => {
+    if (error instanceof ZodError) {
+      response.status(400).json({
+        error: 'Invalid request',
+        requestId: response.locals.requestId,
+        ...(config.nodeEnv === 'production' ? {} : { details: error.flatten() }),
+      });
+      return;
+    }
 
-  console.error(
-    JSON.stringify({
-      level: 'error',
-      requestId: response.locals.requestId,
-      path: request.path,
-      method: request.method,
-      message: error instanceof Error ? error.message : 'Unknown error',
-    }),
-  );
-  response
-    .status(500)
-    .json({ error: 'Unexpected server error', requestId: response.locals.requestId });
-});
+    console.error(
+      JSON.stringify({
+        level: 'error',
+        requestId: response.locals.requestId,
+        path: request.path,
+        method: request.method,
+        message: error instanceof Error ? error.message : 'Unknown error',
+      }),
+    );
+    void logs
+      .recordError({
+        requestId: response.locals.requestId,
+        method: request.method,
+        path: request.path,
+        message: error instanceof Error ? error.message : 'Unknown error',
+        userId: request.user?.id,
+      })
+      .catch((logError) => console.error('Failed to write error log', logError));
+    response
+      .status(500)
+      .json({ error: 'Unexpected server error', requestId: response.locals.requestId });
+  },
+);
 
 const server = app.listen(config.port, () => {
   console.info(`Onboarding server listening on http://localhost:${config.port}`);

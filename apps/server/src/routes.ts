@@ -5,6 +5,7 @@ import { answerQuestion } from './agent.js';
 import { requireUser } from './auth.js';
 import type { ChatOrchestrationService } from './chatService.js';
 import { GuideNodeNotFoundError, type GuideOrchestrationService } from './guideService.js';
+import type { LogService } from './logService.js';
 import type { OpenAiService } from './openAiService.js';
 import type { RagService } from './ragService.js';
 import { SessionNotFoundError, type SessionRepository } from './sessionRepository.js';
@@ -48,12 +49,15 @@ const askRequestSchema = z.object({
   webSearchEnabled: z.boolean().optional(),
 });
 
+const logLimitSchema = z.coerce.number().int().min(1).max(100).optional();
+
 export interface RouteDependencies {
   sessions: SessionRepository;
   chat: ChatOrchestrationService;
   guide: GuideOrchestrationService;
   openAi: OpenAiService;
   rag: RagService;
+  logs: LogService;
 }
 
 export function createRoutes(dependencies: RouteDependencies): Router {
@@ -85,7 +89,9 @@ export function createRoutes(dependencies: RouteDependencies): Router {
 
   router.get('/api/sessions/:sessionId', async (request, response, next) => {
     try {
-      response.json(await dependencies.sessions.get(request.params.sessionId, requireUser(request).id));
+      response.json(
+        await dependencies.sessions.get(request.params.sessionId, requireUser(request).id),
+      );
     } catch (error) {
       next(error);
     }
@@ -95,7 +101,11 @@ export function createRoutes(dependencies: RouteDependencies): Router {
     try {
       const payload = updateSessionRequestSchema.parse(request.body);
       response.json(
-        await dependencies.sessions.update(request.params.sessionId, payload, requireUser(request).id),
+        await dependencies.sessions.update(
+          request.params.sessionId,
+          payload,
+          requireUser(request).id,
+        ),
       );
     } catch (error) {
       next(error);
@@ -134,7 +144,11 @@ export function createRoutes(dependencies: RouteDependencies): Router {
     try {
       const payload = guideRootRequestSchema.parse(request.body);
       response.json(
-        await dependencies.guide.generateRoot(request.params.sessionId, payload, requireUser(request).id),
+        await dependencies.guide.generateRoot(
+          request.params.sessionId,
+          payload,
+          requireUser(request).id,
+        ),
       );
     } catch (error) {
       next(error);
@@ -155,7 +169,32 @@ export function createRoutes(dependencies: RouteDependencies): Router {
   router.post('/api/ask', async (request, response, next) => {
     try {
       const payload = askRequestSchema.parse(request.body);
-      response.json(await answerQuestion(payload, dependencies.rag, dependencies.openAi));
+      response.json(
+        await answerQuestion(
+          payload,
+          dependencies.rag,
+          dependencies.openAi,
+          dependencies.logs,
+          requireUser(request).id,
+        ),
+      );
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get('/api/logs/summary', async (_request, response, next) => {
+    try {
+      response.json(await dependencies.logs.summarize());
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get('/api/logs/recent', async (request, response, next) => {
+    try {
+      const limit = logLimitSchema.parse(request.query.limit);
+      response.json(await dependencies.logs.listRecent(limit));
     } catch (error) {
       next(error);
     }

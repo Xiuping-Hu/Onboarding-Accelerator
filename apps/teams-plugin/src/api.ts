@@ -15,6 +15,8 @@ import type {
   GuideStep,
   KnowledgeSource,
   ListSessionsResponse,
+  LogEventsResponse,
+  LogSummaryResponse,
   OnboardingSession,
 } from '@onboarding/shared';
 
@@ -32,6 +34,51 @@ const now = () => new Date().toISOString();
 const id = (prefix: string) =>
   `${prefix}-${Math.random().toString(36).slice(2, 8)}-${Date.now().toString(36)}`;
 const mockMaxDepth = 2;
+
+const emptyLogSummary: LogSummaryResponse = {
+  eventsTotal: 0,
+  requestsTotal: 0,
+  errorsTotal: 0,
+  aiUsage: {
+    model: 'all',
+    requests: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+    estimatedFeeUsd: 0,
+    byModel: {},
+  },
+};
+
+const mockRecentLogs: LogEventsResponse = {
+  events: [
+    {
+      id: 'mock-log-ai',
+      timestamp: now(),
+      level: 'info',
+      type: 'ai_usage',
+      operation: 'chat',
+      sessionId: 'session-first-week',
+      usage: {
+        model: 'mock-assistant',
+        inputTokens: 812,
+        outputTokens: 128,
+        totalTokens: 940,
+        estimatedFeeUsd: 0,
+      },
+    },
+    {
+      id: 'mock-log-request',
+      timestamp: now(),
+      level: 'info',
+      type: 'request',
+      method: 'POST',
+      path: '/api/sessions/session-first-week/chat',
+      statusCode: 200,
+      durationMs: 48,
+    },
+  ],
+};
 
 function emptyGuide() {
   return {
@@ -106,7 +153,8 @@ function shouldMock(error: unknown) {
 }
 
 function getAuthHeaders(): Record<string, string> {
-  const token = window.__ONBOARDING_AUTH_TOKEN__ ?? window.sessionStorage.getItem('onboardingAuthToken');
+  const token =
+    window.__ONBOARDING_AUTH_TOKEN__ ?? window.sessionStorage.getItem('onboardingAuthToken');
   const userId = window.sessionStorage.getItem('onboardingUserId');
   return {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -450,11 +498,39 @@ export async function sendChat(payload: ChatRequest): Promise<ChatResponse> {
         : 'Here is the next practical move: complete the highlighted step, then expand it if you need a more granular checklist.',
       sources,
       focusStepIds: targetStepId ? [targetStepId] : undefined,
+      usage: {
+        model: 'mock-assistant',
+        inputTokens: 812,
+        outputTokens: 128,
+        totalTokens: 940,
+        estimatedFeeUsd: 0,
+      },
     };
     return {
       message,
       focusStepIds: message.focusStepIds,
       sources,
+      usage: message.usage,
     };
+  }
+}
+
+export async function getLogSummary(): Promise<LogSummaryResponse> {
+  try {
+    return await requestJson<LogSummaryResponse>('/api/logs/summary');
+  } catch (error) {
+    shouldMock(error);
+    return emptyLogSummary;
+  }
+}
+
+export async function getRecentLogs(limit = 10): Promise<LogEventsResponse> {
+  try {
+    return await requestJson<LogEventsResponse>(
+      `/api/logs/recent?limit=${encodeURIComponent(String(limit))}`,
+    );
+  } catch (error) {
+    shouldMock(error);
+    return mockRecentLogs;
   }
 }
