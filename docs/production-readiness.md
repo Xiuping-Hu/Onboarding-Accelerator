@@ -15,6 +15,8 @@ Shared contracts live in `packages/shared/src/index.ts`.
 
 - `GET /health` and `GET /ready` return `HealthResponse` and do not require auth.
 - `GET /metrics` returns basic in-process request counters.
+- `POST /api/auth/login` validates the configured API token or local-development account headers and returns `LoginResponse`.
+- `GET /api/auth/me` returns `CurrentUserResponse`.
 - `GET /api/sessions` returns `ListSessionsResponse`.
 - `POST /api/sessions` accepts `CreateSessionRequest` and returns `CreateSessionResponse`.
 - `GET /api/sessions/:sessionId` returns `GetSessionResponse`.
@@ -27,7 +29,7 @@ Shared contracts live in `packages/shared/src/index.ts`.
 - `GET /api/logs/summary` returns `LogSummaryResponse`.
 - `GET /api/logs/recent?limit=10` returns `LogEventsResponse`.
 
-All non-health/readiness API routes require authentication. Session access is scoped by the authenticated user ID.
+Protected API routes require authentication; `/api/auth/login` is public so the browser can validate a token before storing it. `/health`, `/ready`, and `/metrics` are public operational endpoints. Session access is scoped by the authenticated user ID.
 
 ## Router And Shared Code Decisions
 

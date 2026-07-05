@@ -1,6 +1,5 @@
 import type { SourceProvenance } from '@onboarding/shared';
 import { retrieveKnowledge } from './knowledgeBase';
-import type { PgvectorKnowledgeBase } from './pgvectorKnowledgeBase';
 import type { RagInputAdapter } from './ragAdapters/types';
 import { mergeAndRerankSources } from './sourceMerger';
 import type { WebSearchProvider } from './webSearchProvider';
@@ -16,11 +15,19 @@ export interface RetrievalContext {
   webSources: SourceProvenance[];
 }
 
-export class RagService {
+export interface RagRetriever {
+  retrieve(query: string, options: RetrievalOptions): Promise<RetrievalContext>;
+}
+
+export interface KnowledgeRetriever {
+  retrieve(query: string): Promise<SourceProvenance[]>;
+}
+
+export class RagService implements RagRetriever {
   constructor(
     private readonly webSearchProvider: WebSearchProvider,
     private readonly inputAdapters: RagInputAdapter[] = [],
-    private readonly vectorKnowledgeBase?: PgvectorKnowledgeBase,
+    private readonly vectorKnowledgeBase?: KnowledgeRetriever,
   ) {}
 
   async retrieve(query: string, options: RetrievalOptions): Promise<RetrievalContext> {

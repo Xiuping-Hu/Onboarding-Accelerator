@@ -12,6 +12,7 @@
     "build": "npm run build -w @onboarding/shared && npm run build -w @onboarding/web",
     "dev": "node scripts/dev.mjs",
     "docs:harness:update": "node scripts/update-harness-docs.mjs",
+    "users:create": "node -r dotenv/config scripts/users-create.mjs",
     "format": "prettier . --write",
     "format:check": "prettier . --check",
     "lint": "eslint .",

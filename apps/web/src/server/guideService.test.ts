@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { SourceProvenance } from '@onboarding/shared';
 import { GuideOrchestrationService } from './guideService';
-import type { RagService, RetrievalContext } from './ragService';
+import type { RagRetriever, RetrievalContext } from './ragService';
 import { InMemorySessionRepository } from './sessionRepository';
 
 const ownerId = 'test-user';
@@ -24,7 +24,7 @@ const sources: SourceProvenance[] = [
 
 function createRag() {
   let calls = 0;
-  const rag = {
+  const rag: RagRetriever = {
     async retrieve(query: string): Promise<RetrievalContext> {
       calls += 1;
       return {
@@ -34,7 +34,7 @@ function createRag() {
         webSources: [],
       };
     },
-  } as unknown as RagService;
+  };
 
   return {
     rag,

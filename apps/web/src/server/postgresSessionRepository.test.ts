@@ -29,7 +29,7 @@ void test('PostgresSessionRepository creates, lists, updates, and deletes scoped
 
       if (text.includes('update onboarding_sessions')) {
         const row = rows.get(String(values[0]));
-        if (!row) {
+        if (!row || row.owner_id !== values[6]) {
           return result([]);
         }
         Object.assign(row, {
@@ -74,6 +74,10 @@ void test('PostgresSessionRepository creates, lists, updates, and deletes scoped
   assert.equal(updated.title, 'Updated');
   assert.equal(updated.settings.webSearchEnabled, true);
 
+  await assert.rejects(
+    () => sessions.save({ ...updated, title: 'Wrong owner update' }, 'owner-b'),
+    SessionNotFoundError,
+  );
   await assert.rejects(() => sessions.get(created.id, 'owner-b'), SessionNotFoundError);
   await sessions.delete(created.id, 'owner-a');
   await assert.rejects(() => sessions.get(created.id, 'owner-a'), SessionNotFoundError);

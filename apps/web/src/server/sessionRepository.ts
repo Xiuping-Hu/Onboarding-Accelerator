@@ -26,7 +26,7 @@ export interface SessionRepository {
     request: UpdateSessionRequest,
     ownerId: string,
   ): Promise<OnboardingSession>;
-  save(session: OnboardingSession): Promise<OnboardingSession>;
+  save(session: OnboardingSession, ownerId: string): Promise<OnboardingSession>;
   delete(sessionId: string, ownerId: string): Promise<void>;
 }
 
@@ -108,12 +108,12 @@ export class InMemorySessionRepository implements SessionRepository {
       session.guide.expandedNodeIds = request.expandedNodeIds;
     }
 
-    return this.save(touchSession(session));
+    return this.save(touchSession(session), ownerId);
   }
 
-  async save(session: OnboardingSession): Promise<OnboardingSession> {
+  async save(session: OnboardingSession, ownerId: string): Promise<OnboardingSession> {
     const existing = this.sessions.get(session.id);
-    if (!existing) {
+    if (!existing || existing.ownerId !== ownerId) {
       throw new SessionNotFoundError(session.id);
     }
 
@@ -178,10 +178,10 @@ export class FileSessionRepository implements SessionRepository {
     return session;
   }
 
-  async save(session: OnboardingSession): Promise<OnboardingSession> {
+  async save(session: OnboardingSession, ownerId: string): Promise<OnboardingSession> {
     const store = await this.readStore();
     const adapter = new InMemorySessionRepositoryAdapter(store);
-    const saved = await adapter.save(session);
+    const saved = await adapter.save(session, ownerId);
     await this.writeStore(store);
     return saved;
   }

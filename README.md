@@ -7,6 +7,7 @@ Next.js onboarding guidance workspace with server-side chat, guide generation, l
 - `apps/web`: Next.js App Router application that owns the UI and API route handlers.
 - `packages/shared`: Shared request and response contracts.
 - `docs/harness`: Lightweight generated docs that map the current code structure.
+- `specs/archive`: Numbered historical and future-planning specs.
 
 ## Local Commands
 

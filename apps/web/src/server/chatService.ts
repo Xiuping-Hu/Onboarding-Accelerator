@@ -6,8 +6,8 @@ import type {
   GuideNode,
   OnboardingSession,
 } from '@onboarding/shared';
-import type { RagService } from './ragService';
-import type { OpenAiService } from './openAiService';
+import type { RagRetriever } from './ragService';
+import type { AnswerProvider } from './openAiService';
 import { NoopLogService, type LogService } from './logService';
 import type { SessionRepository } from './sessionRepository';
 import { touchSession } from './sessionRepository';
@@ -15,8 +15,8 @@ import { touchSession } from './sessionRepository';
 export class ChatOrchestrationService {
   constructor(
     private readonly sessions: SessionRepository,
-    private readonly rag: RagService,
-    private readonly openAi: OpenAiService,
+    private readonly rag: RagRetriever,
+    private readonly openAi: AnswerProvider,
     private readonly logs: LogService = new NoopLogService(),
   ) {}
 
@@ -49,7 +49,7 @@ export class ChatOrchestrationService {
     };
 
     session.chatHistory.push(userMessage, assistantMessage);
-    const savedSession = await this.sessions.save(touchSession(session));
+    const savedSession = await this.sessions.save(touchSession(session), ownerId);
 
     if (answer.usage) {
       await this.logs.recordAiUsage({

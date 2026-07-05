@@ -2,6 +2,7 @@ node_modules/
 dist/
 coverage/
 apps/server/data/
+data/
 .env
 .env.*
 !.env.example

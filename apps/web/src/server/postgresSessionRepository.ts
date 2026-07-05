@@ -108,10 +108,10 @@ export class PostgresSessionRepository implements SessionRepository {
       session.guide.expandedNodeIds = request.expandedNodeIds;
     }
 
-    return this.save(touchSession(session));
+    return this.save(touchSession(session), ownerId);
   }
 
-  async save(session: OnboardingSession): Promise<OnboardingSession> {
+  async save(session: OnboardingSession, ownerId: string): Promise<OnboardingSession> {
     const result = await this.db.query<SessionRow>(
       `update onboarding_sessions
        set title = $2,
@@ -119,7 +119,7 @@ export class PostgresSessionRepository implements SessionRepository {
            settings = $4::jsonb,
            chat_history = $5::jsonb,
            guide = $6::jsonb
-       where id = $1
+       where id = $1 and owner_id = $7
        returning id, owner_id, title, created_at, updated_at, settings, chat_history, guide`,
       [
         session.id,
@@ -128,6 +128,7 @@ export class PostgresSessionRepository implements SessionRepository {
         JSON.stringify(session.settings),
         JSON.stringify(session.chatHistory),
         JSON.stringify(session.guide),
+        ownerId,
       ],
     );
 

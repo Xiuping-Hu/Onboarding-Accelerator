@@ -6,9 +6,7 @@ import dotenv from 'dotenv';
 loadDotEnv();
 
 export interface ServerConfig {
-  port: number;
   nodeEnv: string;
-  requestBodyLimit: string;
   rateLimitWindowMs: number;
   rateLimitMax: number;
   authDisabled: boolean;
@@ -41,9 +39,7 @@ export interface ServerConfig {
 
 export function loadConfig(): ServerConfig {
   const config: ServerConfig = {
-    port: Number.parseInt(process.env.PORT ?? '3978', 10),
     nodeEnv: process.env.NODE_ENV ?? 'development',
-    requestBodyLimit: process.env.REQUEST_BODY_LIMIT ?? '1mb',
     rateLimitWindowMs: Number.parseInt(process.env.RATE_LIMIT_WINDOW_MS ?? '60000', 10),
     rateLimitMax: Number.parseInt(process.env.RATE_LIMIT_MAX ?? '120', 10),
     authDisabled: process.env.AUTH_DISABLED === 'true',
@@ -79,10 +75,6 @@ export function loadConfig(): ServerConfig {
 }
 
 function validateConfig(config: ServerConfig): void {
-  if (!Number.isFinite(config.port) || config.port <= 0) {
-    throw new Error('PORT must be a positive integer');
-  }
-
   if (!config.authDisabled && !config.apiAuthToken && !hasJwtValidationConfig(config)) {
     throw new Error(
       'Authentication is enabled but no API_AUTH_TOKEN or AUTH_ISSUER/AUTH_AUDIENCE/AUTH_JWKS_URI configuration was provided',

@@ -7,14 +7,14 @@ import type {
   GuideNode,
   SourceProvenance,
 } from '@onboarding/shared';
-import type { RagService } from './ragService';
+import type { RagRetriever } from './ragService';
 import type { SessionRepository } from './sessionRepository';
 import { touchSession } from './sessionRepository';
 
 export class GuideOrchestrationService {
   constructor(
     private readonly sessions: SessionRepository,
-    private readonly rag: RagService,
+    private readonly rag: RagRetriever,
     private readonly maxDepth = 2,
   ) {}
 
@@ -38,7 +38,7 @@ export class GuideOrchestrationService {
     session.guide.selectedNodeId = rootNodes[0]?.id;
     session.guide.expandedNodeIds = [];
 
-    const savedSession = await this.sessions.save(touchSession(session));
+    const savedSession = await this.sessions.save(touchSession(session), ownerId);
 
     return {
       rootNodeIds: session.guide.rootNodeIds,
@@ -78,7 +78,7 @@ export class GuideOrchestrationService {
       parent.canExpand = false;
       parent.updatedAt = new Date().toISOString();
       session.guide.selectedNodeId = parent.id;
-      const savedSession = await this.sessions.save(touchSession(session));
+      const savedSession = await this.sessions.save(touchSession(session), ownerId);
 
       return {
         parentNodeId: parent.id,
@@ -109,7 +109,7 @@ export class GuideOrchestrationService {
     session.guide.selectedNodeId = parent.id;
     session.guide.expandedNodeIds = unique([...session.guide.expandedNodeIds, parent.id]);
 
-    const savedSession = await this.sessions.save(touchSession(session));
+    const savedSession = await this.sessions.save(touchSession(session), ownerId);
 
     return {
       parentNodeId: parent.id,

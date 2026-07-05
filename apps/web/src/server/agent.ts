@@ -1,12 +1,12 @@
 import type { AskRequest, AskResponse } from '@onboarding/shared';
 import { NoopLogService, type LogService } from './logService';
-import type { OpenAiService } from './openAiService';
-import type { RagService } from './ragService';
+import type { AnswerProvider } from './openAiService';
+import type { RagRetriever } from './ragService';
 
 export async function answerQuestion(
   request: AskRequest,
-  rag: RagService,
-  openAi?: OpenAiService,
+  rag: RagRetriever,
+  openAi?: AnswerProvider,
   logs: LogService = new NoopLogService(),
   userId?: string,
 ): Promise<AskResponse> {

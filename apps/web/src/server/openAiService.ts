@@ -14,7 +14,16 @@ export interface OpenAiAnswer {
   usage?: AiUsageStats;
 }
 
-export class OpenAiService {
+export interface AnswerProvider {
+  answer(input: {
+    prompt: string;
+    sources: SourceProvenance[];
+    chatHistory?: ChatMessage[];
+    guideNodeIds?: string[];
+  }): Promise<OpenAiAnswer | undefined>;
+}
+
+export class OpenAiService implements AnswerProvider {
   constructor(private readonly config: OpenAiServiceConfig) {}
 
   async answer(input: {

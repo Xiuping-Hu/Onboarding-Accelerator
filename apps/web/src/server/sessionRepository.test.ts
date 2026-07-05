@@ -43,13 +43,16 @@ void test('file session repository rewrites existing store after save operations
   try {
     const repository = new FileSessionRepository(storePath);
     const created = await repository.create({ title: 'Guide session' }, 'owner-a');
-    const saved = await repository.save({
-      ...created,
-      guide: {
-        ...created.guide,
-        rootNodeIds: ['root-node'],
+    const saved = await repository.save(
+      {
+        ...created,
+        guide: {
+          ...created.guide,
+          rootNodeIds: ['root-node'],
+        },
       },
-    });
+      'owner-a',
+    );
     const next = await repository.create({ title: 'Second session' }, 'owner-a');
 
     assert.deepEqual(saved.guide.rootNodeIds, ['root-node']);
@@ -59,4 +62,15 @@ void test('file session repository rewrites existing store after save operations
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+void test('session save operations require the original owner', async () => {
+  const sessions = new InMemorySessionRepository();
+  const created = await sessions.create({ title: 'Owner-guarded session' }, 'owner-a');
+
+  await assert.rejects(
+    () => sessions.save({ ...created, title: 'Wrong owner update' }, 'owner-b'),
+    SessionNotFoundError,
+  );
+  assert.equal((await sessions.get(created.id, 'owner-a')).title, 'Owner-guarded session');
 });
