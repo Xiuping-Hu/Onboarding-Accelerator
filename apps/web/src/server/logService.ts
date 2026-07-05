@@ -202,7 +202,6 @@ function createEmptySummary(): LogSummaryResponse {
       inputTokens: 0,
       outputTokens: 0,
       totalTokens: 0,
-      estimatedFeeUsd: 0,
       byModel: {},
     },
   };
@@ -213,14 +212,12 @@ function addUsage(summary: LogSummaryResponse['aiUsage'], usage: AiUsageStats): 
   summary.inputTokens += usage.inputTokens;
   summary.outputTokens += usage.outputTokens;
   summary.totalTokens += usage.totalTokens;
-  summary.estimatedFeeUsd = roundFee(summary.estimatedFeeUsd + usage.estimatedFeeUsd);
 
   const modelSummary = (summary.byModel[usage.model] ??= createModelSummary(usage.model));
   modelSummary.requests += 1;
   modelSummary.inputTokens += usage.inputTokens;
   modelSummary.outputTokens += usage.outputTokens;
   modelSummary.totalTokens += usage.totalTokens;
-  modelSummary.estimatedFeeUsd = roundFee(modelSummary.estimatedFeeUsd + usage.estimatedFeeUsd);
 }
 
 function createModelSummary(model: string): AiUsageModelSummary {
@@ -230,12 +227,7 @@ function createModelSummary(model: string): AiUsageModelSummary {
     inputTokens: 0,
     outputTokens: 0,
     totalTokens: 0,
-    estimatedFeeUsd: 0,
   };
-}
-
-function roundFee(value: number): number {
-  return Number(value.toFixed(8));
 }
 
 function toPublicLogEvent(event: LogEvent): LogEventRecord {

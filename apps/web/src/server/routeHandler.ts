@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { NextResponse, type NextRequest } from 'next/server';
 import { ZodError } from 'zod';
-import { AuthError, authenticateRequest, type AuthenticatedUser } from './auth';
+import { AuthError, ForbiddenError, authenticateRequest, type AuthenticatedUser } from './auth';
 import { GuideNodeNotFoundError } from './guideService';
 import { RateLimitError, checkRateLimit } from './rateLimit';
 import { getServerServices } from './services';
@@ -73,6 +73,10 @@ async function toErrorResponse(
 
   if (error instanceof AuthError) {
     return NextResponse.json({ error: error.message, requestId }, { status: 401 });
+  }
+
+  if (error instanceof ForbiddenError) {
+    return NextResponse.json({ error: error.message, requestId }, { status: 403 });
   }
 
   if (error instanceof RateLimitError) {

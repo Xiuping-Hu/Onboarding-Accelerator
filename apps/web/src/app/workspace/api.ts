@@ -56,29 +56,26 @@ export async function loginAccount(payload: LoginRequest): Promise<AccountSessio
     body: JSON.stringify(payload),
     headers: {},
   });
-  const account = {
-    userId: response.user.id,
-    ...(response.user.email ? { email: response.user.email } : {}),
-    ...(response.user.displayName ? { displayName: response.user.displayName } : {}),
-    ...(response.user.role ? { role: response.user.role } : {}),
-    ...(response.user.tenantId ? { tenantId: response.user.tenantId } : {}),
-  };
-  return account;
+  return toAccountSession(response.user);
 }
 
 export async function getCurrentAccount(): Promise<AccountSession> {
   const response = await requestJson<CurrentUserResponse>('/api/auth/me');
-  return {
-    userId: response.user.id,
-    ...(response.user.email ? { email: response.user.email } : {}),
-    ...(response.user.displayName ? { displayName: response.user.displayName } : {}),
-    ...(response.user.role ? { role: response.user.role } : {}),
-    ...(response.user.tenantId ? { tenantId: response.user.tenantId } : {}),
-  };
+  return toAccountSession(response.user);
 }
 
 export async function logoutAccount(): Promise<void> {
   await requestJson<void>('/api/auth/logout', { method: 'POST' });
+}
+
+function toAccountSession(user: CurrentUserResponse['user']): AccountSession {
+  return {
+    userId: user.id,
+    ...(user.email ? { email: user.email } : {}),
+    ...(user.displayName ? { displayName: user.displayName } : {}),
+    ...(user.role ? { role: user.role } : {}),
+    ...(user.tenantId ? { tenantId: user.tenantId } : {}),
+  };
 }
 
 export async function listSessions(): Promise<ListSessionsResponse> {

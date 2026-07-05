@@ -13,6 +13,7 @@ superseded, and future-planning documents can be referenced without competing wi
 | 006    | `archive/006-internal-ops-logging-no-ai-fees.md` | Proposed   | Internal ops logging site with no client-visible AI fees or logs.       |
 | 007    | `archive/007-limited-zoomable-client-canvas.md`  | Proposed   | Bounded client canvas with auto-fit, pan, zoom, and collapsible panels. |
 | 008    | `archive/008-assistant-ui-agent-drawer.md`       | Proposed   | assistant-ui migration for the right agent assistant drawer.            |
+| 009    | `archive/009-admin-ops-activity-ai-fee.md`       | Complete   | Admin-only managed website for activity logs and AI fee operations.     |
 
 Current runtime documentation lives in `README.md`, `docs/production-readiness.md`, and the generated
 harness docs under `docs/harness/generated`.

@@ -95,15 +95,6 @@ function formatTokens(value: number) {
   return new Intl.NumberFormat(undefined).format(value);
 }
 
-function formatUsd(value: number) {
-  return new Intl.NumberFormat(undefined, {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: value > 0 && value < 0.01 ? 6 : 2,
-    maximumFractionDigits: 6,
-  }).format(value);
-}
-
 function getLogTypeLabel(event: LogEventRecord) {
   if (event.type === 'ai_usage') {
     return 'AI usage';
@@ -120,7 +111,7 @@ function getLogDetail(event: LogEventRecord) {
   if (event.type === 'ai_usage' && event.usage) {
     return `${event.operation ?? 'ai'} | ${event.usage.model} | ${formatTokens(
       event.usage.totalTokens,
-    )} tokens | ${formatUsd(event.usage.estimatedFeeUsd)}`;
+    )} tokens`;
   }
 
   if (event.type === 'request') {
@@ -1069,10 +1060,6 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
                 <small>Total tokens</small>
                 <strong>{formatTokens(logSummary.aiUsage.totalTokens)}</strong>
               </div>
-              <div className="usage-metric">
-                <small>AI fee</small>
-                <strong>{formatUsd(logSummary.aiUsage.estimatedFeeUsd)}</strong>
-              </div>
             </div>
           ) : null}
           <section className="activity-log" aria-label="Recent log activity">
@@ -1114,7 +1101,6 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
                     <div className="message-usage">
                       <span>{message.usage.model}</span>
                       <span>{formatTokens(message.usage.totalTokens)} tokens</span>
-                      <span>{formatUsd(message.usage.estimatedFeeUsd)}</span>
                     </div>
                   ) : null}
                   {message.role === 'assistant' && messageSources.length > 0 ? (

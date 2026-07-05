@@ -29,6 +29,13 @@ export class AuthError extends Error {
   }
 }
 
+export class ForbiddenError extends Error {
+  constructor(message = 'Admin access required') {
+    super(message);
+    this.name = 'ForbiddenError';
+  }
+}
+
 export async function authenticateRequest(
   request: NextRequest,
   dependencies: AuthDependencies,
@@ -87,6 +94,14 @@ export function clearAuthCookie(response: NextResponse, config: ServerConfig): v
   });
 }
 
+export function requireAdminUser(user: AuthenticatedUser): AuthenticatedUser {
+  if (user.role !== 'admin') {
+    throw new ForbiddenError();
+  }
+
+  return user;
+}
+
 export function toAuthenticatedUser(user: UserRecord): AuthenticatedUser {
   return {
     id: user.id,
@@ -130,10 +145,16 @@ function getLocalDevelopmentUser(headers: Headers): AuthenticatedUser {
   return {
     id: readHeader(headers, 'x-user-id') ?? 'local-dev-user',
     tenantId: readHeader(headers, 'x-tenant-id'),
+    role: readRoleHeader(headers),
   };
 }
 
 function readHeader(headers: Headers, name: string): string | undefined {
   const value = headers.get(name)?.trim();
   return value || undefined;
+}
+
+function readRoleHeader(headers: Headers): AuthenticatedUser['role'] | undefined {
+  const role = readHeader(headers, 'x-user-role');
+  return role === 'admin' || role === 'user' ? role : undefined;
 }

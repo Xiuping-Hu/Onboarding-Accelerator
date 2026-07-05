@@ -1,9 +1,16 @@
+import {
+  AdminActivityLogService,
+  AiFeeService,
+  FileAiFeeAdjustmentService,
+  FileAdminAuditService,
+  FileAiRateCardService,
+} from './adminOpsService';
+import { PostgresAuthSessionRepository } from './authSessionRepository';
 import { ChatOrchestrationService } from './chatService';
 import { loadConfig } from './config';
 import { getDatabasePool } from './database';
 import { OpenAiEmbeddingService } from './embeddingService';
 import { GuideOrchestrationService } from './guideService';
-import { PostgresAuthSessionRepository } from './authSessionRepository';
 import { NoopLoginAuditRepository, PostgresLoginAuditRepository } from './loginAuditRepository';
 import { FileLogService } from './logService';
 import { OpenAiService } from './openAiService';
@@ -45,13 +52,16 @@ function createServerServices() {
       ? new PostgresSessionRepository(database)
       : new FileSessionRepository(config.sessionStorePath);
   const logs = new FileLogService(config.logStorePath);
+  const adminActivity = new AdminActivityLogService(config.logStorePath);
+  const adminAudit = new FileAdminAuditService(config.adminAuditStorePath);
+  const aiRates = new FileAiRateCardService(config.aiRateCardsStorePath);
+  const aiAdjustments = new FileAiFeeAdjustmentService(config.aiFeeAdjustmentsStorePath);
+  const aiFees = new AiFeeService(adminActivity, aiRates);
   const openAi = new OpenAiService({
     apiKey: config.openAiApiKey,
     model: config.openAiModel,
     timeoutMs: config.openAiTimeoutMs,
     maxRetries: config.openAiMaxRetries,
-    inputCostPer1MTokens: config.openAiInputCostPer1MTokens,
-    outputCostPer1MTokens: config.openAiOutputCostPer1MTokens,
   });
   const vectorKnowledgeBase =
     config.ragVectorEnabled && database
@@ -80,6 +90,11 @@ function createServerServices() {
   };
 
   return {
+    adminActivity,
+    adminAudit,
+    aiAdjustments,
+    aiFees,
+    aiRates,
     authSessions,
     chat,
     config,

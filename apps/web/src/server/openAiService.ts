@@ -5,8 +5,6 @@ export interface OpenAiServiceConfig {
   model: string;
   timeoutMs: number;
   maxRetries: number;
-  inputCostPer1MTokens?: number;
-  outputCostPer1MTokens?: number;
 }
 
 export interface OpenAiAnswer {
@@ -196,18 +194,7 @@ function extractUsageStats(
     inputTokens,
     outputTokens,
     totalTokens,
-    estimatedFeeUsd: calculateEstimatedFeeUsd(inputTokens, outputTokens, config),
   };
-}
-
-function calculateEstimatedFeeUsd(
-  inputTokens: number,
-  outputTokens: number,
-  config: OpenAiServiceConfig,
-): number {
-  const inputFee = (inputTokens / 1_000_000) * (config.inputCostPer1MTokens ?? 0);
-  const outputFee = (outputTokens / 1_000_000) * (config.outputCostPer1MTokens ?? 0);
-  return Number((inputFee + outputFee).toFixed(8));
 }
 
 function toSafeInteger(value: number | undefined): number {
