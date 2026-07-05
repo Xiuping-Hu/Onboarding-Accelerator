@@ -823,7 +823,7 @@ h3 {
 
 .chat-form {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: end;
 }
@@ -844,22 +844,6 @@ h3 {
   color: #616161;
   font-size: 12px;
   font-weight: 650;
-}
-
-.web-search-button {
-  min-height: 38px;
-  border: 1px solid #c8cee5;
-  border-radius: 6px;
-  padding: 0 12px;
-  background: #ffffff;
-  color: #424242;
-  font-weight: 650;
-}
-
-.web-search-button.active {
-  border-color: #6264a7;
-  background: #f4f3ff;
-  color: #4f52a3;
 }
 
 @media (max-width: 1180px) {

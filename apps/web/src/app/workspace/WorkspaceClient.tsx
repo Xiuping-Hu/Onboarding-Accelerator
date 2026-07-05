@@ -601,7 +601,6 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
   const [focusStepIds, setFocusStepIds] = useState<string[]>([]);
   const [, setSources] = useState<KnowledgeSource[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>(emptyMessages);
-  const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false);
   const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -614,25 +613,22 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
     [graph, selectedStepId],
   );
 
-  const loadGuide = useCallback(
-    async (sessionId: string) => {
-      setIsLoading(true);
-      try {
-        setApiError(null);
-        const response = await getRootGuide({ sessionId, webSearchEnabled });
-        setGraph(response.graph);
-        setSources((current) => mergeSources(current, response.graph.sources));
-        const focusId = response.focusStepId ?? response.graph.rootId;
-        setSelectedStepId(focusId);
-        setFocusStepIds([focusId]);
-      } catch (error) {
-        setApiError(formatError(error, 'Could not load the guide from the onboarding service.'));
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [webSearchEnabled],
-  );
+  const loadGuide = useCallback(async (sessionId: string) => {
+    setIsLoading(true);
+    try {
+      setApiError(null);
+      const response = await getRootGuide({ sessionId, webSearchEnabled: false });
+      setGraph(response.graph);
+      setSources((current) => mergeSources(current, response.graph.sources));
+      const focusId = response.focusStepId ?? response.graph.rootId;
+      setSelectedStepId(focusId);
+      setFocusStepIds([focusId]);
+    } catch (error) {
+      setApiError(formatError(error, 'Could not load the guide from the onboarding service.'));
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     void (async () => {
@@ -665,7 +661,7 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
     if (activeSessionId) {
       void loadGuide(activeSessionId);
     }
-  }, [activeSessionId, loadGuide, webSearchEnabled]);
+  }, [activeSessionId, loadGuide]);
 
   async function handleCreateSession() {
     try {
@@ -719,7 +715,7 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
       const response = await expandStep({
         sessionId: activeSessionId,
         stepId,
-        webSearchEnabled,
+        webSearchEnabled: false,
       });
       setGraph(response.graph);
       setSources((current) => mergeSources(current, response.graph.sources));
@@ -756,7 +752,7 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
       const response = await sendChat({
         sessionId: activeSessionId,
         message: userMessage.content,
-        webSearchEnabled,
+        webSearchEnabled: false,
         selectedStepId: selectedStepId ?? undefined,
       });
       setMessages((current) => [...current, response.message]);
@@ -882,8 +878,6 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
           isRunning={isChatLoading}
           messages={messages}
           onSendMessage={handleSendMessage}
-          onToggleWebSearch={() => setWebSearchEnabled((current) => !current)}
-          webSearchEnabled={webSearchEnabled}
         />
       </aside>
     </main>
