@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { GuideGraph } from '@onboarding/shared';
-import { getVisibleGraph } from './app/workspace/App';
+import {
+  getAssistantDrawerToggleLabel,
+  getSelectedGuideStep,
+  getVisibleGraph,
+} from './app/workspace/App';
 
 const graph: GuideGraph = {
   rootId: 'root',
@@ -122,4 +126,17 @@ void test('selecting a child hides its sibling nodes while keeping ancestors and
     visible?.steps.some((step) => step.id === 'a3'),
     false,
   );
+});
+
+void test('selected guide step resolves the agent drawer focus', () => {
+  const selected = getSelectedGuideStep(graph, 'a1');
+
+  assert.equal(selected?.id, 'a1');
+  assert.equal(selected?.title, 'A1');
+  assert.equal(getSelectedGuideStep(graph, 'missing'), null);
+});
+
+void test('assistant drawer toggle label reflects collapsed state', () => {
+  assert.equal(getAssistantDrawerToggleLabel(true), 'Open agent drawer');
+  assert.equal(getAssistantDrawerToggleLabel(false), 'Close agent drawer');
 });

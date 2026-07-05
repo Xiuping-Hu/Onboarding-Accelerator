@@ -1,3 +1,9 @@
 'use client';
 
-export { default, getNodeLayout, getVisibleGraph } from './WorkspaceClient';
+export {
+  default,
+  getAssistantDrawerToggleLabel,
+  getNodeLayout,
+  getSelectedGuideStep,
+  getVisibleGraph,
+} from './WorkspaceClient';
