@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { GuideGraph } from '@onboarding/shared';
-import { getVisibleGraph } from './app/workspace/App';
+import { clampCanvasScale, getVisibleGraph, getZoomedCanvasView } from './app/workspace/App';
 
 const graph: GuideGraph = {
   rootId: 'root',
@@ -122,4 +122,24 @@ void test('selecting a child hides its sibling nodes while keeping ancestors and
     visible?.steps.some((step) => step.id === 'a3'),
     false,
   );
+});
+
+void test('canvas zoom is clamped to supported scale limits', () => {
+  assert.equal(clampCanvasScale(0.1), 0.65);
+  assert.equal(clampCanvasScale(1), 1);
+  assert.equal(clampCanvasScale(4), 1.45);
+});
+
+void test('canvas zoom keeps the zoom anchor fixed in screen space', () => {
+  const nextView = getZoomedCanvasView(
+    { offsetX: 100, offsetY: 50, scale: 1 },
+    { x: 300, y: 250 },
+    1.25,
+  );
+
+  assert.deepEqual(nextView, {
+    offsetX: 50,
+    offsetY: 0,
+    scale: 1.25,
+  });
 });

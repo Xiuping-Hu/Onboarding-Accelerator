@@ -28,6 +28,11 @@ import {
 
 type NodePoint = GuideStep & { x: number; y: number };
 type HitTarget = { id: string; x: number; y: number; width: number; height: number };
+type CanvasView = { offsetX: number; offsetY: number; scale: number };
+
+const minCanvasScale = 0.65;
+const maxCanvasScale = 1.45;
+const canvasZoomStep = 1.16;
 
 class AppErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   override state = { error: null };
@@ -274,6 +279,26 @@ export function getNodeLayout(graph: GuideGraph | null): NodePoint[] {
   return nodes;
 }
 
+export function clampCanvasScale(scale: number) {
+  return Math.min(maxCanvasScale, Math.max(minCanvasScale, scale));
+}
+
+export function getZoomedCanvasView(
+  view: CanvasView,
+  point: { x: number; y: number },
+  scale: number,
+): CanvasView {
+  const nextScale = clampCanvasScale(scale);
+  const worldX = (point.x - view.offsetX) / view.scale;
+  const worldY = (point.y - view.offsetY) / view.scale;
+
+  return {
+    scale: nextScale,
+    offsetX: point.x - worldX * nextScale,
+    offsetY: point.y - worldY * nextScale,
+  };
+}
+
 function getBreadcrumbs(graph: GuideGraph | null, selectedStepId: string | null) {
   if (!graph || !selectedStepId) {
     return [];
@@ -307,6 +332,14 @@ function GuideCanvas({
   const hitsRef = useRef<HitTarget[]>([]);
   const viewRef = useRef({ offsetX: 120, offsetY: 160, scale: 1, pulse: 0 });
   const targetViewRef = useRef({ offsetX: 120, offsetY: 160, scale: 1 });
+  const dragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    offsetX: number;
+    offsetY: number;
+    moved: boolean;
+  } | null>(null);
   const nodes = useMemo(() => getNodeLayout(graph), [graph]);
   const nodesById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
 
@@ -345,8 +378,8 @@ function GuideCanvas({
     if (activeNode && rect.width > 0 && rect.height > 0) {
       targetViewRef.current = {
         scale: activeNode.depth > 1 ? 0.88 : 1,
-        offsetX: rect.width / 2 - activeNode.x,
-        offsetY: rect.height / 2 - activeNode.y,
+        offsetX: rect.width / 2 - activeNode.x * (activeNode.depth > 1 ? 0.88 : 1),
+        offsetY: rect.height / 2 - activeNode.y * (activeNode.depth > 1 ? 0.88 : 1),
       };
     }
   }, [focusStepIds, graph?.rootId, nodesById, selectedStepId]);
@@ -434,8 +467,45 @@ function GuideCanvas({
   }, [focusStepIds, graph?.edges, nodes, nodesById, selectedStepId]);
 
   const handlePointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      offsetX: targetViewRef.current.offsetX,
+      offsetY: targetViewRef.current.offsetY,
+      moved: false,
+    };
+  };
+
+  const handlePointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const deltaX = event.clientX - drag.startX;
+    const deltaY = event.clientY - drag.startY;
+    if (Math.hypot(deltaX, deltaY) > 3) {
+      drag.moved = true;
+    }
+
+    const nextView = {
+      ...targetViewRef.current,
+      offsetX: drag.offsetX + deltaX,
+      offsetY: drag.offsetY + deltaY,
+    };
+    targetViewRef.current = nextView;
+    viewRef.current.offsetX = nextView.offsetX;
+    viewRef.current.offsetY = nextView.offsetY;
+  };
+
+  const handlePointerUp = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
-    if (!canvas) {
+    const drag = dragRef.current;
+    dragRef.current = null;
+
+    if (!canvas || (drag && drag.moved)) {
       return;
     }
 
@@ -456,17 +526,56 @@ function GuideCanvas({
     }
   };
 
+  const zoomCanvas = useCallback((scaleMultiplier: number, point?: { x: number; y: number }) => {
+    const canvas = canvasRef.current;
+    if (!canvas) {
+      return;
+    }
+
+    const rect = canvas.getBoundingClientRect();
+    const anchor = point ?? { x: rect.width / 2, y: rect.height / 2 };
+    const nextView = getZoomedCanvasView(
+      targetViewRef.current,
+      anchor,
+      targetViewRef.current.scale * scaleMultiplier,
+    );
+    targetViewRef.current = nextView;
+    viewRef.current.offsetX = nextView.offsetX;
+    viewRef.current.offsetY = nextView.offsetY;
+    viewRef.current.scale = nextView.scale;
+  }, []);
+
+  const handleWheel = (event: React.WheelEvent<HTMLCanvasElement>) => {
+    event.preventDefault();
+    const rect = event.currentTarget.getBoundingClientRect();
+    zoomCanvas(event.deltaY > 0 ? 1 / canvasZoomStep : canvasZoomStep, {
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top,
+    });
+  };
+
   return (
     <div className="canvas-shell" ref={wrapperRef}>
+      <div className="canvas-controls" aria-label="Map zoom controls">
+        <button aria-label="Zoom in" onClick={() => zoomCanvas(canvasZoomStep)} type="button">
+          +
+        </button>
+        <button aria-label="Zoom out" onClick={() => zoomCanvas(1 / canvasZoomStep)} type="button">
+          -
+        </button>
+      </div>
       <canvas
         ref={canvasRef}
-        aria-label="Interactive onboarding guidance map"
+        aria-label="Interactive onboarding guidance map. Drag to pan and scroll to zoom."
         className="guide-canvas"
         onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onWheel={handleWheel}
         role="img"
       />
       <div className="canvas-hint" aria-hidden="true">
-        Click nodes to inspect or expand. Chat can focus the map.
+        Drag to pan. Scroll or use +/- to zoom.
       </div>
     </div>
   );

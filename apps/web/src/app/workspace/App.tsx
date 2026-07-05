@@ -1,3 +1,9 @@
 'use client';
 
-export { default, getNodeLayout, getVisibleGraph } from './WorkspaceClient';
+export {
+  clampCanvasScale,
+  default,
+  getNodeLayout,
+  getVisibleGraph,
+  getZoomedCanvasView,
+} from './WorkspaceClient';
