@@ -8,4 +8,5 @@ apps/server/data/
 *.log
 .DS_Store
 .vite/
+.next/
 *.local

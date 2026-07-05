@@ -1,9 +1,6 @@
 import { spawn } from 'node:child_process';
 
-const commands = [
-  { name: 'server', args: ['run', 'dev', '-w', '@onboarding/server'] },
-  { name: 'teams', args: ['run', 'dev', '-w', '@onboarding/teams-plugin'] },
-];
+const commands = [{ name: 'web', args: ['run', 'dev', '-w', '@onboarding/web'] }];
 
 const children = commands.map(({ name, args }) => {
   const child = spawn('npm', args, {

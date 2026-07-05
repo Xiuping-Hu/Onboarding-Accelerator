@@ -24,7 +24,8 @@ async function walk(dir) {
   const files = await Promise.all(
     entries
       .filter(
-        (entry) => !['node_modules', 'dist', 'coverage', '.git', 'generated'].includes(entry.name),
+        (entry) =>
+          !['node_modules', '.next', 'dist', 'coverage', '.git', 'generated'].includes(entry.name),
       )
       .map(async (entry) => {
         const fullPath = path.join(dir, entry.name);
@@ -48,7 +49,7 @@ async function getPackageSummary(packageJsonPath) {
   const raw = await readFile(packageJsonPath, 'utf8');
   const parsed = JSON.parse(raw);
   return {
-    name: parsed.name,
+    name: parsed.name ?? path.basename(path.dirname(packageJsonPath)),
     scripts: Object.keys(parsed.scripts ?? {}),
     dependencies: Object.keys(parsed.dependencies ?? {}),
   };

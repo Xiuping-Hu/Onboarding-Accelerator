@@ -2,29 +2,28 @@
   "name": "onboarding-accelerator",
   "version": "0.1.0",
   "private": true,
-  "description": "Teams onboarding assistant with a server-side agent and RAG knowledge-base layer.",
+  "description": "Next.js onboarding assistant with server-side guidance, chat, and RAG services.",
   "type": "module",
   "workspaces": [
-    "apps/*",
+    "apps/web",
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build -w @onboarding/shared && npm run build -w @onboarding/server && npm run build -w @onboarding/teams-plugin",
+    "build": "npm run build -w @onboarding/shared && npm run build -w @onboarding/web",
     "dev": "node scripts/dev.mjs",
     "docs:harness:update": "node scripts/update-harness-docs.mjs",
     "format": "prettier . --write",
     "format:check": "prettier . --check",
     "lint": "eslint .",
-    "test": "npm run test -w @onboarding/server && npm run test -w @onboarding/teams-plugin",
-    "validate:manifest": "node -e \"JSON.parse(require('fs').readFileSync('apps/teams-plugin/appPackage/manifest.json','utf8'));\"",
+    "test": "npm run test -w @onboarding/web",
     "prepare": "husky"
   },
   "devDependencies": {
     "@eslint/js": "^9.28.0",
+    "@next/eslint-plugin-next": "^16.2.10",
     "@types/node": "^24.0.0",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^5.0.0",
     "eslint": "^9.28.0",
     "eslint-config-prettier": "^10.1.5",
     "eslint-plugin-react": "^7.37.5",
@@ -36,11 +35,9 @@
     "typescript-eslint": "^8.33.1"
   },
   "dependencies": {
-    "@vitejs/plugin-basic-ssl": "^2.0.0",
-    "cors": "^2.8.5",
     "dotenv": "^16.5.0",
-    "express": "^5.1.0",
     "jose": "^5.10.0",
+    "next": "^15.4.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "zod": "^3.25.51"

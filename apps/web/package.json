@@ -1,0 +1,19 @@
+{
+  "name": "@onboarding/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "next build",
+    "dev": "next dev",
+    "lint": "eslint .",
+    "test": "tsx --test src/**/*.test.ts src/**/*.test.tsx",
+    "start": "next start"
+  },
+  "dependencies": {
+    "@onboarding/shared": "file:../../packages/shared"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.3"
+  }
+}

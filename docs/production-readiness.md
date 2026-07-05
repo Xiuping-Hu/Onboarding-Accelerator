@@ -1,29 +1,20 @@
 # Production Readiness
 
-## Phase 1 Baseline
+## Current Stack
 
-Current baseline after this pass:
+The product now runs as a single Next.js App Router application in `apps/web`.
 
-- `npm run lint`: passes.
-- `npm run build`: passes.
-- `npm run test -w @onboarding/server`: passes.
-- `npm run test -w @onboarding/teams-plugin`: passes.
-- `npm audit --audit-level=moderate`: passes after dependency refresh.
-
-Initial blockers found:
-
-- P0: user/session API routes were unauthenticated and sessions were globally readable by ID.
-- P0: sessions were process-local and disappeared on restart.
-- P1: frontend silently fell back to mock data by default.
-- P1: CORS was open, request body size was unbounded, and errors/logging were too loose for production.
-- P1: web search returned placeholder results when enabled.
-- P2: Teams manifest used localhost, a zero app ID, and placeholder developer URLs.
+- UI rendering lives in `apps/web/src/app`.
+- Backend behavior lives in Next.js route handlers under `apps/web/src/app/api`.
+- Reusable server services live in `apps/web/src/server`.
+- Shared request/response contracts remain in `packages/shared`.
 
 ## API Contracts
 
 Shared contracts live in `packages/shared/src/index.ts`.
 
 - `GET /health` and `GET /ready` return `HealthResponse` and do not require auth.
+- `GET /metrics` returns basic in-process request counters.
 - `GET /api/sessions` returns `ListSessionsResponse`.
 - `POST /api/sessions` accepts `CreateSessionRequest` and returns `CreateSessionResponse`.
 - `GET /api/sessions/:sessionId` returns `GetSessionResponse`.
@@ -33,39 +24,41 @@ Shared contracts live in `packages/shared/src/index.ts`.
 - `POST /api/sessions/:sessionId/guide/root` accepts `GenerateGuideRootRequest` and returns `GenerateGuideRootResponse`.
 - `POST /api/sessions/:sessionId/guide/expand` accepts `ExpandGuideStepRequest` and returns `ExpandGuideStepResponse`.
 - `POST /api/ask` accepts `AskRequest` and returns `AskResponse`.
+- `GET /api/logs/summary` returns `LogSummaryResponse`.
+- `GET /api/logs/recent?limit=10` returns `LogEventsResponse`.
 
 All non-health/readiness API routes require authentication. Session access is scoped by the authenticated user ID.
+
+## Router And Shared Code Decisions
+
+The app uses the Next.js App Router. `packages/shared` remains a workspace package so contracts are importable from both client components and server modules without duplicating domain types.
 
 ## Required Production Configuration
 
 Set these before running with `NODE_ENV=production`:
 
-- `CORS_ALLOWED_ORIGINS`: comma-separated production Teams tab origins.
-- Authentication: either `API_AUTH_TOKEN` for a trusted gateway/service mode, or all of `AUTH_ISSUER`, `AUTH_AUDIENCE`, and `AUTH_JWKS_URI` for JWT validation.
+- Authentication: either `API_AUTH_TOKEN` for trusted gateway/service mode, or all of `AUTH_ISSUER`, `AUTH_AUDIENCE`, and `AUTH_JWKS_URI` for JWT validation.
 - `SESSION_STORE_PATH`: writable durable path for session JSON storage.
+- `LOG_STORE_PATH`: writable durable path for JSONL request, error, and AI usage logs.
 - `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_TIMEOUT_MS`, and `OPENAI_MAX_RETRIES`.
 - `RAG_SHARED_DIRECTORY` for shared files and `RAG_WEBSITE_ALLOWLIST` for allowed website ingestion.
 
-Do not set `AUTH_DISABLED=true` in production. Startup validation rejects that combination.
+Do not set `AUTH_DISABLED=true` in production. Startup validation rejects that combination. CORS is not configured by default because the Next app serves UI and API from the same origin; add a hosting/provider policy only if a future cross-origin client is introduced.
 
-## RAG Ingestion Setup
+## Local Development
 
-The server indexes configured local shared inputs through adapters for documents, sheets, video transcript sidecars, and allowlisted websites.
+Use `AUTH_DISABLED=true` locally. Requests default to `local-dev-user`; setting `sessionStorage.onboardingUserId` in the browser scopes sessions to another local test user.
 
-- Put shared `.md`, `.txt`, and `.csv` files under `RAG_SHARED_DIRECTORY`.
-- Put transcript sidecars next to video assets as text files supported by the video adapter.
-- Set `RAG_WEBSITE_ALLOWLIST` to explicit HTTPS origins or URLs that the website adapter may fetch.
-- Tune `RAG_MAX_FILE_BYTES` and `RAG_MAX_CHUNKS_PER_SOURCE` for the deployment size.
+## Deployment
 
-Website retrieval is allowlist-enforced. Placeholder web search is disabled cleanly until a production provider is added.
+1. Run `npm install`.
+2. Run `npm run lint`, `npm test`, and `npm run build`.
+3. Deploy the Next.js app from `apps/web` to a Node-compatible Next host.
+4. Provide the production environment variables above.
+5. Ensure the configured session and log paths are backed by durable storage, or replace the file repositories with a managed database/log provider.
 
-## Teams Deployment
+## Deferred Production Choices
 
-1. Build the frontend and server with `npm run build`.
-2. Host `apps/teams-plugin/dist` at the production HTTPS origin in the Teams manifest.
-3. Deploy `apps/server/dist` with the environment variables above.
-4. Register the Teams app and identity provider values in Entra ID.
-5. Update `apps/teams-plugin/appPackage/manifest.json` app ID, domains, and developer URLs to the deployed tenant values.
-6. Zip the contents of `apps/teams-plugin/appPackage` and validate/upload the package in Teams Developer Portal.
-
-For local sideloading, use a local manifest variant or temporarily point the manifest URLs at the dev tunnel host. Do not commit localhost manifest values as the production package.
+- File-based session storage should move to a database before multi-instance deployment.
+- The current in-process rate limiter is suitable for local and single-instance use; production should use Redis, an edge/provider limiter, or another shared backend.
+- RAG ingestion is request-time file and website scanning. Larger deployments should move ingestion to an indexing job.

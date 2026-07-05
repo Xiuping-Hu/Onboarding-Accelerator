@@ -1,11 +1,10 @@
 # Onboarding Accelerator
 
-Skeleton for a Microsoft Teams onboarding assistant. The Teams plugin calls a server-side agent endpoint, and the server has a placeholder retrieval layer for knowledge-base backed answers.
+Next.js onboarding guidance workspace with server-side chat, guide generation, logging, and RAG services.
 
 ## Workspaces
 
-- `apps/server`: Express API with agent and RAG boundaries.
-- `apps/teams-plugin`: Vite/React Teams frontend shell.
+- `apps/web`: Next.js App Router application that owns the UI and API route handlers.
 - `packages/shared`: Shared request and response contracts.
 - `docs/harness`: Lightweight generated docs that map the current code structure.
 
@@ -15,8 +14,13 @@ Skeleton for a Microsoft Teams onboarding assistant. The Teams plugin calls a se
 npm install
 npm run dev
 npm run lint
+npm test
+npm run build
 npm run format:check
 npm run docs:harness:update
 ```
+
+`npm run dev` starts the Next.js app at `http://localhost:3000`. In local development,
+`AUTH_DISABLED=true` uses `local-dev-user` unless `sessionStorage.onboardingUserId` is set.
 
 The pre-commit hook updates harness docs, stages the generated docs, then runs lint and Prettier checks.
