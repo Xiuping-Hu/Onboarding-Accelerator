@@ -429,14 +429,26 @@ function GuideCanvas({
     viewRef.current.scale = nextView.scale;
   }, []);
 
-  const handleWheel = (event: React.WheelEvent<HTMLCanvasElement>) => {
-    event.preventDefault();
-    const rect = event.currentTarget.getBoundingClientRect();
-    zoomCanvas(event.deltaY > 0 ? 1 / canvasZoomStep : canvasZoomStep, {
-      x: event.clientX - rect.left,
-      y: event.clientY - rect.top,
-    });
-  };
+  useEffect(() => {
+    const wrapper = wrapperRef.current;
+    const canvas = canvasRef.current;
+    if (!wrapper || !canvas) {
+      return;
+    }
+
+    const handleWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const rect = canvas.getBoundingClientRect();
+      zoomCanvas(event.deltaY > 0 ? 1 / canvasZoomStep : canvasZoomStep, {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
+      });
+    };
+
+    wrapper.addEventListener('wheel', handleWheel, { passive: false });
+    return () => wrapper.removeEventListener('wheel', handleWheel);
+  }, [zoomCanvas]);
 
   return (
     <div className="canvas-shell" ref={wrapperRef}>
@@ -455,7 +467,6 @@ function GuideCanvas({
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
-        onWheel={handleWheel}
         role="img"
       />
       <div className="canvas-hint" aria-hidden="true">
