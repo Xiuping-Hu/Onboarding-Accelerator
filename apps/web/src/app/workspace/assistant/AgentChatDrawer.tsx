@@ -8,14 +8,10 @@ export function AgentChatDrawer({
   isRunning,
   messages,
   onSendMessage,
-  onToggleWebSearch,
-  webSearchEnabled,
 }: {
   isRunning: boolean;
   messages: ChatMessage[];
   onSendMessage: (message: string) => Promise<void>;
-  onToggleWebSearch: () => void;
-  webSearchEnabled: boolean;
 }) {
   const [expandedEvidenceIds, setExpandedEvidenceIds] = useState<string[]>([]);
   const messageById = useMemo(
@@ -48,10 +44,7 @@ export function AgentChatDrawer({
           onToggleEvidence={toggleEvidence}
         />
         {isRunning ? <div className="assistant-thinking">Thinking...</div> : null}
-        <AgentComposer
-          onToggleWebSearch={onToggleWebSearch}
-          webSearchEnabled={webSearchEnabled}
-        />
+        <AgentComposer />
       </section>
     </AgentChatRuntimeProvider>
   );
