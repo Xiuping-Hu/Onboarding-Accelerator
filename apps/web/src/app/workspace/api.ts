@@ -23,20 +23,18 @@ import type {
 
 export interface AccountSession {
   userId: string;
+  email?: string;
+  displayName?: string;
+  role?: string;
   tenantId?: string;
-  token?: string;
 }
-
-const authTokenKey = 'onboardingAuthToken';
-const authUserIdKey = 'onboardingUserId';
-const authTenantIdKey = 'onboardingTenantId';
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
+    credentials: 'same-origin',
     ...init,
     headers: {
       'Content-Type': 'application/json',
-      ...getAuthHeaders(),
       ...init?.headers,
     },
   });
@@ -52,41 +50,6 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
-function getAuthHeaders(): Record<string, string> {
-  if (typeof window === 'undefined') {
-    return {};
-  }
-
-  const token = window.sessionStorage.getItem(authTokenKey);
-  const userId = window.sessionStorage.getItem(authUserIdKey);
-  const tenantId = window.sessionStorage.getItem(authTenantIdKey);
-  return {
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...(userId ? { 'X-User-ID': userId } : {}),
-    ...(tenantId ? { 'X-Tenant-ID': tenantId } : {}),
-  };
-}
-
-export function getStoredAccountSession(): AccountSession | null {
-  if (typeof window === 'undefined') {
-    return null;
-  }
-
-  const token = window.sessionStorage.getItem(authTokenKey) ?? undefined;
-  const userId = window.sessionStorage.getItem(authUserIdKey) ?? undefined;
-  const tenantId = window.sessionStorage.getItem(authTenantIdKey) ?? undefined;
-
-  if (!token && !userId) {
-    return null;
-  }
-
-  return {
-    userId: userId ?? 'local-dev-user',
-    ...(tenantId ? { tenantId } : {}),
-    ...(token ? { token } : {}),
-  };
-}
-
 export async function loginAccount(payload: LoginRequest): Promise<AccountSession> {
   const response = await requestJson<LoginResponse>('/api/auth/login', {
     method: 'POST',
@@ -95,51 +58,27 @@ export async function loginAccount(payload: LoginRequest): Promise<AccountSessio
   });
   const account = {
     userId: response.user.id,
+    ...(response.user.email ? { email: response.user.email } : {}),
+    ...(response.user.displayName ? { displayName: response.user.displayName } : {}),
+    ...(response.user.role ? { role: response.user.role } : {}),
     ...(response.user.tenantId ? { tenantId: response.user.tenantId } : {}),
-    ...(response.authToken ? { token: response.authToken } : {}),
   };
-  storeAccountSession(account);
   return account;
 }
 
 export async function getCurrentAccount(): Promise<AccountSession> {
   const response = await requestJson<CurrentUserResponse>('/api/auth/me');
-  const stored = getStoredAccountSession();
-  const account = {
+  return {
     userId: response.user.id,
+    ...(response.user.email ? { email: response.user.email } : {}),
+    ...(response.user.displayName ? { displayName: response.user.displayName } : {}),
+    ...(response.user.role ? { role: response.user.role } : {}),
     ...(response.user.tenantId ? { tenantId: response.user.tenantId } : {}),
-    ...(stored?.token ? { token: stored.token } : {}),
   };
-  storeAccountSession(account);
-  return account;
 }
 
-export function logoutAccount(): void {
-  if (typeof window === 'undefined') {
-    return;
-  }
-
-  window.sessionStorage.removeItem(authTokenKey);
-  window.sessionStorage.removeItem(authUserIdKey);
-  window.sessionStorage.removeItem(authTenantIdKey);
-}
-
-function storeAccountSession(account: AccountSession): void {
-  if (typeof window === 'undefined') {
-    return;
-  }
-
-  window.sessionStorage.setItem(authUserIdKey, account.userId);
-  if (account.token) {
-    window.sessionStorage.setItem(authTokenKey, account.token);
-  } else {
-    window.sessionStorage.removeItem(authTokenKey);
-  }
-  if (account.tenantId) {
-    window.sessionStorage.setItem(authTenantIdKey, account.tenantId);
-  } else {
-    window.sessionStorage.removeItem(authTenantIdKey);
-  }
+export async function logoutAccount(): Promise<void> {
+  await requestJson<void>('/api/auth/logout', { method: 'POST' });
 }
 
 export async function listSessions(): Promise<ListSessionsResponse> {

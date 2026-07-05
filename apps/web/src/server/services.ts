@@ -3,6 +3,8 @@ import { loadConfig } from './config';
 import { getDatabasePool } from './database';
 import { OpenAiEmbeddingService } from './embeddingService';
 import { GuideOrchestrationService } from './guideService';
+import { PostgresAuthSessionRepository } from './authSessionRepository';
+import { NoopLoginAuditRepository, PostgresLoginAuditRepository } from './loginAuditRepository';
 import { FileLogService } from './logService';
 import { OpenAiService } from './openAiService';
 import { PgvectorKnowledgeBase } from './pgvectorKnowledgeBase';
@@ -10,6 +12,7 @@ import { PostgresSessionRepository } from './postgresSessionRepository';
 import { createConfiguredRagInputAdapters } from './ragAdapters/index';
 import { RagService } from './ragService';
 import { FileSessionRepository } from './sessionRepository';
+import { PostgresUserRepository } from './userRepository';
 import { DisabledWebSearchProvider } from './webSearchProvider';
 
 export function getServerServices() {
@@ -21,9 +24,22 @@ export function getServerServices() {
   return globalForServices.__onboardingServices;
 }
 
+export function resetServerServicesForTests(): void {
+  const globalForServices = globalThis as typeof globalThis & {
+    __onboardingServices?: ReturnType<typeof createServerServices>;
+  };
+
+  delete globalForServices.__onboardingServices;
+}
+
 function createServerServices() {
   const config = loadConfig();
   const database = config.databaseUrl ? getDatabasePool(config.databaseUrl) : undefined;
+  const users = database ? new PostgresUserRepository(database) : undefined;
+  const authSessions = database ? new PostgresAuthSessionRepository(database) : undefined;
+  const loginAudit = database
+    ? new PostgresLoginAuditRepository(database)
+    : new NoopLoginAuditRepository();
   const sessions =
     config.sessionStore === 'postgres' && database
       ? new PostgresSessionRepository(database)
@@ -63,5 +79,17 @@ function createServerServices() {
     responsesTotal: 0,
   };
 
-  return { chat, config, guide, logs, metrics, openAi, rag, sessions };
+  return {
+    authSessions,
+    chat,
+    config,
+    guide,
+    loginAudit,
+    logs,
+    metrics,
+    openAi,
+    rag,
+    sessions,
+    users,
+  };
 }

@@ -1,22 +1,11 @@
-import { createInterface } from 'node:readline';
-import { promisify } from 'node:util';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
-import bcrypt from 'bcrypt';
-import { randomUUID } from 'node:crypto';
+import 'dotenv/config';
+import { createInterface } from 'node:readline/promises';
+import bcrypt from 'bcryptjs';
+import pg from 'pg';
 
+const { Pool } = pg;
 const args = process.argv.slice(2);
-const options = {};
-
-for (let i = 0; i < args.length; i++) {
-  if (args[i] === '--email') {
-    options.email = args[++i];
-  } else if (args[i] === '--name') {
-    options.name = args[++i];
-  } else if (args[i] === '--role') {
-    options.role = args[++i];
-  }
-}
+const options = parseArgs(args);
 
 if (!options.email) {
   console.error('Error: --email is required');
@@ -26,71 +15,94 @@ if (!options.name) {
   console.error('Error: --name is required');
   process.exit(1);
 }
-options.role = options.role || 'user';
-
-const readline = createInterface({
-  input: process.stdin,
-  output: process.stdout,
-});
-
-const question = promisify(readline.question).bind(readline);
-
-const DATA_DIR = resolve(process.cwd(), 'data');
-const USERS_FILE = resolve(DATA_DIR, 'users.json');
-
-async function loadUsers() {
-  try {
-    const content = await readFile(USERS_FILE, 'utf-8');
-    return JSON.parse(content);
-  } catch {
-    return [];
-  }
+if (!process.env.DATABASE_URL) {
+  console.error('Error: DATABASE_URL is required');
+  process.exit(1);
 }
 
-async function saveUsers(users) {
-  await mkdir(DATA_DIR, { recursive: true });
-  await writeFile(USERS_FILE, JSON.stringify(users, null, 2), 'utf-8');
-}
+const role = options.role || 'user';
+const email = normalizeEmail(options.email);
+const displayName = options.name.trim();
 
 async function main() {
-  const password = await question('Enter password for the new user: ');
-  readline.close();
+  const readline = createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
 
-  if (!password || password.length < 8) {
-    console.error('Error: Password must be at least 8 characters');
-    process.exit(1);
+  try {
+    const password = await readline.question('Enter password for the new user: ');
+    const confirmation = await readline.question('Confirm password: ');
+
+    if (password !== confirmation) {
+      throw new Error('Passwords do not match');
+    }
+    if (password.length < 8) {
+      throw new Error('Password must be at least 8 characters');
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+    const pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: process.env.POSTGRES_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
+      max: Number.parseInt(process.env.POSTGRES_POOL_MAX ?? '10', 10),
+    });
+
+    try {
+      const result = await pool.query(
+        `insert into users (email, display_name, password_hash, role, is_active)
+         values ($1, $2, $3, $4, true)
+         returning id, email, display_name, role`,
+        [email, displayName, passwordHash, role],
+      );
+      const user = result.rows[0];
+
+      console.info('\nUser created successfully:');
+      console.info(`ID: ${user.id}`);
+      console.info(`Email: ${user.email}`);
+      console.info(`Name: ${user.display_name}`);
+      console.info(`Role: ${user.role}`);
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        throw new Error('A user with this email already exists');
+      }
+      throw error;
+    } finally {
+      await pool.end();
+    }
+  } finally {
+    readline.close();
+  }
+}
+
+function parseArgs(values) {
+  const parsed = {};
+
+  for (let index = 0; index < values.length; index += 1) {
+    const value = values[index];
+    const nextValue = values[index + 1];
+
+    if (value === '--email' && nextValue) {
+      parsed.email = nextValue;
+      index += 1;
+    } else if (value === '--name' && nextValue) {
+      parsed.name = nextValue;
+      index += 1;
+    } else if (value === '--role' && nextValue) {
+      parsed.role = nextValue;
+      index += 1;
+    }
   }
 
-  const passwordHash = await bcrypt.hash(password, 10);
+  return parsed;
+}
 
-  const users = await loadUsers();
+function normalizeEmail(value) {
+  return value.trim().toLowerCase();
+}
 
-  const existingUser = users.find((u) => u.email.toLowerCase() === options.email.toLowerCase());
-  if (existingUser) {
-    console.error('Error: A user with this email already exists');
-    process.exit(1);
-  }
-
-  const newUser = {
-    id: randomUUID(),
-    email: options.email,
-    display_name: options.name,
-    password_hash: passwordHash,
-    role: options.role,
-    is_active: true,
-    last_login_at: null,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  };
-
-  users.push(newUser);
-  await saveUsers(users);
-
-  console.log('\nUser created successfully:');
-  console.log(`ID: ${newUser.id}`);
-  console.log(`Email: ${newUser.email}`);
-  console.log(`Name: ${newUser.display_name}`);
-  console.log(`Role: ${newUser.role}`);
+function isUniqueViolation(error) {
+  return typeof error === 'object' && error !== null && error.code === '23505';
 }
 
 main().catch((error) => {

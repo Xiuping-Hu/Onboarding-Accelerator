@@ -19,7 +19,6 @@ import {
   getRecentLogs,
   getRootGuide,
   getLogSummary,
-  getStoredAccountSession,
   listSessions,
   loginAccount,
   logoutAccount,
@@ -144,18 +143,16 @@ function LoginScreen({
 }: {
   error: string | null;
   isSubmitting: boolean;
-  onLogin: (payload: { token?: string; userId?: string; tenantId?: string }) => Promise<void>;
+  onLogin: (payload: { email: string; password: string }) => Promise<void>;
 }) {
-  const [userId, setUserId] = useState('');
-  const [tenantId, setTenantId] = useState('');
-  const [token, setToken] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     void onLogin({
-      userId: userId.trim() || undefined,
-      tenantId: tenantId.trim() || undefined,
-      token: token.trim() || undefined,
+      email: email.trim(),
+      password,
     });
   }
 
@@ -166,31 +163,23 @@ function LoginScreen({
         <h1>Sign in to your workspace</h1>
         <form className="login-form" onSubmit={handleSubmit}>
           <label>
-            Account ID
+            Email
             <input
+              autoFocus
               autoComplete="username"
-              onChange={(event) => setUserId(event.target.value)}
+              onChange={(event) => setEmail(event.target.value)}
               placeholder="name@company.com"
-              value={userId}
+              type="email"
+              value={email}
             />
           </label>
           <label>
-            Access token
+            Password
             <input
               autoComplete="current-password"
-              onChange={(event) => setToken(event.target.value)}
-              placeholder="Required when auth is enabled"
+              onChange={(event) => setPassword(event.target.value)}
               type="password"
-              value={token}
-            />
-          </label>
-          <label>
-            Tenant ID
-            <input
-              autoComplete="organization"
-              onChange={(event) => setTenantId(event.target.value)}
-              placeholder="Optional"
-              value={tenantId}
+              value={password}
             />
           </label>
           {error ? (
@@ -832,8 +821,8 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
             <h1>Guidance workspace</h1>
           </div>
           <div className="account-summary">
-            <span>{account.userId}</span>
-            {account.tenantId ? <small>{account.tenantId}</small> : null}
+            <span>{account.displayName ?? account.email ?? account.userId}</span>
+            <small>{account.role ?? 'user'}</small>
           </div>
           <button className="primary-button" onClick={() => void handleCreateSession()}>
             + New session
@@ -1032,11 +1021,11 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
   );
 }
 
-function AppContent() {
-  const [account, setAccount] = useState<AccountSession | null>(() => getStoredAccountSession());
-  const [isAuthLoading, setIsAuthLoading] = useState(() => Boolean(getStoredAccountSession()));
+function AppContent({ initialAccount }: { initialAccount?: AccountSession }) {
+  const [account, setAccount] = useState<AccountSession | null>(initialAccount ?? null);
+  const [isAuthLoading, setIsAuthLoading] = useState(() => Boolean(initialAccount));
   const [loginError, setLoginError] = useState<string | null>(null);
-  const accountToRestoreRef = useRef(account);
+  const accountToRestoreRef = useRef(initialAccount);
 
   useEffect(() => {
     if (!accountToRestoreRef.current) {
@@ -1054,7 +1043,7 @@ function AppContent() {
       })
       .catch((error) => {
         if (!ignore) {
-          logoutAccount();
+          void logoutAccount().catch(() => undefined);
           setAccount(null);
           setLoginError(formatError(error, 'Could not restore your account session.'));
         }
@@ -1070,13 +1059,16 @@ function AppContent() {
     };
   }, []);
 
-  async function handleLogin(payload: { token?: string; userId?: string; tenantId?: string }) {
+  async function handleLogin(payload: { email: string; password: string }) {
     setIsAuthLoading(true);
     try {
       setLoginError(null);
-      setAccount(await loginAccount(payload));
+      const nextAccount = await loginAccount(payload);
+      setAccount(nextAccount);
+      if (typeof window !== 'undefined' && window.location.pathname === '/login') {
+        window.location.assign('/workspace');
+      }
     } catch (error) {
-      logoutAccount();
       setLoginError(formatError(error, 'Sign in failed.'));
     } finally {
       setIsAuthLoading(false);
@@ -1084,9 +1076,17 @@ function AppContent() {
   }
 
   function handleLogout() {
-    logoutAccount();
-    setAccount(null);
-    setLoginError(null);
+    setIsAuthLoading(true);
+    void logoutAccount()
+      .catch(() => undefined)
+      .finally(() => {
+        setAccount(null);
+        setLoginError(null);
+        setIsAuthLoading(false);
+        if (typeof window !== 'undefined') {
+          window.location.assign('/login');
+        }
+      });
   }
 
   if (!account) {
@@ -1100,10 +1100,10 @@ function AppContent() {
   return <WorkspaceShell account={account} onLogout={handleLogout} />;
 }
 
-export default function App() {
+export default function App({ initialAccount }: { initialAccount?: AccountSession }) {
   return (
     <AppErrorBoundary>
-      <AppContent />
+      <AppContent initialAccount={initialAccount} />
     </AppErrorBoundary>
   );
 }

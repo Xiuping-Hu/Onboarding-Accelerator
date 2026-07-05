@@ -35,18 +35,20 @@ export interface HealthResponse {
 
 export interface AccountUser {
   id: string;
+  email?: string;
+  displayName?: string;
+  role?: string;
   tenantId?: string;
 }
 
 export interface LoginRequest {
-  token?: string;
-  userId?: string;
-  tenantId?: string;
+  email: string;
+  password: string;
 }
 
 export interface LoginResponse {
   user: AccountUser;
-  authToken?: string;
+  expiresAt: string;
 }
 
 export interface CurrentUserResponse {

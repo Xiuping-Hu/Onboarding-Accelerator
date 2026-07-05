@@ -9,31 +9,22 @@ import type {
   CreateSessionResponse,
   GenerateGuideRootResponse,
 } from '@onboarding/shared';
+import { resetServerServicesForTests } from '../server/services';
 
 void test('Next API handlers create sessions, generate guides, chat, and expose logs', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'onboarding-next-api-'));
   process.env.AUTH_DISABLED = 'true';
+  delete process.env.DATABASE_URL;
   process.env.SESSION_STORE_PATH = join(directory, 'sessions.json');
   process.env.LOG_STORE_PATH = join(directory, 'events.jsonl');
   process.env.OPENAI_API_KEY = '';
+  resetServerServicesForTests();
 
   const sessionsRoute = await import('./api/sessions/route');
   const guideRootRoute = await import('./api/sessions/[sessionId]/guide/root/route');
   const chatRoute = await import('./api/sessions/[sessionId]/chat/route');
   const logsRoute = await import('./api/logs/recent/route');
-  const loginRoute = await import('./api/auth/login/route');
   const meRoute = await import('./api/auth/me/route');
-
-  const loginResponse = await loginRoute.POST(
-    jsonRequest('http://localhost/api/auth/login', {
-      userId: 'api-test-user',
-      tenantId: 'test-tenant',
-    }),
-  );
-  assert.equal(loginResponse.status, 200);
-  assert.deepEqual(await loginResponse.json(), {
-    user: { id: 'api-test-user', tenantId: 'test-tenant' },
-  });
 
   const meResponse = await meRoute.GET(
     new NextRequest('http://localhost/api/auth/me', {
@@ -79,6 +70,32 @@ void test('Next API handlers create sessions, generate guides, chat, and expose 
   );
   assert.equal(logsResponse.status, 200);
   assert.ok(((await logsResponse.json()) as { events: unknown[] }).events.length >= 3);
+});
+
+void test('protected API handlers reject unauthenticated requests when account auth is enabled', async () => {
+  process.env.AUTH_DISABLED = 'false';
+  process.env.DATABASE_URL = 'postgres://user:password@localhost:5432/onboarding';
+  resetServerServicesForTests();
+
+  const meRoute = await import('./api/auth/me/route');
+  const response = await meRoute.GET(new NextRequest('http://localhost/api/auth/me'));
+
+  assert.equal(response.status, 401);
+  const body = (await response.json()) as { error: string; requestId?: string };
+  assert.equal(body.error, 'Authentication required');
+  assert.match(body.requestId ?? '', /.+/);
+});
+
+void test('no public registration routes exist', async () => {
+  const { access } = await import('node:fs/promises');
+  const missingPaths = [
+    join(process.cwd(), 'src/app/register/page.tsx'),
+    join(process.cwd(), 'src/app/api/auth/register/route.ts'),
+  ];
+
+  for (const path of missingPaths) {
+    await assert.rejects(() => access(path));
+  }
 });
 
 function jsonRequest(url: string, body: unknown): NextRequest {

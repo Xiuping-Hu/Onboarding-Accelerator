@@ -10,10 +10,11 @@ export interface ServerConfig {
   rateLimitWindowMs: number;
   rateLimitMax: number;
   authDisabled: boolean;
-  apiAuthToken?: string;
-  authIssuer?: string;
-  authAudience?: string;
-  authJwksUri?: string;
+  authCookieName: string;
+  authSessionDurationMs: number;
+  authSecureCookie: boolean;
+  authLoginRateLimitWindowMs: number;
+  authLoginRateLimitMax: number;
   databaseUrl?: string;
   postgresSsl: boolean;
   postgresPoolMax: number;
@@ -43,10 +44,20 @@ export function loadConfig(): ServerConfig {
     rateLimitWindowMs: Number.parseInt(process.env.RATE_LIMIT_WINDOW_MS ?? '60000', 10),
     rateLimitMax: Number.parseInt(process.env.RATE_LIMIT_MAX ?? '120', 10),
     authDisabled: process.env.AUTH_DISABLED === 'true',
-    apiAuthToken: optionalString(process.env.API_AUTH_TOKEN),
-    authIssuer: optionalString(process.env.AUTH_ISSUER),
-    authAudience: optionalString(process.env.AUTH_AUDIENCE),
-    authJwksUri: optionalString(process.env.AUTH_JWKS_URI),
+    authCookieName: process.env.AUTH_COOKIE_NAME?.trim() || 'onboarding_session',
+    authSessionDurationMs: Number.parseInt(
+      process.env.AUTH_SESSION_DURATION_MS ?? String(1000 * 60 * 60 * 8),
+      10,
+    ),
+    authSecureCookie:
+      process.env.AUTH_SECURE_COOKIE === undefined
+        ? process.env.NODE_ENV === 'production'
+        : process.env.AUTH_SECURE_COOKIE === 'true',
+    authLoginRateLimitWindowMs: Number.parseInt(
+      process.env.AUTH_LOGIN_RATE_LIMIT_WINDOW_MS ?? '300000',
+      10,
+    ),
+    authLoginRateLimitMax: Number.parseInt(process.env.AUTH_LOGIN_RATE_LIMIT_MAX ?? '10', 10),
     databaseUrl: optionalString(process.env.DATABASE_URL),
     postgresSsl: process.env.POSTGRES_SSL === 'true',
     postgresPoolMax: Number.parseInt(process.env.POSTGRES_POOL_MAX ?? '10', 10),
@@ -75,14 +86,27 @@ export function loadConfig(): ServerConfig {
 }
 
 function validateConfig(config: ServerConfig): void {
-  if (!config.authDisabled && !config.apiAuthToken && !hasJwtValidationConfig(config)) {
-    throw new Error(
-      'Authentication is enabled but no API_AUTH_TOKEN or AUTH_ISSUER/AUTH_AUDIENCE/AUTH_JWKS_URI configuration was provided',
-    );
-  }
-
   if (config.nodeEnv === 'production' && config.authDisabled) {
     throw new Error('AUTH_DISABLED cannot be true in production');
+  }
+
+  if (!config.authDisabled && !config.databaseUrl) {
+    throw new Error('Password authentication requires DATABASE_URL');
+  }
+
+  if (!Number.isFinite(config.authSessionDurationMs) || config.authSessionDurationMs <= 0) {
+    throw new Error('AUTH_SESSION_DURATION_MS must be a positive integer');
+  }
+
+  if (
+    !Number.isFinite(config.authLoginRateLimitWindowMs) ||
+    config.authLoginRateLimitWindowMs <= 0
+  ) {
+    throw new Error('AUTH_LOGIN_RATE_LIMIT_WINDOW_MS must be a positive integer');
+  }
+
+  if (!Number.isFinite(config.authLoginRateLimitMax) || config.authLoginRateLimitMax <= 0) {
+    throw new Error('AUTH_LOGIN_RATE_LIMIT_MAX must be a positive integer');
   }
 
   if (config.sessionStore === 'postgres' && !config.databaseUrl) {
@@ -103,10 +127,6 @@ function validateConfig(config: ServerConfig): void {
 
   // Next serves the UI and API from the same origin; CORS is only needed if a future client is
   // intentionally hosted elsewhere.
-}
-
-function hasJwtValidationConfig(config: ServerConfig): boolean {
-  return Boolean(config.authIssuer && config.authAudience && config.authJwksUri);
 }
 
 function optionalString(value: string | undefined): string | undefined {
