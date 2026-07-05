@@ -1,3 +1,5 @@
+create extension if not exists pgcrypto;
+
 create table if not exists users (
   id uuid primary key default gen_random_uuid(),
   email text not null unique,
@@ -11,6 +13,9 @@ create table if not exists users (
 );
 
 create index if not exists users_email_idx
+  on users (lower(email));
+
+create unique index if not exists users_email_normalized_key
   on users (lower(email));
 
 create index if not exists users_role_idx

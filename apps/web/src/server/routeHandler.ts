@@ -27,7 +27,7 @@ export async function handleApiRoute(
   services.metrics.requestsTotal += 1;
 
   try {
-    user = await authenticateRequest(request, services.config);
+    user = await authenticateRequest(request, services);
     checkRateLimit({
       request,
       userId: user.id,

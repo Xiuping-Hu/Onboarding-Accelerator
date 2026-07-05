@@ -1,11 +1,26 @@
-import { createRemoteJWKSet, jwtVerify } from 'jose';
-import type { NextRequest } from 'next/server';
+import type { NextRequest, NextResponse } from 'next/server';
 import type { ServerConfig } from './config';
+import { hashSessionToken } from './sessionTokens';
+import type { AuthSessionRepositoryPort } from './authSessionRepository';
+import type { UserRecord, UserRepositoryPort } from './userRepository';
 
 export interface AuthenticatedUser {
   id: string;
+  email?: string;
+  displayName?: string;
+  role?: string;
   tenantId?: string;
 }
+
+export interface AuthDependencies {
+  config: ServerConfig;
+  authSessions?: AuthSessionRepositoryPort;
+  users?: UserRepositoryPort;
+}
+
+type CookieReader = {
+  get(name: string): { value: string } | undefined;
+};
 
 export class AuthError extends Error {
   constructor(message = 'Authentication required') {
@@ -14,82 +29,111 @@ export class AuthError extends Error {
   }
 }
 
-const jwksCache = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
-
 export async function authenticateRequest(
   request: NextRequest,
-  config: ServerConfig,
+  dependencies: AuthDependencies,
 ): Promise<AuthenticatedUser> {
-  if (config.authDisabled) {
-    return {
-      id: readHeader(request, 'x-user-id') ?? 'local-dev-user',
-      tenantId: readHeader(request, 'x-tenant-id'),
-    };
+  if (dependencies.config.authDisabled) {
+    return getLocalDevelopmentUser(request.headers);
   }
 
-  const token = getBearerToken(request);
+  return authenticateSessionToken(
+    request.cookies.get(dependencies.config.authCookieName)?.value,
+    dependencies,
+  );
+}
+
+export async function getCurrentUserFromCookies(
+  cookies: CookieReader,
+  dependencies: AuthDependencies,
+): Promise<AuthenticatedUser> {
+  if (dependencies.config.authDisabled) {
+    return { id: 'local-dev-user' };
+  }
+
+  return authenticateSessionToken(
+    cookies.get(dependencies.config.authCookieName)?.value,
+    dependencies,
+  );
+}
+
+export function setAuthCookie(
+  response: NextResponse,
+  config: ServerConfig,
+  token: string,
+  expiresAt: Date,
+): void {
+  response.cookies.set({
+    name: config.authCookieName,
+    value: token,
+    httpOnly: true,
+    secure: config.authSecureCookie,
+    sameSite: 'lax',
+    path: '/',
+    expires: expiresAt,
+  });
+}
+
+export function clearAuthCookie(response: NextResponse, config: ServerConfig): void {
+  response.cookies.set({
+    name: config.authCookieName,
+    value: '',
+    httpOnly: true,
+    secure: config.authSecureCookie,
+    sameSite: 'lax',
+    path: '/',
+    expires: new Date(0),
+    maxAge: 0,
+  });
+}
+
+export function toAuthenticatedUser(user: UserRecord): AuthenticatedUser {
+  return {
+    id: user.id,
+    email: user.email,
+    displayName: user.displayName,
+    role: user.role,
+  };
+}
+
+async function authenticateSessionToken(
+  token: string | undefined,
+  dependencies: AuthDependencies,
+): Promise<AuthenticatedUser> {
   if (!token) {
     throw new AuthError();
   }
 
-  if (config.apiAuthToken && token === config.apiAuthToken) {
-    return {
-      id: readHeader(request, 'x-user-id') ?? 'api-token-user',
-      tenantId: readHeader(request, 'x-tenant-id'),
-    };
+  if (!dependencies.authSessions || !dependencies.users) {
+    throw new AuthError('Authentication is not configured');
   }
 
-  if (!config.authJwksUri || !config.authIssuer || !config.authAudience) {
-    throw new AuthError('Invalid authentication token');
+  const now = new Date();
+  const tokenHash = hashSessionToken(token);
+  const session = await dependencies.authSessions.findActiveByTokenHash(tokenHash, now);
+
+  if (!session) {
+    throw new AuthError();
   }
 
-  try {
-    const jwks = getJwks(config.authJwksUri);
-    const { payload } = await jwtVerify(token, jwks, {
-      issuer: config.authIssuer,
-      audience: config.authAudience,
-    });
-    const id = readClaim(payload, 'oid') ?? readClaim(payload, 'sub') ?? readClaim(payload, 'upn');
-    if (!id) {
-      throw new AuthError('Authentication token missing user identity');
-    }
-
-    return {
-      id,
-      tenantId: readClaim(payload, 'tid'),
-    };
-  } catch (error) {
-    if (error instanceof AuthError) {
-      throw error;
-    }
-
-    throw new AuthError('Invalid authentication token');
+  const user = await dependencies.users.findById(session.userId);
+  if (!user || !user.isActive) {
+    await dependencies.authSessions.revokeByTokenHash(tokenHash, now);
+    throw new AuthError();
   }
+
+  await dependencies.authSessions.touch(session.id, now);
+  return toAuthenticatedUser(user);
 }
 
-function getJwks(uri: string): ReturnType<typeof createRemoteJWKSet> {
-  const existing = jwksCache.get(uri);
-  if (existing) {
-    return existing;
-  }
-
-  const jwks = createRemoteJWKSet(new URL(uri));
-  jwksCache.set(uri, jwks);
-  return jwks;
+function getLocalDevelopmentUser(headers: Headers): AuthenticatedUser {
+  return {
+    id: readHeader(headers, 'x-user-id') ?? 'local-dev-user',
+    tenantId: readHeader(headers, 'x-tenant-id'),
+  };
 }
 
-function getBearerToken(request: NextRequest): string | undefined {
-  const authorization = request.headers.get('authorization');
-  const match = authorization?.match(/^Bearer\s+(.+)$/i);
-  return match?.[1];
-}
-
-function readHeader(request: NextRequest, name: string): string | undefined {
-  const value = request.headers.get(name)?.trim();
+function readHeader(headers: Headers, name: string): string | undefined {
+  const value = headers.get(name)?.trim();
   return value || undefined;
-}
-
-function readClaim(payload: Record<string, unknown>, name: string): string | undefined {
-  const value = payload[name];
-  return typeof value === 'string' && value.trim() ? value : undefined;
 }

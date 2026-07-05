@@ -15,7 +15,9 @@ Shared contracts live in `packages/shared/src/index.ts`.
 
 - `GET /health` and `GET /ready` return `HealthResponse` and do not require auth.
 - `GET /metrics` returns basic in-process request counters.
-- `POST /api/auth/login` validates the configured API token or local-development account headers and returns `LoginResponse`.
+- `POST /api/auth/login` validates an email/password against Postgres users, creates a server-side auth session, sets an HttpOnly cookie, and returns `LoginResponse`.
+- `POST /api/auth/logout` revokes the browser session and clears the auth cookie.
+- `GET /logout` and `POST /logout` revoke the browser session and redirect to `/login`.
 - `GET /api/auth/me` returns `CurrentUserResponse`.
 - `GET /api/sessions` returns `ListSessionsResponse`.
 - `POST /api/sessions` accepts `CreateSessionRequest` and returns `CreateSessionResponse`.
@@ -29,7 +31,7 @@ Shared contracts live in `packages/shared/src/index.ts`.
 - `GET /api/logs/summary` returns `LogSummaryResponse`.
 - `GET /api/logs/recent?limit=10` returns `LogEventsResponse`.
 
-Protected API routes require authentication; `/api/auth/login` is public so the browser can validate a token before storing it. `/health`, `/ready`, and `/metrics` are public operational endpoints. Session access is scoped by the authenticated user ID.
+Protected API routes require the auth session cookie; `/api/auth/login` is public so the browser can create that cookie after a successful password check. `/health`, `/ready`, and `/metrics` are public operational endpoints. Session access is scoped by the authenticated user ID.
 
 ## Router And Shared Code Decisions
 
@@ -39,18 +41,20 @@ The app uses the Next.js App Router. `packages/shared` remains a workspace packa
 
 Set these before running with `NODE_ENV=production`:
 
-- Authentication: either `API_AUTH_TOKEN` for trusted gateway/service mode, or all of `AUTH_ISSUER`, `AUTH_AUDIENCE`, and `AUTH_JWKS_URI` for JWT validation.
+- Authentication: set `AUTH_DISABLED=false`, `DATABASE_URL`, `AUTH_COOKIE_NAME`, `AUTH_SESSION_DURATION_MS`, `AUTH_SECURE_COOKIE=true`, `AUTH_LOGIN_RATE_LIMIT_WINDOW_MS`, and `AUTH_LOGIN_RATE_LIMIT_MAX`.
 - Session storage: use `SESSION_STORE=postgres` with `DATABASE_URL` for multi-instance deployments, or `SESSION_STORE=file` plus `SESSION_STORE_PATH` for local/single-instance JSON storage.
 - `LOG_STORE_PATH`: writable durable path for JSONL request, error, and AI usage logs.
 - `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_TIMEOUT_MS`, and `OPENAI_MAX_RETRIES`.
 - `RAG_SHARED_DIRECTORY` for shared files and `RAG_WEBSITE_ALLOWLIST` for allowed website ingestion.
 - pgvector RAG: apply `db/migrations/001_postgres_pgvector.sql`, populate `knowledge_chunks`, then set `RAG_VECTOR_ENABLED=true`, `DATABASE_URL`, and optionally `OPENAI_EMBEDDING_MODEL` and `RAG_VECTOR_LIMIT`.
 
+Apply `db/migrations/001_postgres_pgvector.sql`, `db/migrations/002_users_table.sql`, and `db/migrations/003_postgres_account_auth.sql` before enabling password auth. Use `npm run users:create -- --email admin@example.com --name "Admin" --role admin` to create the first administrator. The app intentionally has no `/register` page or registration API.
+
 Do not set `AUTH_DISABLED=true` in production. Startup validation rejects that combination. CORS is not configured by default because the Next app serves UI and API from the same origin; add a hosting/provider policy only if a future cross-origin client is introduced.
 
 ## Local Development
 
-Use `AUTH_DISABLED=true` locally. Requests default to `local-dev-user`; setting `sessionStorage.onboardingUserId` in the browser scopes sessions to another local test user.
+Use `AUTH_DISABLED=true` locally to skip password login and enter the workspace as `local-dev-user`. To exercise real login locally, run Postgres, apply the migrations, set `AUTH_DISABLED=false`, set `DATABASE_URL`, and create a user with `npm run users:create`.
 
 ## Deployment
 
