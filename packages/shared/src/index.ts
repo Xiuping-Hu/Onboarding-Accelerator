@@ -33,6 +33,26 @@ export interface HealthResponse {
   service: string;
 }
 
+export interface AccountUser {
+  id: string;
+  tenantId?: string;
+}
+
+export interface LoginRequest {
+  token?: string;
+  userId?: string;
+  tenantId?: string;
+}
+
+export interface LoginResponse {
+  user: AccountUser;
+  authToken?: string;
+}
+
+export interface CurrentUserResponse {
+  user: AccountUser;
+}
+
 export type ChatRole = 'user' | 'assistant' | 'system';
 
 export interface ChatMessage {

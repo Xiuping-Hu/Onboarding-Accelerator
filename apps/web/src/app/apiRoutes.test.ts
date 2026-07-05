@@ -21,6 +21,27 @@ void test('Next API handlers create sessions, generate guides, chat, and expose 
   const guideRootRoute = await import('./api/sessions/[sessionId]/guide/root/route');
   const chatRoute = await import('./api/sessions/[sessionId]/chat/route');
   const logsRoute = await import('./api/logs/recent/route');
+  const loginRoute = await import('./api/auth/login/route');
+  const meRoute = await import('./api/auth/me/route');
+
+  const loginResponse = await loginRoute.POST(
+    jsonRequest('http://localhost/api/auth/login', {
+      userId: 'api-test-user',
+      tenantId: 'test-tenant',
+    }),
+  );
+  assert.equal(loginResponse.status, 200);
+  assert.deepEqual(await loginResponse.json(), {
+    user: { id: 'api-test-user', tenantId: 'test-tenant' },
+  });
+
+  const meResponse = await meRoute.GET(
+    new NextRequest('http://localhost/api/auth/me', {
+      headers: { 'x-user-id': 'api-test-user' },
+    }),
+  );
+  assert.equal(meResponse.status, 200);
+  assert.deepEqual(await meResponse.json(), { user: { id: 'api-test-user' } });
 
   const createdResponse = await sessionsRoute.POST(
     jsonRequest('http://localhost/api/sessions', {

@@ -11,13 +11,18 @@ import type {
   OnboardingSession,
 } from '@onboarding/shared';
 import {
+  type AccountSession,
   createSession,
   deleteSession,
   expandStep,
+  getCurrentAccount,
   getRecentLogs,
   getRootGuide,
   getLogSummary,
+  getStoredAccountSession,
   listSessions,
+  loginAccount,
+  logoutAccount,
   sendChat,
 } from './api';
 
@@ -130,6 +135,76 @@ function mergeSources(existing: KnowledgeSource[], incoming: KnowledgeSource[]) 
     byId.set(source.id, source);
   }
   return [...byId.values()];
+}
+
+function LoginScreen({
+  error,
+  isSubmitting,
+  onLogin,
+}: {
+  error: string | null;
+  isSubmitting: boolean;
+  onLogin: (payload: { token?: string; userId?: string; tenantId?: string }) => Promise<void>;
+}) {
+  const [userId, setUserId] = useState('');
+  const [tenantId, setTenantId] = useState('');
+  const [token, setToken] = useState('');
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void onLogin({
+      userId: userId.trim() || undefined,
+      tenantId: tenantId.trim() || undefined,
+      token: token.trim() || undefined,
+    });
+  }
+
+  return (
+    <main className="login-shell">
+      <section className="login-panel" aria-label="Account login">
+        <p className="eyebrow">Onboarding</p>
+        <h1>Sign in to your workspace</h1>
+        <form className="login-form" onSubmit={handleSubmit}>
+          <label>
+            Account ID
+            <input
+              autoComplete="username"
+              onChange={(event) => setUserId(event.target.value)}
+              placeholder="name@company.com"
+              value={userId}
+            />
+          </label>
+          <label>
+            Access token
+            <input
+              autoComplete="current-password"
+              onChange={(event) => setToken(event.target.value)}
+              placeholder="Required when auth is enabled"
+              type="password"
+              value={token}
+            />
+          </label>
+          <label>
+            Tenant ID
+            <input
+              autoComplete="organization"
+              onChange={(event) => setTenantId(event.target.value)}
+              placeholder="Optional"
+              value={tenantId}
+            />
+          </label>
+          {error ? (
+            <div className="app-error login-error" role="alert">
+              {error}
+            </div>
+          ) : null}
+          <button className="primary-button" disabled={isSubmitting}>
+            {isSubmitting ? 'Signing in...' : 'Sign in'}
+          </button>
+        </form>
+      </section>
+    </main>
+  );
 }
 
 export function getVisibleGraph(
@@ -514,7 +589,7 @@ function trimText(context: CanvasRenderingContext2D, text: string, maxWidth: num
   return `${next}...`;
 }
 
-function AppContent() {
+function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogout: () => void }) {
   const [sessions, setSessions] = useState<OnboardingSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [graph, setGraph] = useState<GuideGraph | null>(null);
@@ -756,6 +831,10 @@ function AppContent() {
             <p className="eyebrow">Onboarding</p>
             <h1>Guidance workspace</h1>
           </div>
+          <div className="account-summary">
+            <span>{account.userId}</span>
+            {account.tenantId ? <small>{account.tenantId}</small> : null}
+          </div>
           <button className="primary-button" onClick={() => void handleCreateSession()}>
             + New session
           </button>
@@ -777,6 +856,9 @@ function AppContent() {
             onClick={() => activeSessionId && void handleDeleteSession(activeSessionId)}
           >
             Delete current
+          </button>
+          <button className="ghost-button" onClick={onLogout} type="button">
+            Sign out
           </button>
         </div>
       </aside>
@@ -948,6 +1030,74 @@ function AppContent() {
       </aside>
     </main>
   );
+}
+
+function AppContent() {
+  const [account, setAccount] = useState<AccountSession | null>(() => getStoredAccountSession());
+  const [isAuthLoading, setIsAuthLoading] = useState(() => Boolean(getStoredAccountSession()));
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const accountToRestoreRef = useRef(account);
+
+  useEffect(() => {
+    if (!accountToRestoreRef.current) {
+      return;
+    }
+
+    let ignore = false;
+    setIsAuthLoading(true);
+    void getCurrentAccount()
+      .then((currentAccount) => {
+        if (!ignore) {
+          setAccount(currentAccount);
+          setLoginError(null);
+        }
+      })
+      .catch((error) => {
+        if (!ignore) {
+          logoutAccount();
+          setAccount(null);
+          setLoginError(formatError(error, 'Could not restore your account session.'));
+        }
+      })
+      .finally(() => {
+        if (!ignore) {
+          setIsAuthLoading(false);
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  async function handleLogin(payload: { token?: string; userId?: string; tenantId?: string }) {
+    setIsAuthLoading(true);
+    try {
+      setLoginError(null);
+      setAccount(await loginAccount(payload));
+    } catch (error) {
+      logoutAccount();
+      setLoginError(formatError(error, 'Sign in failed.'));
+    } finally {
+      setIsAuthLoading(false);
+    }
+  }
+
+  function handleLogout() {
+    logoutAccount();
+    setAccount(null);
+    setLoginError(null);
+  }
+
+  if (!account) {
+    return <LoginScreen error={loginError} isSubmitting={isAuthLoading} onLogin={handleLogin} />;
+  }
+
+  if (isAuthLoading) {
+    return <main className="loading-state auth-loading">Restoring account session...</main>;
+  }
+
+  return <WorkspaceShell account={account} onLogout={handleLogout} />;
 }
 
 export default function App() {
