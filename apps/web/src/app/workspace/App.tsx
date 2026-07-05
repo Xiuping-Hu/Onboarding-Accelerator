@@ -1,11 +1,14 @@
 'use client';
 
 export {
-  clampCanvasScale,
   default,
-  getAssistantDrawerToggleLabel,
   getNodeLayout,
+} from './WorkspaceClient';
+
+export {
+  clampCanvasScale,
+  getAssistantDrawerToggleLabel,
   getSelectedGuideStep,
   getVisibleGraph,
   getZoomedCanvasView,
-} from './WorkspaceClient';
+} from './workspaceModel';

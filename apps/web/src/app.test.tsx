@@ -7,7 +7,7 @@ import {
   getSelectedGuideStep,
   getVisibleGraph,
   getZoomedCanvasView,
-} from './app/workspace/App';
+} from './app/workspace/workspaceModel';
 
 const graph: GuideGraph = {
   rootId: 'root',

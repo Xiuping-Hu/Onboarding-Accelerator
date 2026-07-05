@@ -6,8 +6,6 @@ import type {
   GuideGraph,
   GuideStep,
   KnowledgeSource,
-  LogEventRecord,
-  LogSummaryResponse,
   OnboardingSession,
 } from '@onboarding/shared';
 import {
@@ -16,21 +14,22 @@ import {
   deleteSession,
   expandStep,
   getCurrentAccount,
-  getRecentLogs,
   getRootGuide,
-  getLogSummary,
   listSessions,
   loginAccount,
   logoutAccount,
   sendChat,
 } from './api';
+import { AgentChatDrawer } from './assistant/AgentChatDrawer';
+import {
+  getAssistantDrawerToggleLabel,
+  getVisibleGraph,
+  getZoomedCanvasView,
+} from './workspaceModel';
 
 type NodePoint = GuideStep & { x: number; y: number };
 type HitTarget = { id: string; x: number; y: number; width: number; height: number };
-type CanvasView = { offsetX: number; offsetY: number; scale: number };
 
-const minCanvasScale = 0.65;
-const maxCanvasScale = 1.45;
 const canvasZoomStep = 1.16;
 
 class AppErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -89,39 +88,6 @@ function formatTime(value: string) {
     hour: 'numeric',
     minute: '2-digit',
   }).format(new Date(value));
-}
-
-function formatTokens(value: number) {
-  return new Intl.NumberFormat(undefined).format(value);
-}
-
-function getLogTypeLabel(event: LogEventRecord) {
-  if (event.type === 'ai_usage') {
-    return 'AI usage';
-  }
-
-  if (event.type === 'request') {
-    return 'Request';
-  }
-
-  return 'Error';
-}
-
-function getLogDetail(event: LogEventRecord) {
-  if (event.type === 'ai_usage' && event.usage) {
-    return `${event.operation ?? 'ai'} | ${event.usage.model} | ${formatTokens(
-      event.usage.totalTokens,
-    )} tokens`;
-  }
-
-  if (event.type === 'request') {
-    const status = event.statusCode ? String(event.statusCode) : 'pending';
-    const duration =
-      typeof event.durationMs === 'number' ? `${event.durationMs}ms` : 'duration n/a';
-    return `${event.method ?? 'HTTP'} ${event.path ?? 'unknown path'} | ${status} | ${duration}`;
-  }
-
-  return event.message ?? `${event.method ?? 'Error'} ${event.path ?? ''}`.trim();
 }
 
 function mergeSources(existing: KnowledgeSource[], incoming: KnowledgeSource[]) {
@@ -192,48 +158,6 @@ function LoginScreen({
   );
 }
 
-export function getVisibleGraph(
-  graph: GuideGraph | null,
-  selectedStepId: string | null,
-): GuideGraph | null {
-  if (!graph || !selectedStepId) {
-    return graph;
-  }
-
-  const stepsById = new Map(graph.steps.map((step) => [step.id, step]));
-  const visibleIds = new Set<string>();
-  let current = stepsById.get(selectedStepId);
-
-  while (current) {
-    visibleIds.add(current.id);
-    current = current.parentId ? stepsById.get(current.parentId) : undefined;
-  }
-
-  const visitDescendants = (stepId: string) => {
-    const step = stepsById.get(stepId);
-    if (!step) {
-      return;
-    }
-
-    for (const childId of step.childIds) {
-      visibleIds.add(childId);
-      visitDescendants(childId);
-    }
-  };
-
-  visitDescendants(selectedStepId);
-
-  if (selectedStepId === graph.rootId) {
-    visibleIds.add(graph.rootId);
-  }
-
-  return {
-    ...graph,
-    steps: graph.steps.filter((step) => visibleIds.has(step.id)),
-    edges: graph.edges.filter((edge) => visibleIds.has(edge.from) && visibleIds.has(edge.to)),
-  };
-}
-
 export function getNodeLayout(graph: GuideGraph | null): NodePoint[] {
   if (!graph) {
     return [];
@@ -259,26 +183,6 @@ export function getNodeLayout(graph: GuideGraph | null): NodePoint[] {
   return nodes;
 }
 
-export function clampCanvasScale(scale: number) {
-  return Math.min(maxCanvasScale, Math.max(minCanvasScale, scale));
-}
-
-export function getZoomedCanvasView(
-  view: CanvasView,
-  point: { x: number; y: number },
-  scale: number,
-): CanvasView {
-  const nextScale = clampCanvasScale(scale);
-  const worldX = (point.x - view.offsetX) / view.scale;
-  const worldY = (point.y - view.offsetY) / view.scale;
-
-  return {
-    scale: nextScale,
-    offsetX: point.x - worldX * nextScale,
-    offsetY: point.y - worldY * nextScale,
-  };
-}
-
 function getBreadcrumbs(graph: GuideGraph | null, selectedStepId: string | null) {
   if (!graph || !selectedStepId) {
     return [];
@@ -294,21 +198,6 @@ function getBreadcrumbs(graph: GuideGraph | null, selectedStepId: string | null)
   }
 
   return breadcrumbs;
-}
-
-export function getSelectedGuideStep(
-  graph: GuideGraph | null,
-  selectedStepId: string | null,
-): GuideStep | null {
-  if (!graph || !selectedStepId) {
-    return null;
-  }
-
-  return graph.steps.find((step) => step.id === selectedStepId) ?? null;
-}
-
-export function getAssistantDrawerToggleLabel(isCollapsed: boolean) {
-  return isCollapsed ? 'Open agent drawer' : 'Close agent drawer';
 }
 
 function GuideCanvas({
@@ -701,10 +590,6 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
   const [focusStepIds, setFocusStepIds] = useState<string[]>([]);
   const [, setSources] = useState<KnowledgeSource[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>(emptyMessages);
-  const [logSummary, setLogSummary] = useState<LogSummaryResponse | null>(null);
-  const [logEvents, setLogEvents] = useState<LogEventRecord[]>([]);
-  const [expandedEvidenceIds, setExpandedEvidenceIds] = useState<string[]>([]);
-  const [draft, setDraft] = useState('');
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false);
   const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
@@ -713,25 +598,10 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
   const [apiError, setApiError] = useState<string | null>(null);
 
   const breadcrumbs = useMemo(() => getBreadcrumbs(graph, selectedStepId), [graph, selectedStepId]);
-  const selectedStep = useMemo(
-    () => getSelectedGuideStep(graph, selectedStepId),
-    [graph, selectedStepId],
-  );
   const visibleGraph = useMemo(
     () => getVisibleGraph(graph, selectedStepId),
     [graph, selectedStepId],
   );
-
-  const refreshLogSummary = useCallback(async () => {
-    try {
-      const [summary, recentLogs] = await Promise.all([getLogSummary(), getRecentLogs(8)]);
-      setLogSummary(summary);
-      setLogEvents(recentLogs.events);
-    } catch {
-      setLogSummary(null);
-      setLogEvents([]);
-    }
-  }, []);
 
   const loadGuide = useCallback(
     async (sessionId: string) => {
@@ -781,10 +651,6 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
   }, [loadGuide]);
 
   useEffect(() => {
-    void refreshLogSummary();
-  }, [refreshLogSummary]);
-
-  useEffect(() => {
     if (activeSessionId) {
       void loadGuide(activeSessionId);
     }
@@ -827,7 +693,6 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
   async function handleNavigateToStep(stepId: string) {
     setSelectedStepId(stepId);
     setFocusStepIds([stepId]);
-    setIsRightPanelCollapsed(false);
 
     if (!activeSessionId) {
       return;
@@ -858,32 +723,21 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
   function handleLocateStep(stepId: string) {
     setSelectedStepId(stepId);
     setFocusStepIds([stepId]);
-    setIsRightPanelCollapsed(false);
   }
 
-  function toggleEvidence(messageId: string) {
-    setExpandedEvidenceIds((current) =>
-      current.includes(messageId)
-        ? current.filter((id) => id !== messageId)
-        : [...current, messageId],
-    );
-  }
-
-  async function handleSendMessage(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!activeSessionId || draft.trim().length === 0) {
+  async function handleSendMessage(message: string) {
+    if (!activeSessionId || message.trim().length === 0) {
       return;
     }
 
     const userMessage: ChatMessage = {
       id: `user-${Date.now()}`,
       role: 'user',
-      content: draft.trim(),
+      content: message.trim(),
       createdAt: new Date().toISOString(),
     };
 
     setMessages((current) => [...current, userMessage]);
-    setDraft('');
     setIsChatLoading(true);
 
     try {
@@ -900,7 +754,6 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
         setFocusStepIds(response.focusStepIds);
         setSelectedStepId(response.focusStepIds[0] ?? selectedStepId);
       }
-      void refreshLogSummary();
     } catch (error) {
       setMessages((current) => [
         ...current,
@@ -1014,155 +867,13 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
         >
           {isRightPanelCollapsed ? '<' : '>'}
         </button>
-        <section className="chat-panel">
-          <div className="panel-heading">
-            <p className="eyebrow">Agent drawer</p>
-            <h2>Ask, locate, focus</h2>
-          </div>
-          <section className="agent-focus-card" aria-label="Current agent focus">
-            <div className="agent-focus-heading">
-              <span>Current focus</span>
-              {selectedStep ? <strong>{statusLabel[selectedStep.status]}</strong> : null}
-            </div>
-            {selectedStep ? (
-              <>
-                <h3>{selectedStep.title}</h3>
-                <p>{selectedStep.detail || selectedStep.summary}</p>
-                <div className="agent-focus-meta">
-                  <span>Depth {selectedStep.depth}</span>
-                  <span>{selectedStep.childIds.length} substeps</span>
-                  <span>{selectedStep.sourceIds?.length ?? 0} sources</span>
-                </div>
-                <div className="agent-focus-actions">
-                  <button onClick={() => handleLocateStep(selectedStep.id)} type="button">
-                    Focus map
-                  </button>
-                  <button
-                    disabled={selectedStep.canExpand === false || selectedStep.childIds.length > 0}
-                    onClick={() => void handleNavigateToStep(selectedStep.id)}
-                    type="button"
-                  >
-                    Expand
-                  </button>
-                </div>
-              </>
-            ) : (
-              <p>Select a guide node to give the agent a precise workspace focus.</p>
-            )}
-          </section>
-          {logSummary ? (
-            <div className="usage-summary" aria-label="AI usage summary">
-              <div className="usage-metric">
-                <small>AI requests</small>
-                <strong>{formatTokens(logSummary.aiUsage.requests)}</strong>
-              </div>
-              <div className="usage-metric">
-                <small>Total tokens</small>
-                <strong>{formatTokens(logSummary.aiUsage.totalTokens)}</strong>
-              </div>
-            </div>
-          ) : null}
-          <section className="activity-log" aria-label="Recent log activity">
-            <div className="activity-heading">
-              <h3>Activity log</h3>
-              <button onClick={() => void refreshLogSummary()} type="button">
-                Refresh
-              </button>
-            </div>
-            {logEvents.length > 0 ? (
-              <div className="activity-list">
-                {logEvents.map((event) => (
-                  <article className={`log-entry ${event.level}`} key={event.id}>
-                    <header>
-                      <strong>{getLogTypeLabel(event)}</strong>
-                      <small>{formatTime(event.timestamp)}</small>
-                    </header>
-                    <p>{getLogDetail(event)}</p>
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <p className="empty-log">No log events yet.</p>
-            )}
-          </section>
-          <div className="message-list" role="log">
-            {messages.map((message) => {
-              const messageSources = message.sources ?? [];
-              const evidenceExpanded = expandedEvidenceIds.includes(message.id);
-              return (
-                <article className={`message ${message.role}`} key={message.id}>
-                  {message.focusStepIds?.length ? (
-                    <div className="message-header">
-                      <small>Focused matching guide step.</small>
-                    </div>
-                  ) : null}
-                  <p>{message.content}</p>
-                  {message.usage ? (
-                    <div className="message-usage">
-                      <span>{message.usage.model}</span>
-                      <span>{formatTokens(message.usage.totalTokens)} tokens</span>
-                    </div>
-                  ) : null}
-                  {message.role === 'assistant' && messageSources.length > 0 ? (
-                    <div className="message-evidence">
-                      <button onClick={() => toggleEvidence(message.id)} type="button">
-                        {evidenceExpanded
-                          ? 'Hide sources'
-                          : `${messageSources.length} source${
-                              messageSources.length === 1 ? '' : 's'
-                            } available`}
-                      </button>
-                      {evidenceExpanded ? (
-                        <div className="evidence-list">
-                          {messageSources.map((source) => (
-                            <article className="evidence-item" key={source.id}>
-                              <span>
-                                {source.kind === 'web' || source.sourceType === 'web'
-                                  ? 'Web'
-                                  : 'Knowledge base'}
-                              </span>
-                              {source.uri ? (
-                                <a href={source.uri} rel="noreferrer" target="_blank">
-                                  {source.title}
-                                </a>
-                              ) : (
-                                <strong>{source.title}</strong>
-                              )}
-                              <p>{source.excerpt}</p>
-                            </article>
-                          ))}
-                        </div>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </article>
-              );
-            })}
-            {isChatLoading ? <article className="message assistant">Thinking...</article> : null}
-          </div>
-          <form className="chat-form" onSubmit={(event) => void handleSendMessage(event)}>
-            <textarea
-              aria-label="Message assistant"
-              onChange={(event) => setDraft(event.target.value)}
-              placeholder="Ask for the next action, visual location, or a plain-English answer."
-              value={draft}
-            />
-            <button
-              aria-pressed={webSearchEnabled}
-              className={`web-search-button ${webSearchEnabled ? 'active' : ''}`}
-              onClick={() => setWebSearchEnabled((current) => !current)}
-              type="button"
-            >
-              Web
-            </button>
-            <button
-              className="primary-button"
-              disabled={draft.trim().length === 0 || isChatLoading}
-            >
-              Send
-            </button>
-          </form>
-        </section>
+        <AgentChatDrawer
+          isRunning={isChatLoading}
+          messages={messages}
+          onSendMessage={handleSendMessage}
+          onToggleWebSearch={() => setWebSearchEnabled((current) => !current)}
+          webSearchEnabled={webSearchEnabled}
+        />
       </aside>
     </main>
   );

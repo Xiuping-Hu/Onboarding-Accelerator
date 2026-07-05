@@ -11,6 +11,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@assistant-ui/react": "^0.14.26",
     "@onboarding/shared": "file:../../packages/shared",
     "bcryptjs": "^2.4.3"
   },
