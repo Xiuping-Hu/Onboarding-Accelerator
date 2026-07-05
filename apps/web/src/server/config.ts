@@ -16,6 +16,10 @@ export interface ServerConfig {
   authIssuer?: string;
   authAudience?: string;
   authJwksUri?: string;
+  databaseUrl?: string;
+  postgresSsl: boolean;
+  postgresPoolMax: number;
+  sessionStore: 'file' | 'postgres';
   sessionStorePath: string;
   logStorePath: string;
   webSearchAllowed: boolean;
@@ -30,6 +34,9 @@ export interface ServerConfig {
   ragWebsiteAllowlist: string[];
   ragMaxFileBytes: number;
   ragMaxChunksPerSource: number;
+  ragVectorEnabled: boolean;
+  ragVectorLimit: number;
+  openAiEmbeddingModel: string;
 }
 
 export function loadConfig(): ServerConfig {
@@ -44,6 +51,10 @@ export function loadConfig(): ServerConfig {
     authIssuer: optionalString(process.env.AUTH_ISSUER),
     authAudience: optionalString(process.env.AUTH_AUDIENCE),
     authJwksUri: optionalString(process.env.AUTH_JWKS_URI),
+    databaseUrl: optionalString(process.env.DATABASE_URL),
+    postgresSsl: process.env.POSTGRES_SSL === 'true',
+    postgresPoolMax: Number.parseInt(process.env.POSTGRES_POOL_MAX ?? '10', 10),
+    sessionStore: parseSessionStore(process.env.SESSION_STORE),
     sessionStorePath: process.env.SESSION_STORE_PATH ?? 'data/sessions.json',
     logStorePath: process.env.LOG_STORE_PATH ?? 'data/events.jsonl',
     webSearchAllowed: process.env.WEB_SEARCH_ALLOWED === 'true',
@@ -58,6 +69,9 @@ export function loadConfig(): ServerConfig {
     ragWebsiteAllowlist: parseList(process.env.RAG_WEBSITE_ALLOWLIST),
     ragMaxFileBytes: Number.parseInt(process.env.RAG_MAX_FILE_BYTES ?? '1048576', 10),
     ragMaxChunksPerSource: Number.parseInt(process.env.RAG_MAX_CHUNKS_PER_SOURCE ?? '8', 10),
+    ragVectorEnabled: process.env.RAG_VECTOR_ENABLED === 'true',
+    ragVectorLimit: Number.parseInt(process.env.RAG_VECTOR_LIMIT ?? '5', 10),
+    openAiEmbeddingModel: process.env.OPENAI_EMBEDDING_MODEL ?? 'text-embedding-3-small',
   };
 
   validateConfig(config);
@@ -77,6 +91,22 @@ function validateConfig(config: ServerConfig): void {
 
   if (config.nodeEnv === 'production' && config.authDisabled) {
     throw new Error('AUTH_DISABLED cannot be true in production');
+  }
+
+  if (config.sessionStore === 'postgres' && !config.databaseUrl) {
+    throw new Error('SESSION_STORE=postgres requires DATABASE_URL');
+  }
+
+  if (config.ragVectorEnabled && !config.databaseUrl) {
+    throw new Error('RAG_VECTOR_ENABLED=true requires DATABASE_URL');
+  }
+
+  if (!Number.isFinite(config.postgresPoolMax) || config.postgresPoolMax <= 0) {
+    throw new Error('POSTGRES_POOL_MAX must be a positive integer');
+  }
+
+  if (!Number.isFinite(config.ragVectorLimit) || config.ragVectorLimit <= 0) {
+    throw new Error('RAG_VECTOR_LIMIT must be a positive integer');
   }
 
   // Next serves the UI and API from the same origin; CORS is only needed if a future client is
@@ -100,6 +130,18 @@ function optionalNumber(value: string | undefined): number | undefined {
 
   const parsed = Number.parseFloat(trimmed);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parseSessionStore(value: string | undefined): 'file' | 'postgres' {
+  if (!value?.trim()) {
+    return 'file';
+  }
+
+  if (value === 'file' || value === 'postgres') {
+    return value;
+  }
+
+  throw new Error('SESSION_STORE must be either "file" or "postgres"');
 }
 
 function parseList(value: string | undefined): string[] {

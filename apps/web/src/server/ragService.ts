@@ -1,5 +1,6 @@
 import type { SourceProvenance } from '@onboarding/shared';
 import { retrieveKnowledge } from './knowledgeBase';
+import type { PgvectorKnowledgeBase } from './pgvectorKnowledgeBase';
 import type { RagInputAdapter } from './ragAdapters/types';
 import { mergeAndRerankSources } from './sourceMerger';
 import type { WebSearchProvider } from './webSearchProvider';
@@ -19,15 +20,20 @@ export class RagService {
   constructor(
     private readonly webSearchProvider: WebSearchProvider,
     private readonly inputAdapters: RagInputAdapter[] = [],
+    private readonly vectorKnowledgeBase?: PgvectorKnowledgeBase,
   ) {}
 
   async retrieve(query: string, options: RetrievalOptions): Promise<RetrievalContext> {
-    const seedKnowledgeSources = await retrieveKnowledge(query);
+    const [seedKnowledgeSources, vectorKnowledgeSources] = await Promise.all([
+      retrieveKnowledge(query),
+      this.vectorKnowledgeBase?.retrieve(query) ?? [],
+    ]);
     const adapterSources = (
       await Promise.all(this.inputAdapters.map((adapter) => retrieveFromAdapter(adapter, query)))
     ).flat();
     const knowledgeBaseSources = [
       ...seedKnowledgeSources,
+      ...vectorKnowledgeSources,
       ...adapterSources.filter((source) => source.sourceType !== 'web'),
     ];
     const websiteSources = adapterSources.filter((source) => source.sourceType === 'web');

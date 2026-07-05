@@ -38,10 +38,11 @@ The app uses the Next.js App Router. `packages/shared` remains a workspace packa
 Set these before running with `NODE_ENV=production`:
 
 - Authentication: either `API_AUTH_TOKEN` for trusted gateway/service mode, or all of `AUTH_ISSUER`, `AUTH_AUDIENCE`, and `AUTH_JWKS_URI` for JWT validation.
-- `SESSION_STORE_PATH`: writable durable path for session JSON storage.
+- Session storage: use `SESSION_STORE=postgres` with `DATABASE_URL` for multi-instance deployments, or `SESSION_STORE=file` plus `SESSION_STORE_PATH` for local/single-instance JSON storage.
 - `LOG_STORE_PATH`: writable durable path for JSONL request, error, and AI usage logs.
 - `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_TIMEOUT_MS`, and `OPENAI_MAX_RETRIES`.
 - `RAG_SHARED_DIRECTORY` for shared files and `RAG_WEBSITE_ALLOWLIST` for allowed website ingestion.
+- pgvector RAG: apply `db/migrations/001_postgres_pgvector.sql`, populate `knowledge_chunks`, then set `RAG_VECTOR_ENABLED=true`, `DATABASE_URL`, and optionally `OPENAI_EMBEDDING_MODEL` and `RAG_VECTOR_LIMIT`.
 
 Do not set `AUTH_DISABLED=true` in production. Startup validation rejects that combination. CORS is not configured by default because the Next app serves UI and API from the same origin; add a hosting/provider policy only if a future cross-origin client is introduced.
 
@@ -53,12 +54,12 @@ Use `AUTH_DISABLED=true` locally. Requests default to `local-dev-user`; setting 
 
 1. Run `npm install`.
 2. Run `npm run lint`, `npm test`, and `npm run build`.
-3. Deploy the Next.js app from `apps/web` to a Node-compatible Next host.
-4. Provide the production environment variables above.
-5. Ensure the configured session and log paths are backed by durable storage, or replace the file repositories with a managed database/log provider.
+3. Apply database migrations when using Postgres or pgvector.
+4. Deploy the Next.js app from `apps/web` to a Node-compatible Next host.
+5. Provide the production environment variables above.
+6. Ensure the configured session and log paths are backed by durable storage.
 
 ## Deferred Production Choices
 
-- File-based session storage should move to a database before multi-instance deployment.
 - The current in-process rate limiter is suitable for local and single-instance use; production should use Redis, an edge/provider limiter, or another shared backend.
-- RAG ingestion is request-time file and website scanning. Larger deployments should move ingestion to an indexing job.
+- RAG ingestion is request-time file and website scanning unless `knowledge_chunks` is populated separately. Larger deployments should move all ingestion to an indexing job.
