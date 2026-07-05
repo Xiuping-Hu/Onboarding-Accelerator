@@ -8,6 +8,7 @@ const loginSchema = z.object({
   token: z.string().optional(),
   userId: z.string().trim().min(1).max(120).optional(),
   tenantId: z.string().trim().min(1).max(120).optional(),
+  role: z.enum(['user', 'admin']).optional(),
 });
 
 export async function POST(request: NextRequest): Promise<Response> {
@@ -25,6 +26,9 @@ export async function POST(request: NextRequest): Promise<Response> {
     }
     if (payload.tenantId) {
       headers.set('x-tenant-id', payload.tenantId);
+    }
+    if (payload.role) {
+      headers.set('x-user-role', payload.role);
     }
 
     const user = await authenticateRequest({ headers } as NextRequest, services.config);

@@ -32,4 +32,11 @@ By default sessions persist to `SESSION_STORE_PATH`. Set `SESSION_STORE=postgres
 `db/migrations/001_postgres_pgvector.sql`, populate `knowledge_chunks` with 1536-dimension
 embeddings, and set `RAG_VECTOR_ENABLED=true`.
 
+Admin operations are available at `/admin`. The admin console uses the same browser account session
+as the workspace and requires the authenticated user role to be `admin`; all `/api/admin/*` routes
+enforce that role server-side. In local `AUTH_DISABLED=true` development, the admin login form can
+set the role header for smoke testing. Admin audit events, AI rate cards, and AI fee adjustments
+persist to `ADMIN_AUDIT_STORE_PATH`, `AI_RATE_CARDS_STORE_PATH`, and
+`AI_FEE_ADJUSTMENTS_STORE_PATH`.
+
 The pre-commit hook updates harness docs, stages the generated docs, then runs lint and Prettier checks.

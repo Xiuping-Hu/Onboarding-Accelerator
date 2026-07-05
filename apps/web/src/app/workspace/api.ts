@@ -25,11 +25,13 @@ export interface AccountSession {
   userId: string;
   tenantId?: string;
   token?: string;
+  role?: 'user' | 'admin';
 }
 
 const authTokenKey = 'onboardingAuthToken';
 const authUserIdKey = 'onboardingUserId';
 const authTenantIdKey = 'onboardingTenantId';
+const authRoleKey = 'onboardingUserRole';
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -52,7 +54,7 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
-function getAuthHeaders(): Record<string, string> {
+export function getAuthHeaders(): Record<string, string> {
   if (typeof window === 'undefined') {
     return {};
   }
@@ -60,10 +62,12 @@ function getAuthHeaders(): Record<string, string> {
   const token = window.sessionStorage.getItem(authTokenKey);
   const userId = window.sessionStorage.getItem(authUserIdKey);
   const tenantId = window.sessionStorage.getItem(authTenantIdKey);
+  const role = window.sessionStorage.getItem(authRoleKey);
   return {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(userId ? { 'X-User-ID': userId } : {}),
     ...(tenantId ? { 'X-Tenant-ID': tenantId } : {}),
+    ...(role ? { 'X-User-Role': role } : {}),
   };
 }
 
@@ -75,6 +79,7 @@ export function getStoredAccountSession(): AccountSession | null {
   const token = window.sessionStorage.getItem(authTokenKey) ?? undefined;
   const userId = window.sessionStorage.getItem(authUserIdKey) ?? undefined;
   const tenantId = window.sessionStorage.getItem(authTenantIdKey) ?? undefined;
+  const role = window.sessionStorage.getItem(authRoleKey) ?? undefined;
 
   if (!token && !userId) {
     return null;
@@ -84,6 +89,7 @@ export function getStoredAccountSession(): AccountSession | null {
     userId: userId ?? 'local-dev-user',
     ...(tenantId ? { tenantId } : {}),
     ...(token ? { token } : {}),
+    ...(role === 'admin' || role === 'user' ? { role } : {}),
   };
 }
 
@@ -97,6 +103,7 @@ export async function loginAccount(payload: LoginRequest): Promise<AccountSessio
     userId: response.user.id,
     ...(response.user.tenantId ? { tenantId: response.user.tenantId } : {}),
     ...(response.authToken ? { token: response.authToken } : {}),
+    ...(response.user.role ? { role: response.user.role } : {}),
   };
   storeAccountSession(account);
   return account;
@@ -109,6 +116,11 @@ export async function getCurrentAccount(): Promise<AccountSession> {
     userId: response.user.id,
     ...(response.user.tenantId ? { tenantId: response.user.tenantId } : {}),
     ...(stored?.token ? { token: stored.token } : {}),
+    ...(response.user.role
+      ? { role: response.user.role }
+      : stored?.role
+        ? { role: stored.role }
+        : {}),
   };
   storeAccountSession(account);
   return account;
@@ -122,6 +134,7 @@ export function logoutAccount(): void {
   window.sessionStorage.removeItem(authTokenKey);
   window.sessionStorage.removeItem(authUserIdKey);
   window.sessionStorage.removeItem(authTenantIdKey);
+  window.sessionStorage.removeItem(authRoleKey);
 }
 
 function storeAccountSession(account: AccountSession): void {
@@ -139,6 +152,11 @@ function storeAccountSession(account: AccountSession): void {
     window.sessionStorage.setItem(authTenantIdKey, account.tenantId);
   } else {
     window.sessionStorage.removeItem(authTenantIdKey);
+  }
+  if (account.role) {
+    window.sessionStorage.setItem(authRoleKey, account.role);
+  } else {
+    window.sessionStorage.removeItem(authRoleKey);
   }
 }
 

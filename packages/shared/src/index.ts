@@ -36,12 +36,16 @@ export interface HealthResponse {
 export interface AccountUser {
   id: string;
   tenantId?: string;
+  role?: AccountRole;
 }
+
+export type AccountRole = 'user' | 'admin';
 
 export interface LoginRequest {
   token?: string;
   userId?: string;
   tenantId?: string;
+  role?: AccountRole;
 }
 
 export interface LoginResponse {
@@ -222,7 +226,6 @@ export interface AiUsageStats {
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
-  estimatedFeeUsd: number;
 }
 
 export interface AiUsageModelSummary extends AiUsageStats {
@@ -265,4 +268,130 @@ export interface LogEventRecord {
 
 export interface LogEventsResponse {
   events: LogEventRecord[];
+}
+
+export interface AdminActivityQuery {
+  limit?: number;
+  cursor?: string;
+  eventType?: LogEventType;
+  userId?: string;
+  sessionId?: string;
+  requestId?: string;
+  statusCode?: number;
+  operation?: AiUsageOperation;
+  model?: string;
+  from?: string;
+  to?: string;
+}
+
+export interface AdminActivitySummary {
+  eventsTotal: number;
+  errorsTotal: number;
+  aiRequestsTotal: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+}
+
+export interface AdminActivityResponse {
+  events: LogEventRecord[];
+  summary: AdminActivitySummary;
+  nextCursor?: string;
+}
+
+export interface AdminActivityEventResponse {
+  event: LogEventRecord;
+}
+
+export interface AdminActivityDeleteResponse {
+  deletedCount: number;
+}
+
+export interface AdminAuditEvent {
+  id: string;
+  actorUserId: string;
+  action: string;
+  targetType: string;
+  targetId?: string;
+  metadata?: Record<string, string | number | boolean | undefined>;
+  ipAddress?: string;
+  userAgent?: string;
+  createdAt: string;
+}
+
+export interface AdminAuditResponse {
+  events: AdminAuditEvent[];
+}
+
+export interface AiRateCard {
+  id: string;
+  provider: string;
+  model: string;
+  currency: string;
+  inputCostPer1MTokens: number;
+  outputCostPer1MTokens: number;
+  effectiveFrom: string;
+  effectiveTo?: string;
+  isActive: boolean;
+  createdByUserId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateAiRateCardRequest {
+  provider?: string;
+  model: string;
+  currency?: string;
+  inputCostPer1MTokens: number;
+  outputCostPer1MTokens: number;
+  effectiveFrom?: string;
+  effectiveTo?: string;
+  isActive?: boolean;
+}
+
+export interface AiFeeModelSummary {
+  model: string;
+  requests: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  estimatedFee: number;
+  currency: string;
+  missingRateCardRequests: number;
+}
+
+export interface AiFeeSummaryResponse {
+  requests: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  estimatedFee: number;
+  currency: string;
+  missingRateCardRequests: number;
+  byModel: Record<string, AiFeeModelSummary>;
+}
+
+export interface AiRateCardsResponse {
+  rateCards: AiRateCard[];
+}
+
+export interface AiFeeAdjustment {
+  id: string;
+  usageEventId?: string;
+  amount: number;
+  currency: string;
+  reason: string;
+  createdByUserId: string;
+  createdAt: string;
+}
+
+export interface CreateAiFeeAdjustmentRequest {
+  usageEventId?: string;
+  amount: number;
+  currency?: string;
+  reason: string;
+}
+
+export interface AiFeeAdjustmentsResponse {
+  adjustments: AiFeeAdjustment[];
 }

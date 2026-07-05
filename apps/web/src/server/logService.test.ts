@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { FileLogService } from './logService';
 
-void test('file log service summarizes requests, errors, and AI usage fees', async () => {
+void test('file log service summarizes requests, errors, and AI token usage', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'onboarding-logs-'));
   const storePath = join(directory, 'events.jsonl');
 
@@ -35,7 +35,6 @@ void test('file log service summarizes requests, errors, and AI usage fees', asy
         inputTokens: 1_000,
         outputTokens: 500,
         totalTokens: 1_500,
-        estimatedFeeUsd: 0.0025,
       },
     });
     await logs.recordAiUsage({
@@ -46,7 +45,6 @@ void test('file log service summarizes requests, errors, and AI usage fees', asy
         inputTokens: 500,
         outputTokens: 250,
         totalTokens: 750,
-        estimatedFeeUsd: 0.00125,
       },
     });
 
@@ -59,7 +57,6 @@ void test('file log service summarizes requests, errors, and AI usage fees', asy
     assert.equal(summary.aiUsage.inputTokens, 1_500);
     assert.equal(summary.aiUsage.outputTokens, 750);
     assert.equal(summary.aiUsage.totalTokens, 2_250);
-    assert.equal(summary.aiUsage.estimatedFeeUsd, 0.00375);
     assert.equal(summary.aiUsage.byModel['test-model']?.requests, 2);
 
     const recent = await logs.listRecent(2);

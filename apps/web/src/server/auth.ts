@@ -5,12 +5,20 @@ import type { ServerConfig } from './config';
 export interface AuthenticatedUser {
   id: string;
   tenantId?: string;
+  role?: 'user' | 'admin';
 }
 
 export class AuthError extends Error {
   constructor(message = 'Authentication required') {
     super(message);
     this.name = 'AuthError';
+  }
+}
+
+export class ForbiddenError extends Error {
+  constructor(message = 'Admin access required') {
+    super(message);
+    this.name = 'ForbiddenError';
   }
 }
 
@@ -24,6 +32,7 @@ export async function authenticateRequest(
     return {
       id: readHeader(request, 'x-user-id') ?? 'local-dev-user',
       tenantId: readHeader(request, 'x-tenant-id'),
+      role: readRoleHeader(request),
     };
   }
 
@@ -36,6 +45,7 @@ export async function authenticateRequest(
     return {
       id: readHeader(request, 'x-user-id') ?? 'api-token-user',
       tenantId: readHeader(request, 'x-tenant-id'),
+      role: readRoleHeader(request),
     };
   }
 
@@ -57,6 +67,7 @@ export async function authenticateRequest(
     return {
       id,
       tenantId: readClaim(payload, 'tid'),
+      role: readRoleClaim(payload),
     };
   } catch (error) {
     if (error instanceof AuthError) {
@@ -65,6 +76,14 @@ export async function authenticateRequest(
 
     throw new AuthError('Invalid authentication token');
   }
+}
+
+export function requireAdminUser(user: AuthenticatedUser): AuthenticatedUser {
+  if (user.role !== 'admin') {
+    throw new ForbiddenError();
+  }
+
+  return user;
 }
 
 function getJwks(uri: string): ReturnType<typeof createRemoteJWKSet> {
@@ -89,7 +108,26 @@ function readHeader(request: NextRequest, name: string): string | undefined {
   return value || undefined;
 }
 
+function readRoleHeader(request: NextRequest): AuthenticatedUser['role'] | undefined {
+  const role = readHeader(request, 'x-user-role');
+  return role === 'admin' || role === 'user' ? role : undefined;
+}
+
 function readClaim(payload: Record<string, unknown>, name: string): string | undefined {
   const value = payload[name];
   return typeof value === 'string' && value.trim() ? value : undefined;
+}
+
+function readRoleClaim(payload: Record<string, unknown>): AuthenticatedUser['role'] | undefined {
+  const role = readClaim(payload, 'role');
+  if (role === 'admin' || role === 'user') {
+    return role;
+  }
+
+  const roles = payload.roles;
+  if (Array.isArray(roles) && roles.includes('admin')) {
+    return 'admin';
+  }
+
+  return undefined;
 }

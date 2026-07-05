@@ -5,10 +5,14 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { NextRequest } from 'next/server';
 import type {
+  AdminActivityResponse,
+  AdminAuditResponse,
+  AiFeeSummaryResponse,
   ChatResponse,
   CreateSessionResponse,
   GenerateGuideRootResponse,
 } from '@onboarding/shared';
+import { FileLogService } from '../server/logService';
 
 void test('Next API handlers create sessions, generate guides, chat, and expose logs', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'onboarding-next-api-'));
@@ -81,6 +85,148 @@ void test('Next API handlers create sessions, generate guides, chat, and expose 
   assert.ok(((await logsResponse.json()) as { events: unknown[] }).events.length >= 3);
 });
 
+void test('admin APIs require admin role and manage activity logs and AI fees', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'onboarding-admin-api-'));
+  resetServices();
+  process.env.AUTH_DISABLED = 'true';
+  process.env.SESSION_STORE_PATH = join(directory, 'sessions.json');
+  process.env.LOG_STORE_PATH = join(directory, 'events.jsonl');
+  process.env.ADMIN_AUDIT_STORE_PATH = join(directory, 'admin-audit.jsonl');
+  process.env.AI_RATE_CARDS_STORE_PATH = join(directory, 'ai-rate-cards.json');
+  process.env.OPENAI_API_KEY = '';
+
+  const logs = new FileLogService(process.env.LOG_STORE_PATH);
+  await logs.recordRequest({
+    requestId: 'request-admin-1',
+    method: 'POST',
+    path: '/api/sessions/session-1/chat',
+    statusCode: 200,
+    durationMs: 12,
+    userId: 'worker-1',
+  });
+  await logs.recordAiUsage({
+    operation: 'chat',
+    userId: 'worker-1',
+    sessionId: 'session-1',
+    usage: {
+      model: 'gpt-test',
+      inputTokens: 1_000,
+      outputTokens: 500,
+      totalTokens: 1_500,
+    },
+  });
+  await logs.recordError({
+    requestId: 'request-admin-error',
+    method: 'GET',
+    path: '/api/admin/failing',
+    message: 'Admin test error',
+    userId: 'worker-1',
+  });
+
+  const activityRoute = await import('./api/admin/activity/route');
+  const exportRoute = await import('./api/admin/activity/export/route');
+  const retentionRoute = await import('./api/admin/activity/retention/route');
+  const ratesRoute = await import('./api/admin/ai-fees/rates/route');
+  const adjustmentsRoute = await import('./api/admin/ai-fees/adjustments/route');
+  const feesRoute = await import('./api/admin/ai-fees/summary/route');
+  const recalculateRoute = await import('./api/admin/ai-fees/recalculate/route');
+  const auditRoute = await import('./api/admin/audit/route');
+
+  const deniedResponse = await activityRoute.GET(
+    new NextRequest('http://localhost/api/admin/activity', {
+      headers: { 'x-user-id': 'worker-1', 'x-user-role': 'user' },
+    }),
+  );
+  assert.equal(deniedResponse.status, 403);
+
+  const activityResponse = await activityRoute.GET(
+    new NextRequest('http://localhost/api/admin/activity?eventType=ai_usage', {
+      headers: adminHeaders(),
+    }),
+  );
+  assert.equal(activityResponse.status, 200);
+  const activity = (await activityResponse.json()) as AdminActivityResponse;
+  assert.equal(activity.summary.aiRequestsTotal, 1);
+  assert.equal(activity.events[0]?.usage?.totalTokens, 1_500);
+
+  const rateResponse = await ratesRoute.POST(
+    adminJsonRequest('http://localhost/api/admin/ai-fees/rates', {
+      model: 'gpt-test',
+      inputCostPer1MTokens: 2,
+      outputCostPer1MTokens: 4,
+      effectiveFrom: '2000-01-01T00:00:00.000Z',
+    }),
+  );
+  assert.equal(rateResponse.status, 200);
+
+  const feesResponse = await feesRoute.GET(
+    new NextRequest('http://localhost/api/admin/ai-fees/summary', {
+      headers: adminHeaders(),
+    }),
+  );
+  assert.equal(feesResponse.status, 200);
+  const fees = (await feesResponse.json()) as AiFeeSummaryResponse;
+  assert.equal(fees.requests, 1);
+  assert.equal(fees.estimatedFee, 0.004);
+
+  const exportResponse = await exportRoute.POST(
+    adminJsonRequest('http://localhost/api/admin/activity/export', {
+      format: 'csv',
+      query: { eventType: 'ai_usage' },
+    }),
+  );
+  assert.equal(exportResponse.status, 200);
+  assert.match(await exportResponse.text(), /gpt-test/);
+
+  const retentionResponse = await retentionRoute.POST(
+    adminJsonRequest('http://localhost/api/admin/activity/retention', {
+      retentionDays: 90,
+      reason: 'Policy test',
+    }),
+  );
+  assert.equal(retentionResponse.status, 200);
+
+  const recalculateResponse = await recalculateRoute.POST(
+    adminJsonRequest('http://localhost/api/admin/ai-fees/recalculate', {
+      query: {},
+      reason: 'Rate correction test',
+    }),
+  );
+  assert.equal(recalculateResponse.status, 200);
+
+  const adjustmentResponse = await adjustmentsRoute.POST(
+    adminJsonRequest('http://localhost/api/admin/ai-fees/adjustments', {
+      usageEventId: activity.events[0]?.id,
+      amount: -0.001,
+      reason: 'Credit duplicate usage',
+    }),
+  );
+  assert.equal(adjustmentResponse.status, 200);
+
+  const deleteResponse = await activityRoute.DELETE(
+    adminJsonRequest('http://localhost/api/admin/activity', {
+      query: { eventType: 'error' },
+      reason: 'Cleanup test errors',
+    }),
+  );
+  assert.equal(deleteResponse.status, 200);
+  assert.deepEqual(await deleteResponse.json(), { deletedCount: 1 });
+
+  const auditResponse = await auditRoute.GET(
+    new NextRequest('http://localhost/api/admin/audit?limit=10', {
+      headers: adminHeaders(),
+    }),
+  );
+  assert.equal(auditResponse.status, 200);
+  const audit = (await auditResponse.json()) as AdminAuditResponse;
+  assert.ok(audit.events.some((event) => event.action === 'ai_rate_card.create'));
+  assert.ok(audit.events.some((event) => event.action === 'activity.export'));
+  assert.ok(audit.events.some((event) => event.action === 'activity.retention.update'));
+  assert.ok(audit.events.some((event) => event.action === 'ai_fees.recalculate'));
+  assert.ok(audit.events.some((event) => event.action === 'ai_fee_adjustment.create'));
+  assert.ok(audit.events.some((event) => event.action === 'activity.delete'));
+});
+
 function jsonRequest(url: string, body: unknown): NextRequest {
   return new NextRequest(url, {
     method: 'POST',
@@ -90,4 +236,27 @@ function jsonRequest(url: string, body: unknown): NextRequest {
     },
     body: JSON.stringify(body),
   });
+}
+
+function adminJsonRequest(url: string, body: unknown): NextRequest {
+  return new NextRequest(url, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      ...adminHeaders(),
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+function adminHeaders(): Record<string, string> {
+  return {
+    'x-user-id': 'admin-user',
+    'x-user-role': 'admin',
+  };
+}
+
+function resetServices(): void {
+  delete (globalThis as typeof globalThis & { __onboardingServices?: unknown })
+    .__onboardingServices;
 }
