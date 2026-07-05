@@ -291,6 +291,21 @@ function getBreadcrumbs(graph: GuideGraph | null, selectedStepId: string | null)
   return breadcrumbs;
 }
 
+export function getSelectedGuideStep(
+  graph: GuideGraph | null,
+  selectedStepId: string | null,
+): GuideStep | null {
+  if (!graph || !selectedStepId) {
+    return null;
+  }
+
+  return graph.steps.find((step) => step.id === selectedStepId) ?? null;
+}
+
+export function getAssistantDrawerToggleLabel(isCollapsed: boolean) {
+  return isCollapsed ? 'Open agent drawer' : 'Close agent drawer';
+}
+
 function GuideCanvas({
   graph,
   selectedStepId,
@@ -609,6 +624,10 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
   const [apiError, setApiError] = useState<string | null>(null);
 
   const breadcrumbs = useMemo(() => getBreadcrumbs(graph, selectedStepId), [graph, selectedStepId]);
+  const selectedStep = useMemo(
+    () => getSelectedGuideStep(graph, selectedStepId),
+    [graph, selectedStepId],
+  );
   const visibleGraph = useMemo(
     () => getVisibleGraph(graph, selectedStepId),
     [graph, selectedStepId],
@@ -719,7 +738,7 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
   async function handleNavigateToStep(stepId: string) {
     setSelectedStepId(stepId);
     setFocusStepIds([stepId]);
-    setIsRightPanelCollapsed(true);
+    setIsRightPanelCollapsed(false);
 
     if (!activeSessionId) {
       return;
@@ -750,6 +769,7 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
   function handleLocateStep(stepId: string) {
     setSelectedStepId(stepId);
     setFocusStepIds([stepId]);
+    setIsRightPanelCollapsed(false);
   }
 
   function toggleEvidence(messageId: string) {
@@ -897,7 +917,8 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
 
       <aside className="assistant-panel" aria-label="Chat assistant and sources">
         <button
-          aria-label={isRightPanelCollapsed ? 'Expand assistant panel' : 'Collapse assistant panel'}
+          aria-expanded={!isRightPanelCollapsed}
+          aria-label={getAssistantDrawerToggleLabel(isRightPanelCollapsed)}
           className="panel-toggle"
           onClick={() => setIsRightPanelCollapsed((current) => !current)}
           type="button"
@@ -906,9 +927,40 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
         </button>
         <section className="chat-panel">
           <div className="panel-heading">
-            <p className="eyebrow">Assistant</p>
+            <p className="eyebrow">Agent drawer</p>
             <h2>Ask, locate, focus</h2>
           </div>
+          <section className="agent-focus-card" aria-label="Current agent focus">
+            <div className="agent-focus-heading">
+              <span>Current focus</span>
+              {selectedStep ? <strong>{statusLabel[selectedStep.status]}</strong> : null}
+            </div>
+            {selectedStep ? (
+              <>
+                <h3>{selectedStep.title}</h3>
+                <p>{selectedStep.detail || selectedStep.summary}</p>
+                <div className="agent-focus-meta">
+                  <span>Depth {selectedStep.depth}</span>
+                  <span>{selectedStep.childIds.length} substeps</span>
+                  <span>{selectedStep.sourceIds?.length ?? 0} sources</span>
+                </div>
+                <div className="agent-focus-actions">
+                  <button onClick={() => handleLocateStep(selectedStep.id)} type="button">
+                    Focus map
+                  </button>
+                  <button
+                    disabled={selectedStep.canExpand === false || selectedStep.childIds.length > 0}
+                    onClick={() => void handleNavigateToStep(selectedStep.id)}
+                    type="button"
+                  >
+                    Expand
+                  </button>
+                </div>
+              </>
+            ) : (
+              <p>Select a guide node to give the agent a precise workspace focus.</p>
+            )}
+          </section>
           {logSummary ? (
             <div className="usage-summary" aria-label="AI usage summary">
               <div className="usage-metric">
