@@ -48,10 +48,7 @@ export function AgentChatDrawer({
           onToggleEvidence={toggleEvidence}
         />
         {isRunning ? <div className="assistant-thinking">Thinking...</div> : null}
-        <AgentComposer
-          onToggleWebSearch={onToggleWebSearch}
-          webSearchEnabled={webSearchEnabled}
-        />
+        <AgentComposer onToggleWebSearch={onToggleWebSearch} webSearchEnabled={webSearchEnabled} />
       </section>
     </AgentChatRuntimeProvider>
   );

@@ -2,6 +2,7 @@ import { Component, useCallback, useEffect, useMemo, useRef, useState } from 're
 import type { ErrorInfo, ReactNode } from 'react';
 import type {
   ChatMessage,
+  DraftGuideMap,
   GuideEdge,
   GuideGraph,
   GuideStep,
@@ -10,6 +11,7 @@ import type {
 } from '@onboarding/shared';
 import {
   type AccountSession,
+  createGuideMap,
   createSession,
   deleteSession,
   expandStep,
@@ -599,6 +601,7 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
   const [graph, setGraph] = useState<GuideGraph | null>(null);
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [focusStepIds, setFocusStepIds] = useState<string[]>([]);
+  const [draftGuideMap, setDraftGuideMap] = useState<DraftGuideMap | null>(null);
   const [, setSources] = useState<KnowledgeSource[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>(emptyMessages);
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
@@ -613,6 +616,11 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
     () => getVisibleGraph(graph, selectedStepId),
     [graph, selectedStepId],
   );
+  const isGuideEmpty = graph?.emptyReason === 'not_created';
+  const selectedStep = useMemo(
+    () => graph?.steps.find((step) => step.id === selectedStepId) ?? null,
+    [graph, selectedStepId],
+  );
 
   const loadGuide = useCallback(
     async (sessionId: string) => {
@@ -623,6 +631,11 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
         setGraph(response.graph);
         setSources((current) => mergeSources(current, response.graph.sources));
         const focusId = response.focusStepId ?? response.graph.rootId;
+        if (response.graph.emptyReason === 'not_created') {
+          setSelectedStepId(null);
+          setFocusStepIds([]);
+          return;
+        }
         setSelectedStepId(focusId);
         setFocusStepIds([focusId]);
       } catch (error) {
@@ -675,6 +688,7 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
       setActiveSessionId(created.session.id);
       setMessages(emptyMessages);
       setSources([]);
+      setDraftGuideMap(null);
     } catch (error) {
       setApiError(formatError(error, 'Could not create a new session.'));
     }
@@ -704,13 +718,15 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
   async function handleNavigateToStep(stepId: string) {
     setSelectedStepId(stepId);
     setFocusStepIds([stepId]);
+  }
 
+  async function handleRevealStep(stepId: string) {
     if (!activeSessionId) {
       return;
     }
 
     const step = graph?.steps.find((candidate) => candidate.id === stepId);
-    if (!step || step.childIds.length > 0 || step.canExpand === false) {
+    if (!step || !step.hasChildren) {
       return;
     }
 
@@ -723,11 +739,10 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
       });
       setGraph(response.graph);
       setSources((current) => mergeSources(current, response.graph.sources));
-      const focusId = response.focusStepId ?? stepId;
-      setSelectedStepId(focusId);
-      setFocusStepIds([focusId]);
+      setSelectedStepId(stepId);
+      setFocusStepIds([stepId]);
     } catch (error) {
-      setApiError(formatError(error, 'Could not expand that guide step.'));
+      setApiError(formatError(error, 'Could not reveal that guide step.'));
     }
   }
 
@@ -761,6 +776,7 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
       });
       setMessages((current) => [...current, response.message]);
       setSources((current) => mergeSources(current, response.sources));
+      setDraftGuideMap(response.draftGuideMap ?? null);
       if (response.focusStepIds && response.focusStepIds.length > 0) {
         setFocusStepIds(response.focusStepIds);
         setSelectedStepId(response.focusStepIds[0] ?? selectedStepId);
@@ -777,6 +793,31 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
       ]);
     } finally {
       setIsChatLoading(false);
+    }
+  }
+
+  async function handleCreateGuideMap() {
+    if (!activeSessionId || !draftGuideMap) {
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      setApiError(null);
+      const response = await createGuideMap({
+        sessionId: activeSessionId,
+        draftGuideMap,
+      });
+      setGraph(response.graph);
+      setSources((current) => mergeSources(current, response.graph.sources));
+      const focusId = response.focusStepId ?? response.graph.rootId;
+      setSelectedStepId(focusId);
+      setFocusStepIds([focusId]);
+      setDraftGuideMap(null);
+    } catch (error) {
+      setApiError(formatError(error, 'Could not create the guide map.'));
+    } finally {
+      setIsLoading(false);
     }
   }
 
@@ -839,7 +880,9 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
       <section className="workspace" aria-busy={isLoading}>
         <header className="topbar">
           <div className="breadcrumbs" aria-label="Selected step breadcrumbs">
-            {breadcrumbs.length === 0 ? (
+            {isGuideEmpty ? (
+              <span>No map yet</span>
+            ) : breadcrumbs.length === 0 ? (
               <span>Loading guide</span>
             ) : (
               breadcrumbs.map((crumb, index) => (
@@ -858,6 +901,29 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
           </div>
         ) : null}
         {isLoading ? <div className="loading-state">Loading onboarding workspace...</div> : null}
+        {isGuideEmpty && !isLoading ? (
+          <div className="empty-map-state">
+            <h2>Create a guide map</h2>
+            <p>Ask the agent for domain knowledge, then create a map from its answer.</p>
+            <button
+              className="primary-button"
+              disabled={!draftGuideMap}
+              onClick={() => void handleCreateGuideMap()}
+              type="button"
+            >
+              Create map
+            </button>
+          </div>
+        ) : null}
+        {!isGuideEmpty && selectedStep?.hasChildren ? (
+          <button
+            className="reveal-step-button"
+            onClick={() => void handleRevealStep(selectedStep.id)}
+            type="button"
+          >
+            Reveal children
+          </button>
+        ) : null}
         <GuideCanvas
           focusStepIds={focusStepIds}
           graph={visibleGraph}

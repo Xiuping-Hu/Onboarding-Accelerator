@@ -40,6 +40,10 @@ By default sessions persist to `SESSION_STORE_PATH`. Set `SESSION_STORE=postgres
 `db/migrations/001_postgres_pgvector.sql`, populate `knowledge_chunks` with 1536-dimension
 embeddings, and set `RAG_VECTOR_ENABLED=true`.
 
+Guide maps are created from the workspace agent flow. A new session starts with an empty canvas; ask
+the agent for domain knowledge, then use Create map when the response includes a draft map proposal.
+The created map is saved with the session guide state.
+
 Admin operations are available at `/admin`. The admin console uses the same browser account session
 as the workspace and requires the authenticated user role to be `admin`; all `/api/admin/*` routes
 enforce that role server-side. In local `AUTH_DISABLED=true` development, the admin login form can

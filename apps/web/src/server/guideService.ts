@@ -1,5 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import type {
+  CreateGuideMapRequest,
+  CreateGuideMapResponse,
+  DraftGuideMapNode,
   ExpandGuideStepRequest,
   ExpandGuideStepResponse,
   GenerateGuideRootRequest,
@@ -24,27 +27,84 @@ export class GuideOrchestrationService {
     ownerId: string,
   ): Promise<GenerateGuideRootResponse> {
     const session = await this.sessions.get(sessionId, ownerId);
-    const prompt = request.prompt?.trim() || 'Create an onboarding guide for a new teammate';
-    const webSearchEnabled = request.webSearchEnabled ?? session.settings.webSearchEnabled;
-    const retrieval = await this.rag.retrieve(prompt, { webSearchEnabled });
-    const now = new Date().toISOString();
-    const rootNodes = createRootNodes(retrieval.sources, now, this.maxDepth);
+    const nodes = session.guide.rootNodeIds
+      .map((nodeId) => session.guide.nodes[nodeId])
+      .filter((node): node is GuideNode => Boolean(node));
 
-    for (const node of rootNodes) {
-      session.guide.nodes[node.id] = node;
+    return {
+      rootNodeIds: session.guide.rootNodeIds,
+      nodes,
+      session,
+      sources: collectSources(Object.values(session.guide.nodes)),
+    };
+  }
+
+  async createMap(
+    sessionId: string,
+    request: CreateGuideMapRequest,
+    ownerId: string,
+  ): Promise<CreateGuideMapResponse> {
+    const session = await this.sessions.get(sessionId, ownerId);
+    const now = new Date().toISOString();
+    const nodesByClientId = new Map<string, GuideNode>();
+    const sourceById = new Map<string, SourceProvenance>();
+
+    for (const source of collectDraftSources(request.draftGuideMap.nodes, session)) {
+      sourceById.set(source.id, source);
     }
 
+    for (const draftNode of [...request.draftGuideMap.nodes].sort(compareDraftNodes)) {
+      const nodeSources = (draftNode.sourceIds ?? [])
+        .map((sourceId) => sourceById.get(sourceId))
+        .filter((source): source is SourceProvenance => Boolean(source));
+      const node = createNode({
+        title: draftNode.title,
+        summary: draftNode.summary,
+        parentId: draftNode.parentClientId
+          ? nodesByClientId.get(draftNode.parentClientId)?.id
+          : undefined,
+        depth: getDraftDepth(draftNode, request.draftGuideMap.nodes),
+        sources: nodeSources,
+        now,
+        detail: draftNode.detail,
+        maxDepth: this.maxDepth,
+      });
+      node.canExpand = false;
+      nodesByClientId.set(draftNode.clientId, node);
+    }
+
+    for (const draftNode of request.draftGuideMap.nodes) {
+      const node = nodesByClientId.get(draftNode.clientId);
+      if (!node || !draftNode.parentClientId) {
+        continue;
+      }
+
+      const parent = nodesByClientId.get(draftNode.parentClientId);
+      if (parent) {
+        parent.children.push(node.id);
+      }
+    }
+
+    const rootNodes = request.draftGuideMap.nodes
+      .filter((draftNode) => !draftNode.parentClientId)
+      .sort(compareDraftNodes)
+      .map((draftNode) => nodesByClientId.get(draftNode.clientId))
+      .filter((node): node is GuideNode => Boolean(node));
+
     session.guide.rootNodeIds = rootNodes.map((node) => node.id);
+    session.guide.nodes = Object.fromEntries(
+      [...nodesByClientId.values()].map((node) => [node.id, node]),
+    );
     session.guide.selectedNodeId = rootNodes[0]?.id;
     session.guide.expandedNodeIds = [];
 
     const savedSession = await this.sessions.save(touchSession(session), ownerId);
 
     return {
-      rootNodeIds: session.guide.rootNodeIds,
+      rootNodeIds: savedSession.guide.rootNodeIds,
       nodes: rootNodes,
       session: savedSession,
-      sources: retrieval.sources,
+      sources: collectSources(Object.values(savedSession.guide.nodes)),
     };
   }
 
@@ -64,59 +124,28 @@ export class GuideOrchestrationService {
       const existingChildren = parent.children
         .map((childId) => session.guide.nodes[childId])
         .filter((node): node is GuideNode => Boolean(node));
+      session.guide.selectedNodeId = parent.id;
+      session.guide.expandedNodeIds = unique([...session.guide.expandedNodeIds, parent.id]);
+      const savedSession = await this.sessions.save(touchSession(session), ownerId);
 
       return {
         parentNodeId: parent.id,
         childNodeIds: existingChildren.map((node) => node.id),
         nodes: existingChildren,
-        session,
+        session: savedSession,
         sources: existingChildren.flatMap((node) => node.sources),
       };
     }
 
-    if (parent.depth >= this.maxDepth) {
-      parent.canExpand = false;
-      parent.updatedAt = new Date().toISOString();
-      session.guide.selectedNodeId = parent.id;
-      const savedSession = await this.sessions.save(touchSession(session), ownerId);
-
-      return {
-        parentNodeId: parent.id,
-        childNodeIds: [],
-        nodes: [],
-        session: savedSession,
-        sources: [],
-      };
-    }
-
-    const prompt =
-      request.instruction?.trim() ||
-      `Expand onboarding guide step "${parent.title}" into detailed next steps`;
-    const webSearchEnabled = request.webSearchEnabled ?? session.settings.webSearchEnabled;
-    const retrieval = await this.rag.retrieve(`${parent.title}. ${prompt}`, { webSearchEnabled });
-    const now = new Date().toISOString();
-    const childNodes = createChildNodes(parent, retrieval.sources, now, this.maxDepth);
-
-    for (const node of childNodes) {
-      session.guide.nodes[node.id] = node;
-    }
-
-    parent.children.push(...childNodes.map((node) => node.id));
-    parent.status = 'expanded';
-    parent.canExpand = false;
-    parent.updatedAt = now;
-    parent.detail = parent.detail || buildDetail(parent.title, retrieval.sources);
     session.guide.selectedNodeId = parent.id;
-    session.guide.expandedNodeIds = unique([...session.guide.expandedNodeIds, parent.id]);
-
     const savedSession = await this.sessions.save(touchSession(session), ownerId);
 
     return {
       parentNodeId: parent.id,
-      childNodeIds: childNodes.map((node) => node.id),
-      nodes: childNodes,
+      childNodeIds: [],
+      nodes: [],
       session: savedSession,
-      sources: retrieval.sources,
+      sources: [],
     };
   }
 }
@@ -126,69 +155,6 @@ export class GuideNodeNotFoundError extends Error {
     super(`Guide node not found: ${nodeId}`);
     this.name = 'GuideNodeNotFoundError';
   }
-}
-
-function createRootNodes(sources: SourceProvenance[], now: string, maxDepth: number): GuideNode[] {
-  const fallbackTitles = [
-    'Set up access',
-    'Meet the team',
-    'Learn the product',
-    'Complete training',
-  ];
-  const selectedSources = sources.length > 0 ? sources.slice(0, 4) : [];
-  const titles =
-    selectedSources.length > 0 ? selectedSources.map((source) => source.title) : fallbackTitles;
-
-  return titles.map((title, index) => {
-    const source = selectedSources[index];
-
-    return createNode({
-      title,
-      summary:
-        source?.excerpt ?? `Start with ${title.toLowerCase()} and collect the required context.`,
-      depth: 0,
-      sources: source ? [source] : [],
-      now,
-      maxDepth,
-    });
-  });
-}
-
-function createChildNodes(
-  parent: GuideNode,
-  sources: SourceProvenance[],
-  now: string,
-  maxDepth: number,
-): GuideNode[] {
-  const sourceBacked = sources.slice(0, 3).map((source, index) =>
-    createNode({
-      title: `${parent.title}: ${source.title}`,
-      summary: source.excerpt,
-      parentId: parent.id,
-      depth: parent.depth + 1,
-      sources: [source],
-      now,
-      detail: buildDetail(source.title, [source], index + 1),
-      maxDepth,
-    }),
-  );
-
-  if (sourceBacked.length > 0) {
-    return sourceBacked;
-  }
-
-  return ['Understand context', 'Take action', 'Confirm completion'].map((title, index) =>
-    createNode({
-      title: `${parent.title}: ${title}`,
-      summary: `Break "${parent.title}" into a concrete onboarding action.`,
-      parentId: parent.id,
-      depth: parent.depth + 1,
-      sources: [],
-      now,
-      detail: buildDetail(title, [], index + 1),
-      maxDepth,
-    }),
-  );
 }
 
 function createNode(input: {
@@ -218,12 +184,43 @@ function createNode(input: {
   };
 }
 
-function buildDetail(title: string, sources: SourceProvenance[], stepNumber = 1): string {
-  const grounding =
-    sources.map((source) => source.title).join(', ') || 'the onboarding knowledge base';
-  return `Step ${stepNumber}: use ${grounding} to clarify "${title}", identify the owner, and capture the next observable action.`;
-}
-
 function unique(values: string[]): string[] {
   return [...new Set(values)];
+}
+
+function collectSources(nodes: GuideNode[]): SourceProvenance[] {
+  const sourceById = new Map<string, SourceProvenance>();
+  for (const node of nodes) {
+    for (const source of node.sources) {
+      sourceById.set(source.id, source);
+    }
+  }
+  return [...sourceById.values()];
+}
+
+function collectDraftSources(
+  draftNodes: DraftGuideMapNode[],
+  session: Awaited<ReturnType<SessionRepository['get']>>,
+): SourceProvenance[] {
+  const requestedIds = new Set(draftNodes.flatMap((node) => node.sourceIds ?? []));
+  return session.chatHistory
+    .flatMap((message) => message.sources ?? [])
+    .filter((source) => requestedIds.has(source.id));
+}
+
+function compareDraftNodes(a: DraftGuideMapNode, b: DraftGuideMapNode): number {
+  return a.position - b.position || a.clientId.localeCompare(b.clientId);
+}
+
+function getDraftDepth(node: DraftGuideMapNode, nodes: DraftGuideMapNode[]): number {
+  const nodesByClientId = new Map(nodes.map((candidate) => [candidate.clientId, candidate]));
+  let depth = 0;
+  let current = node.parentClientId ? nodesByClientId.get(node.parentClientId) : undefined;
+
+  while (current) {
+    depth += 1;
+    current = current.parentClientId ? nodesByClientId.get(current.parentClientId) : undefined;
+  }
+
+  return depth;
 }

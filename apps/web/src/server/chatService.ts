@@ -3,8 +3,10 @@ import type {
   ChatMessage,
   ChatRequest,
   ChatResponse,
+  DraftGuideMap,
   GuideNode,
   OnboardingSession,
+  SourceProvenance,
 } from '@onboarding/shared';
 import type { RagRetriever } from './ragService';
 import type { AnswerProvider } from './openAiService';
@@ -47,6 +49,10 @@ export class ChatOrchestrationService {
       guideNodeIds,
       usage: answer.usage,
     };
+    const draftGuideMap =
+      Object.keys(session.guide.nodes).length === 0
+        ? createDraftGuideMap(request.message, retrieval.sources)
+        : undefined;
 
     session.chatHistory.push(userMessage, assistantMessage);
     const savedSession = await this.sessions.save(touchSession(session), ownerId);
@@ -65,6 +71,7 @@ export class ChatOrchestrationService {
       session: savedSession,
       sources: retrieval.sources,
       guideNodeIds,
+      draftGuideMap,
       usage: answer.usage,
     };
   }
@@ -138,4 +145,64 @@ function findRelevantGuideNodeIds(session: OnboardingSession, query: string): st
 function nodeMatchesTerms(node: GuideNode, terms: string[]): boolean {
   const haystack = `${node.title} ${node.summary} ${node.detail ?? ''}`.toLowerCase();
   return terms.some((term) => term.length > 2 && haystack.includes(term));
+}
+
+function createDraftGuideMap(prompt: string, sources: SourceProvenance[]): DraftGuideMap {
+  const selectedSources = sources.slice(0, 4);
+  const rootNodes =
+    selectedSources.length > 0
+      ? selectedSources.map((source, index) => ({
+          clientId: `root-${index + 1}`,
+          title: source.title,
+          summary: source.excerpt,
+          detail: `Use ${source.title} to answer "${prompt}" and identify the next onboarding action.`,
+          sourceIds: [source.id],
+          position: index,
+        }))
+      : [
+          {
+            clientId: 'root-1',
+            title: 'Clarify the domain',
+            summary: `Collect the core concepts needed to answer "${prompt}".`,
+            detail:
+              'Ask for source material or connect knowledge sources before committing the map.',
+            sourceIds: [],
+            position: 0,
+          },
+          {
+            clientId: 'root-2',
+            title: 'Identify workflows',
+            summary: 'List the workflows, owners, and decisions that shape the domain.',
+            detail: 'Turn the domain answer into concrete onboarding steps.',
+            sourceIds: [],
+            position: 1,
+          },
+        ];
+
+  const childNodes = rootNodes.flatMap((rootNode, index) => [
+    {
+      clientId: `${rootNode.clientId}-context`,
+      parentClientId: rootNode.clientId,
+      title: `${rootNode.title}: Context`,
+      summary: 'Summarize the key facts, language, and constraints.',
+      detail: rootNode.detail,
+      sourceIds: rootNode.sourceIds,
+      position: index * 2,
+    },
+    {
+      clientId: `${rootNode.clientId}-action`,
+      parentClientId: rootNode.clientId,
+      title: `${rootNode.title}: Action`,
+      summary: 'Capture the practical next step for onboarding.',
+      detail: 'Convert the domain knowledge into an observable task.',
+      sourceIds: rootNode.sourceIds,
+      position: index * 2 + 1,
+    },
+  ]);
+
+  return {
+    title: `Map for ${prompt}`,
+    summary: 'Generated from the latest agent answer.',
+    nodes: [...rootNodes, ...childNodes],
+  };
 }
