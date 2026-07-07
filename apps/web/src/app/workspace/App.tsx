@@ -1,9 +1,6 @@
 'use client';
 
-export {
-  default,
-  getNodeLayout,
-} from './WorkspaceClient';
+export { default, getNodeLayout } from './WorkspaceClient';
 
 export {
   clampCanvasScale,

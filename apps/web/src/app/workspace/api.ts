@@ -2,8 +2,11 @@ import type {
   CurrentUserResponse,
   ChatRequest,
   ChatResponse,
+  CreateGuideMapRequest,
+  CreateGuideMapResponse,
   CreateSessionRequest,
   CreateSessionResponse,
+  DraftGuideMap,
   ExpandGuideStepResponse,
   ExpandStepRequest,
   GenerateGuideRootResponse,
@@ -103,7 +106,10 @@ export async function getRootGuide(payload: GuideRequest): Promise<GuideResponse
   );
   return {
     graph: toGuideGraph(response.session.guide, response.sources, response.session.id),
-    focusStepId: `${response.session.id}-guide-root`,
+    focusStepId:
+      response.session.guide.rootNodeIds.length > 0
+        ? `${response.session.id}-guide-root`
+        : undefined,
   };
 }
 
@@ -124,6 +130,25 @@ export async function expandStep(payload: ExpandStepRequest): Promise<GuideRespo
   };
 }
 
+export async function createGuideMap(payload: {
+  sessionId: string;
+  draftGuideMap: DraftGuideMap;
+}): Promise<GuideResponse> {
+  const response = await requestJson<CreateGuideMapResponse>(
+    `/api/sessions/${encodeURIComponent(payload.sessionId)}/guide/map`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        draftGuideMap: payload.draftGuideMap,
+      } satisfies CreateGuideMapRequest),
+    },
+  );
+  return {
+    graph: toGuideGraph(response.session.guide, response.sources, response.session.id),
+    focusStepId: response.session.guide.rootNodeIds[0],
+  };
+}
+
 function toGuideGraph(
   guide: GuideGraphState,
   sources: KnowledgeSource[],
@@ -141,6 +166,16 @@ function toGuideGraph(
     }
   }
 
+  if (guide.rootNodeIds.length === 0 && Object.keys(guide.nodes).length === 0) {
+    return {
+      rootId,
+      steps: [],
+      edges: [],
+      sources: [...sourceById.values()],
+      emptyReason: 'not_created',
+    };
+  }
+
   const steps: GuideStep[] = [
     {
       id: rootId,
@@ -153,6 +188,8 @@ function toGuideGraph(
       sourceIds: [...sourceById.keys()],
       canExpand: false,
       maxDepth: Math.max(0, ...Object.values(guide.nodes).map((node) => node.maxDepth ?? 0)) + 1,
+      childCount: guide.rootNodeIds.length,
+      hasChildren: guide.rootNodeIds.length > 0,
     },
     ...Object.values(guide.nodes).map((node) => toGuideStep(node, rootId)),
   ];
@@ -195,6 +232,8 @@ function toGuideStep(node: GuideNode, rootId: string): GuideStep {
     sourceIds: node.sources.map((source) => source.id),
     canExpand: node.canExpand,
     maxDepth: node.maxDepth + 1,
+    childCount: node.children.length,
+    hasChildren: node.children.length > 0,
   };
 }
 

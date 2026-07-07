@@ -149,6 +149,8 @@ export interface GuideStep {
   sourceIds?: string[];
   canExpand?: boolean;
   maxDepth?: number;
+  childCount?: number;
+  hasChildren?: boolean;
 }
 
 export interface GuideEdge {
@@ -163,6 +165,7 @@ export interface GuideGraph {
   steps: GuideStep[];
   edges: GuideEdge[];
   sources: KnowledgeSource[];
+  emptyReason?: 'not_created';
 }
 
 export interface GuideRequest {
@@ -192,7 +195,24 @@ export interface ChatResponse {
   sources: SourceProvenance[];
   guideNodeIds?: string[];
   focusStepIds?: string[];
+  draftGuideMap?: DraftGuideMap;
   usage?: AiUsageStats;
+}
+
+export interface DraftGuideMap {
+  title: string;
+  summary?: string;
+  nodes: DraftGuideMapNode[];
+}
+
+export interface DraftGuideMapNode {
+  clientId: string;
+  parentClientId?: string;
+  title: string;
+  summary: string;
+  detail?: string;
+  sourceIds?: string[];
+  position: number;
 }
 
 export interface GenerateGuideRootRequest {
@@ -216,6 +236,17 @@ export interface ExpandGuideStepRequest {
 export interface ExpandGuideStepResponse {
   parentNodeId: string;
   childNodeIds: string[];
+  nodes: GuideNode[];
+  session: OnboardingSession;
+  sources: SourceProvenance[];
+}
+
+export interface CreateGuideMapRequest {
+  draftGuideMap: DraftGuideMap;
+}
+
+export interface CreateGuideMapResponse {
+  rootNodeIds: string[];
   nodes: GuideNode[];
   session: OnboardingSession;
   sources: SourceProvenance[];
