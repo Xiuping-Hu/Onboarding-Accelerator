@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { ChatMessage } from '@onboarding/shared';
+import { AgentComposer } from './AgentComposer';
 import { AgentThread } from './AgentThread';
 
 export function AgentChatDrawer({
@@ -37,11 +38,14 @@ export function AgentChatDrawer({
         onToggleEvidence={toggleEvidence}
         userLabel={userLabel}
       />
-      {isRunning ? (
-        <div aria-live="polite" className="assistant-thinking" role="status">
-          Onboarding assistant is thinking...
-        </div>
-      ) : null}
+      <div className="chat-composer-area">
+        {isRunning ? (
+          <div aria-live="polite" className="assistant-thinking" role="status">
+            Onboarding assistant is thinking...
+          </div>
+        ) : null}
+        <AgentComposer />
+      </div>
     </section>
   );
 }

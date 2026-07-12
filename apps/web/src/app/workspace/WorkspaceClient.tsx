@@ -23,6 +23,7 @@ import {
   sendChat,
 } from './api';
 import { AgentChatDrawer } from './assistant/AgentChatDrawer';
+import { DeletePlanDialog } from './assistant/DeletePlanDialog';
 import { PlanThreadList } from './assistant/PlanThreadList';
 import { WorkspaceAssistantRuntimeProvider } from './assistant/WorkspaceAssistantRuntimeProvider';
 import {
@@ -598,7 +599,11 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
   const [isLoading, setIsLoading] = useState(true);
   const [runningSessionIds, setRunningSessionIds] = useState<string[]>([]);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [deleteDialogSessionId, setDeleteDialogSessionId] = useState<string | null>(null);
+  const [deleteDialogError, setDeleteDialogError] = useState<string | null>(null);
+  const [isDeletingSession, setIsDeletingSession] = useState(false);
   const activeSessionIdRef = useRef<string | null>(null);
+  const deleteTriggerRef = useRef<HTMLElement | null>(null);
 
   const breadcrumbs = useMemo(() => getBreadcrumbs(graph, selectedStepId), [graph, selectedStepId]);
   const visibleGraph = useMemo(
@@ -614,6 +619,9 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
   const activeDraftGuideMap = activeSessionId ? (draftGuideMaps[activeSessionId] ?? null) : null;
   const isChatLoading = activeSessionId ? runningSessionIds.includes(activeSessionId) : false;
   const accountLabel = account.displayName ?? account.email ?? account.userId;
+  const deleteDialogSession = deleteDialogSessionId
+    ? (sessions.find((session) => session.id === deleteDialogSessionId) ?? null)
+    : null;
 
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId;
@@ -688,20 +696,36 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
     }
   }
 
-  async function handleDeleteSession(sessionId: string) {
-    const session = sessions.find((candidate) => candidate.id === sessionId);
-    if (
-      sessions.length <= 1 ||
-      (typeof window !== 'undefined' &&
-        !window.confirm(
-          `Delete ${session?.title ?? 'this onboarding plan'}? This cannot be undone.`,
-        ))
-    ) {
+  async function requestDeleteSession(sessionId: string) {
+    if (sessions.length <= 1 || isDeletingSession) {
+      return;
+    }
+
+    deleteTriggerRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setDeleteDialogError(null);
+    setDeleteDialogSessionId(sessionId);
+  }
+
+  function closeDeleteDialog() {
+    if (isDeletingSession) {
+      return;
+    }
+
+    setDeleteDialogError(null);
+    setDeleteDialogSessionId(null);
+    requestAnimationFrame(() => deleteTriggerRef.current?.focus());
+  }
+
+  async function handleDeleteSession() {
+    const sessionId = deleteDialogSessionId;
+    if (!sessionId || isDeletingSession) {
       return;
     }
 
     try {
-      setApiError(null);
+      setIsDeletingSession(true);
+      setDeleteDialogError(null);
       await deleteSession(sessionId);
       const remaining = sessions.filter((session) => session.id !== sessionId);
       setSessions(remaining);
@@ -717,8 +741,13 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
         setGraph(null);
         setSelectedStepId(null);
       }
+
+      deleteTriggerRef.current = null;
+      setDeleteDialogSessionId(null);
     } catch (error) {
-      setApiError(formatError(error, 'Could not delete the session.'));
+      setDeleteDialogError(formatError(error, 'Could not delete the session.'));
+    } finally {
+      setIsDeletingSession(false);
     }
   }
 
@@ -863,7 +892,7 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
         isRunning={isChatLoading}
         messages={activeMessages}
         onCreatePlan={handleCreateSession}
-        onDeletePlan={handleDeleteSession}
+        onDeletePlan={requestDeleteSession}
         onSelectPlan={async (sessionId) => setActiveSessionId(sessionId)}
         onSendMessage={handleSendMessage}
         sessions={sessions}
@@ -966,6 +995,14 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
             userLabel={accountLabel}
           />
         </aside>
+        <DeletePlanDialog
+          error={deleteDialogError}
+          isDeleting={isDeletingSession}
+          onCancel={closeDeleteDialog}
+          onConfirm={handleDeleteSession}
+          open={deleteDialogSession !== null}
+          planTitle={deleteDialogSession?.title ?? 'this onboarding plan'}
+        />
       </WorkspaceAssistantRuntimeProvider>
     </main>
   );

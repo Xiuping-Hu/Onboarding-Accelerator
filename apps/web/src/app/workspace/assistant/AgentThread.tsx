@@ -1,7 +1,6 @@
 import { ThreadPrimitive } from '@assistant-ui/react';
 import type { ChatMessage } from '@onboarding/shared';
 import { AgentMessage } from './AgentMessage';
-import { AgentComposer } from './AgentComposer';
 import { UserMessage } from './UserMessage';
 
 export function AgentThread({
@@ -36,11 +35,10 @@ export function AgentThread({
           </div>
         </ThreadPrimitive.Empty>
         <ThreadPrimitive.Messages components={components} />
-        <ThreadPrimitive.ViewportFooter className="thread-composer-footer">
+        <ThreadPrimitive.ViewportFooter className="thread-scroll-footer">
           <ThreadPrimitive.ScrollToBottom className="scroll-to-bottom" type="button">
             Latest messages
           </ThreadPrimitive.ScrollToBottom>
-          <AgentComposer />
         </ThreadPrimitive.ViewportFooter>
       </ThreadPrimitive.Viewport>
     </ThreadPrimitive.Root>

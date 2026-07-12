@@ -47,8 +47,7 @@ a {
   text-decoration: none;
 }
 
-a:hover,
-button:hover {
+a:hover {
   text-decoration: underline;
 }
 
@@ -510,6 +509,13 @@ h3 {
   box-shadow: inset 3px 0 0 var(--panel-accent);
 }
 
+.plan-thread-item:not([data-active]):hover,
+.plan-thread-item:not([data-active]):focus-within {
+  border-color: rgb(185 200 245 / 55%);
+  background: rgb(237 242 255 / 62%);
+  box-shadow: inset 3px 0 0 rgb(59 92 204 / 62%);
+}
+
 .plan-thread-trigger {
   display: grid;
   gap: 3px;
@@ -521,10 +527,6 @@ h3 {
   background: transparent;
   color: var(--panel-text);
   text-align: left;
-}
-
-.plan-thread-trigger:hover {
-  background: rgba(59, 92, 204, 0.07);
 }
 
 .plan-thread-title {
@@ -795,9 +797,12 @@ h3 {
   bottom: 16px;
   display: flex;
   flex-direction: column;
+  flex: 0 0 360px;
   width: 360px;
   min-width: 0;
   min-height: 0;
+  max-width: calc(100vw - 32px);
+  overflow: hidden;
   border: 1px solid var(--panel-border);
   border-radius: var(--panel-radius);
   background: var(--panel-surface);
@@ -806,6 +811,7 @@ h3 {
 
 .right-collapsed .assistant-panel {
   bottom: auto;
+  flex-basis: 52px;
   width: 52px;
 }
 
@@ -825,7 +831,10 @@ h3 {
   grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 12px;
   flex: 1;
+  width: 100%;
+  min-width: 0;
   min-height: 0;
+  overflow: hidden;
   padding: 16px;
 }
 
@@ -845,12 +854,17 @@ h3 {
   display: grid;
   align-content: start;
   gap: 10px;
-  overflow: auto;
-  padding: 8px 2px 112px;
+  min-width: 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 8px 2px;
 }
 
 .agent-thread {
   display: grid;
+  width: 100%;
+  min-width: 0;
   min-height: 0;
 }
 
@@ -858,6 +872,8 @@ h3 {
   display: flex;
   align-items: flex-end;
   gap: 8px;
+  width: 100%;
+  min-width: 0;
   max-width: 100%;
 }
 
@@ -870,11 +886,13 @@ h3 {
 }
 
 .message-bubble {
+  min-width: 0;
   max-width: calc(100% - 40px);
   border: 1px solid var(--panel-border);
   border-radius: 12px;
   padding: 10px 12px;
   background: var(--assistant-surface);
+  overflow-wrap: anywhere;
 }
 
 .message.user .message-bubble {
@@ -931,11 +949,14 @@ h3 {
 .message-bubble [data-message-part] p,
 .message-bubble > p {
   margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .message-evidence {
   display: grid;
   gap: 8px;
+  min-width: 0;
   margin-top: 8px;
   color: #616161;
   font-size: 12px;
@@ -944,11 +965,13 @@ h3 {
 .evidence-list {
   display: grid;
   gap: 8px;
+  min-width: 0;
 }
 
 .evidence-item {
   display: grid;
   gap: 3px;
+  min-width: 0;
   border-top: 1px solid #e6e8f1;
   padding-top: 8px;
 }
@@ -978,14 +1001,24 @@ h3 {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: end;
+  min-width: 0;
 }
 
-.thread-composer-footer {
+.chat-composer-area {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  border-top: 1px solid var(--panel-border);
+  padding-top: 12px;
+  background: var(--panel-surface);
+}
+
+.thread-scroll-footer {
   position: sticky;
   right: 0;
   bottom: 0;
   left: 0;
-  padding-top: 10px;
+  padding-top: 8px;
   background: linear-gradient(to bottom, transparent, var(--panel-surface) 18%);
 }
 
@@ -1030,6 +1063,7 @@ h3 {
 
 .chat-form textarea,
 .chat-input {
+  min-width: 0;
   width: 100%;
   min-height: 72px;
   max-height: 140px;
@@ -1045,6 +1079,65 @@ h3 {
   color: #616161;
   font-size: 12px;
   font-weight: 650;
+}
+
+.dialog-overlay {
+  position: fixed;
+  z-index: 20;
+  inset: 0;
+  background: rgb(15 23 42 / 42%);
+}
+
+.delete-plan-dialog {
+  position: fixed;
+  z-index: 21;
+  top: 50%;
+  left: 50%;
+  width: min(420px, calc(100vw - 32px));
+  transform: translate(-50%, -50%);
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  padding: 20px;
+  background: #ffffff;
+  box-shadow: 0 20px 60px rgb(15 23 42 / 28%);
+}
+
+.delete-plan-dialog h2 {
+  margin: 0 0 8px;
+  color: var(--panel-text);
+  font-size: 18px;
+}
+
+.delete-plan-dialog p {
+  margin: 0;
+  color: var(--panel-muted);
+  line-height: 1.5;
+}
+
+.delete-plan-error {
+  margin-top: 12px !important;
+  color: #b42318 !important;
+  font-weight: 650;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.danger-button {
+  border: 1px solid #b42318;
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: #b42318;
+  color: #ffffff;
+  font-weight: 650;
+}
+
+.danger-button:hover:not(:disabled) {
+  background: #8f1d14;
 }
 
 .sr-only {
@@ -1112,6 +1205,7 @@ h3 {
     bottom: 12px;
     left: 12px;
     width: auto;
+    flex-basis: auto;
     max-height: none;
   }
 
