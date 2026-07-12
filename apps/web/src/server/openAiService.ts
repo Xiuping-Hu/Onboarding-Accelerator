@@ -1,4 +1,10 @@
 import type { AiUsageStats, ChatMessage, SourceProvenance } from '@onboarding/shared';
+import {
+  buildGroundedPrompt,
+  formatGroundedHistory,
+  onboardingSystemPrompt,
+} from './groundedPrompt';
+import { openAiFetch } from './openAiFetch';
 
 export interface OpenAiServiceConfig {
   apiKey?: string;
@@ -47,10 +53,9 @@ export class OpenAiService implements AnswerProvider {
           input: [
             {
               role: 'system',
-              content:
-                'You are an onboarding assistant. Answer clearly, cite the supplied source titles inline, use only grounded context when provided, and say when the information is missing instead of inventing it.',
+              content: onboardingSystemPrompt,
             },
-            ...formatHistory(input.chatHistory),
+            ...formatGroundedHistory(input.chatHistory),
             {
               role: 'user',
               content: buildGroundedPrompt(input.prompt, input.sources, input.guideNodeIds ?? []),
@@ -96,34 +101,6 @@ interface OpenAiResponse {
   };
 }
 
-function formatHistory(chatHistory: ChatMessage[] = []) {
-  return chatHistory.slice(-8).map((message) => ({
-    role: message.role === 'assistant' ? 'assistant' : 'user',
-    content: message.content,
-  }));
-}
-
-function buildGroundedPrompt(
-  prompt: string,
-  sources: SourceProvenance[],
-  guideNodeIds: string[],
-): string {
-  const sourceContext =
-    sources.length > 0
-      ? sources
-          .slice(0, 5)
-          .map(
-            (source, index) =>
-              `${index + 1}. ${source.title}\n${source.excerpt}\nURI: ${source.uri ?? 'not provided'}`,
-          )
-          .join('\n\n')
-      : 'No onboarding sources were retrieved.';
-  const guideContext =
-    guideNodeIds.length > 0 ? `\n\nRelated visual guide node IDs: ${guideNodeIds.join(', ')}` : '';
-
-  return `Question: ${prompt}\n\nGrounding context:\n${sourceContext}${guideContext}`;
-}
-
 async function fetchWithRetries(
   url: string,
   init: RequestInit,
@@ -136,7 +113,7 @@ async function fetchWithRetries(
     const timeout = setTimeout(() => controller.abort(), options.timeoutMs);
 
     try {
-      const response = await fetch(url, { ...init, signal: controller.signal });
+      const response = await openAiFetch(url, { ...init, signal: controller.signal });
       if (response.ok || !isRetryableStatus(response.status) || attempt === options.maxRetries) {
         return response;
       }

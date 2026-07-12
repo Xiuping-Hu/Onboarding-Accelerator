@@ -40,7 +40,14 @@ void test('PgvectorKnowledgeBase retrieves sources with query embedding', async 
 
   assert.equal(queries.length, 1);
   assert.match(queries[0]?.text ?? '', /embedding <=> \$1::vector/);
-  assert.deepEqual(queries[0]?.values, ['[0.25,0.75]', 3]);
+  assert.deepEqual(queries[0]?.values, [
+    '[0.25,0.75]',
+    'openai:text-embedding-3-small',
+    ['all_users'],
+    3,
+    false,
+    [],
+  ]);
   assert.equal(sources[0]?.id, 'kb:first');
   assert.equal(sources[0]?.score, 0.82);
   assert.deepEqual(sources[0]?.metadata, { department: 'engineering' });

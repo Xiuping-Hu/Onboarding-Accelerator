@@ -17,6 +17,8 @@ export class PgvectorKnowledgeBase {
     private readonly db: DatabaseClient,
     private readonly embeddings: EmbeddingProvider,
     private readonly limit = 5,
+    private readonly allowedAccessScopes: string[] = ['all_users'],
+    private readonly embeddingProfile = 'openai:text-embedding-3-small',
   ) {}
 
   async retrieve(query: string): Promise<SourceProvenance[]> {
@@ -24,6 +26,8 @@ export class PgvectorKnowledgeBase {
     if (!embedding?.length) {
       return [];
     }
+    const isLocalProfile = this.embeddingProfile.startsWith('local:');
+    const queryTerms = isLocalProfile ? keywordTerms(query) : [];
 
     const result = await this.db.query<KnowledgeChunkRow>(
       `select id,
@@ -32,11 +36,28 @@ export class PgvectorKnowledgeBase {
               uri,
               source_type,
               metadata,
-              greatest(0, 1 - (embedding <=> $1::vector)) as score
+              least(
+                0.99,
+                greatest(0, 1 - (embedding <=> $1::vector)) +
+                  case when $5::boolean then
+                    (select count(*)::float * 0.25
+                     from unnest($6::text[]) as term
+                     where lower(concat_ws(' ', title, excerpt)) like '%' || term || '%')
+                  else 0 end
+              ) as score
        from knowledge_chunks
-       order by embedding <=> $1::vector
-       limit $2`,
-      [formatVector(embedding), this.limit],
+       where embedding_profile = $2
+         and coalesce(metadata->>'accessScope', 'all_users') = any($3::text[])
+       order by score desc
+       limit $4`,
+      [
+        formatVector(embedding),
+        this.embeddingProfile,
+        this.allowedAccessScopes,
+        this.limit,
+        isLocalProfile,
+        queryTerms,
+      ],
     );
 
     return result.rows.map((row) => {
@@ -54,6 +75,12 @@ export class PgvectorKnowledgeBase {
       };
     });
   }
+}
+
+function keywordTerms(query: string): string[] {
+  return [...new Set(query.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [])].filter(
+    (term) => term.length > 2,
+  );
 }
 
 export function formatVector(values: number[]): string {

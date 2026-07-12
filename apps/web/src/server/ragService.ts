@@ -56,6 +56,7 @@ export class RagService implements RagRetriever {
     private readonly webSearchProvider: WebSearchProvider,
     private readonly inputAdapters: RagInputAdapter[] = [],
     private readonly vectorKnowledgeBase?: KnowledgeRetriever,
+    private readonly seedKnowledgeEnabled = true,
   ) {}
 
   async retrieve(query: string, options: RetrievalOptions): Promise<RetrievalContext> {
@@ -69,6 +70,7 @@ export class RagService implements RagRetriever {
           tool: 'seed_knowledge',
           label: 'Built-in onboarding knowledge',
           query: subquery,
+          skipReason: this.seedKnowledgeEnabled ? undefined : 'Seed knowledge is disabled.',
           run: () => retrieveKnowledge(subquery),
         }),
         knowledgeBaseSources,
