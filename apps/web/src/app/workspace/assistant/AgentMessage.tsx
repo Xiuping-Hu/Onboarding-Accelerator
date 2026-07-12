@@ -1,5 +1,7 @@
 import { MessagePrimitive, useAuiState } from '@assistant-ui/react';
 import type { ChatMessage } from '@onboarding/shared';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { AssistantEvidence } from './AssistantEvidence';
 import { MessageRoleCircle } from './MessageRoleCircle';
 
@@ -27,7 +29,11 @@ export function AgentMessage({
             <small>Related map step highlighted.</small>
           </div>
         ) : null}
-        <MessagePrimitive.Parts />
+        {sourceMessage ? (
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{sourceMessage.content}</ReactMarkdown>
+        ) : (
+          <MessagePrimitive.Parts />
+        )}
         <AssistantEvidence
           expanded={isExpanded}
           messageId={messageId}
