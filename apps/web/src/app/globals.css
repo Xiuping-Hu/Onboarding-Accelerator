@@ -953,6 +953,93 @@ h3 {
   overflow-wrap: anywhere;
 }
 
+.message.assistant .message-bubble > :first-child {
+  margin-top: 0;
+}
+
+.message.assistant .message-bubble > :last-child {
+  margin-bottom: 0;
+}
+
+.message.assistant .message-bubble :is(h1, h2, h3, h4, h5, h6) {
+  margin: 14px 0 8px;
+  color: #1d2939;
+  font-size: 1em;
+  line-height: 1.35;
+}
+
+.message.assistant .message-bubble p {
+  margin: 0 0 10px;
+  line-height: 1.55;
+}
+
+.message.assistant .message-bubble :is(ul, ol) {
+  margin: 0 0 10px;
+  padding-left: 20px;
+}
+
+.message.assistant .message-bubble li + li {
+  margin-top: 4px;
+}
+
+.message.assistant .message-bubble :is(a, code) {
+  overflow-wrap: anywhere;
+}
+
+.message.assistant .message-bubble a {
+  color: #255ec7;
+  text-decoration: underline;
+}
+
+.message.assistant .message-bubble :not(pre) > code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: #edf1f7;
+  font-size: 0.9em;
+}
+
+.message.assistant .message-bubble pre {
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 0 0 10px;
+  padding: 10px;
+  border-radius: 8px;
+  background: #172033;
+  color: #f4f7fb;
+}
+
+.message.assistant .message-bubble pre code {
+  padding: 0;
+  background: transparent;
+  color: inherit;
+}
+
+.message.assistant .message-bubble blockquote {
+  margin: 0 0 10px;
+  padding-left: 10px;
+  border-left: 3px solid #9ab7e8;
+  color: #526071;
+}
+
+.message.assistant .message-bubble table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  margin: 0 0 10px;
+}
+
+.message.assistant .message-bubble :is(th, td) {
+  padding: 6px 8px;
+  border: 1px solid #d8e0eb;
+  text-align: left;
+  vertical-align: top;
+}
+
+.message.assistant .message-bubble th {
+  background: #f3f6fa;
+}
+
 .message-evidence {
   display: grid;
   gap: 8px;
