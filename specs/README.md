@@ -17,6 +17,7 @@ superseded, and future-planning documents can be referenced without competing wi
 | 010    | `archive/010-full-screen-canvas-assistant-chat.md` | Complete   | Full-screen canvas with chat-only assistant-ui right drawer.             |
 | 011    | `archive/011-dynamic-agent-created-guide-map.md`   | Complete   | Empty-first guide maps created from agent domain knowledge.              |
 | 012    | `archive/012-rag-ingestion-sop.md`                 | Proposed   | Production RAG ingestion SOP for files, media, websites, and SharePoint. |
+| 013    | `archive/013-assistant-ui-workspace-panels.md`     | Proposed   | Unified assistant-ui plan navigation and production chat panels.         |
 
 Current runtime documentation lives in `README.md`, `docs/production-readiness.md`, and the generated
 harness docs under `docs/harness/generated`.

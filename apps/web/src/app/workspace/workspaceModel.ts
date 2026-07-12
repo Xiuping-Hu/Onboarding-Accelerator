@@ -79,5 +79,5 @@ export function getSelectedGuideStep(
 }
 
 export function getAssistantDrawerToggleLabel(isCollapsed: boolean) {
-  return isCollapsed ? 'Open agent drawer' : 'Close agent drawer';
+  return isCollapsed ? 'Open assistant' : 'Close assistant';
 }

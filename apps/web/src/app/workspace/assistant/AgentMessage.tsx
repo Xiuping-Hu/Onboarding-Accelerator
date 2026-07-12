@@ -1,10 +1,7 @@
 import { MessagePrimitive, useAuiState } from '@assistant-ui/react';
 import type { ChatMessage } from '@onboarding/shared';
 import { AssistantEvidence } from './AssistantEvidence';
-
-function formatTokens(value: number) {
-  return new Intl.NumberFormat(undefined).format(value);
-}
+import { MessageRoleCircle } from './MessageRoleCircle';
 
 export function AgentMessage({
   evidenceExpanded,
@@ -16,33 +13,28 @@ export function AgentMessage({
   onToggleEvidence: (messageId: string) => void;
 }) {
   const messageId = useAuiState((state) => state.message.id);
-  const role = useAuiState((state) => state.message.role);
   const sourceMessage = messageById.get(messageId);
   const messageSources = sourceMessage?.sources ?? [];
   const isExpanded = evidenceExpanded.includes(messageId);
 
   return (
-    <MessagePrimitive.Root className={`message ${role}`}>
-      {sourceMessage?.focusStepIds?.length ? (
-        <div className="message-header">
-          <small>Focused matching guide step.</small>
-        </div>
-      ) : null}
-      <MessagePrimitive.Parts />
-      {sourceMessage?.usage ? (
-        <div className="message-usage">
-          <span>{sourceMessage.usage.model}</span>
-          <span>{formatTokens(sourceMessage.usage.totalTokens)} tokens</span>
-        </div>
-      ) : null}
-      {role === 'assistant' ? (
+    <MessagePrimitive.Root className="message assistant" data-role="assistant">
+      <MessageRoleCircle label="AI" role="assistant" />
+      <div className="message-bubble">
+        <span className="sr-only">Onboarding assistant</span>
+        {sourceMessage?.focusStepIds?.length ? (
+          <div className="message-header">
+            <small>Related map step highlighted.</small>
+          </div>
+        ) : null}
+        <MessagePrimitive.Parts />
         <AssistantEvidence
           expanded={isExpanded}
           messageId={messageId}
           onToggle={onToggleEvidence}
           sources={messageSources}
         />
-      ) : null}
+      </div>
     </MessagePrimitive.Root>
   );
 }
