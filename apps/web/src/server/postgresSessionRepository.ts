@@ -47,7 +47,7 @@ export class PostgresSessionRepository implements SessionRepository {
     const now = new Date().toISOString();
     const session: OnboardingSession = {
       id: randomUUID(),
-      title: request.title?.trim() || 'New onboarding session',
+      title: request.title?.trim() || 'Untitled onboarding plan',
       createdAt: now,
       updatedAt: now,
       settings: {

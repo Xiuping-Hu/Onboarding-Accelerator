@@ -4,9 +4,9 @@ export function AgentComposer() {
   return (
     <ComposerPrimitive.Root className="chat-form">
       <ComposerPrimitive.Input
-        aria-label="Message assistant"
+        aria-label="Message the onboarding assistant"
         className="chat-input"
-        placeholder="Ask for the next action, visual location, or a plain-English answer."
+        placeholder="Ask about your role, team, tools, or next steps"
         style={{ resize: 'none' }}
         submitMode="enter"
       />

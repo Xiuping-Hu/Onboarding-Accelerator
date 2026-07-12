@@ -2,6 +2,18 @@
   box-sizing: border-box;
 }
 
+:root {
+  --panel-surface: rgba(255, 255, 255, 0.96);
+  --panel-border: #d9deea;
+  --panel-text: #1e293b;
+  --panel-muted: #64748b;
+  --panel-accent: #3b5ccc;
+  --assistant-surface: #f7f9ff;
+  --user-surface: #e9f3ff;
+  --focus-ring: #2458d3;
+  --panel-radius: 14px;
+}
+
 html,
 body,
 #root {
@@ -63,36 +75,40 @@ button:hover {
   left: 16px;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 12px;
   width: 244px;
   min-width: 0;
+  overflow: hidden;
   padding: 16px;
-  border: 1px solid #d7dbea;
-  border-radius: 8px;
-  background: #f8f9fc;
-  box-shadow: 0 18px 48px rgba(31, 33, 48, 0.12);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--panel-radius);
+  background: var(--panel-surface);
+  box-shadow: 0 16px 42px rgba(15, 23, 42, 0.14);
 }
 
 .panel-content {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 18px;
+  gap: 14px;
   min-width: 0;
+  min-height: 0;
 }
 
 .panel-toggle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 36px;
+  height: 36px;
   flex: 0 0 auto;
   border: 1px solid #c8cee5;
-  border-radius: 6px;
+  border-radius: 10px;
   background: #ffffff;
   color: #424242;
-  font-weight: 700;
+  font-size: 22px;
+  font-weight: 500;
+  line-height: 1;
 }
 
 .left-collapsed .session-rail,
@@ -102,7 +118,7 @@ button:hover {
 }
 
 .left-collapsed .session-rail {
-  width: 48px;
+  width: 54px;
 }
 
 .left-collapsed .session-rail .panel-content,
@@ -132,6 +148,13 @@ h1 {
   line-height: 1.1;
 }
 
+.panel-branding p {
+  margin-bottom: 4px;
+  color: var(--panel-muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
 h2 {
   margin-bottom: 8px;
   font-size: 19px;
@@ -153,7 +176,7 @@ h3 {
 }
 
 .primary-button {
-  background: #6264a7;
+  background: var(--panel-accent);
   color: #ffffff;
 }
 
@@ -447,40 +470,89 @@ h3 {
   font-size: 11px;
 }
 
-.session-list {
-  display: grid;
-  gap: 8px;
-  overflow: auto;
-}
-
-.session-item {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-  min-height: 58px;
-  border: 1px solid #d7dbea;
-  border-radius: 8px;
-  padding: 10px;
-  background: #ffffff;
-  color: #242424;
-  text-align: left;
-}
-
-.session-item span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.session-item small,
 .message small {
   color: #616161;
   font-size: 12px;
 }
 
-.session-item.active {
-  border-color: #6264a7;
-  box-shadow: inset 3px 0 0 #6264a7;
+.plan-thread-list {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+}
+
+.plan-new-button {
+  width: 100%;
+}
+
+.plan-thread-items {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  overflow: auto;
+}
+
+.plan-thread-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  padding: 3px;
+}
+
+.plan-thread-item[data-active] {
+  border-color: #b9c8f5;
+  background: #edf2ff;
+  box-shadow: inset 3px 0 0 var(--panel-accent);
+}
+
+.plan-thread-trigger {
+  display: grid;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  border-radius: 7px;
+  padding: 8px;
+  background: transparent;
+  color: var(--panel-text);
+  text-align: left;
+}
+
+.plan-thread-trigger:hover {
+  background: rgba(59, 92, 204, 0.07);
+}
+
+.plan-thread-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.plan-thread-trigger small {
+  color: var(--panel-muted);
+  font-size: 11px;
+}
+
+.plan-thread-delete {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #9f1239;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.plan-thread-delete:hover {
+  background: #ffe4e6;
 }
 
 .workspace {
@@ -726,10 +798,10 @@ h3 {
   width: 360px;
   min-width: 0;
   min-height: 0;
-  border: 1px solid #d7dbea;
-  border-radius: 8px;
-  background: #f8f9fc;
-  box-shadow: 0 18px 48px rgba(31, 33, 48, 0.12);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--panel-radius);
+  background: var(--panel-surface);
+  box-shadow: 0 16px 42px rgba(15, 23, 42, 0.14);
 }
 
 .right-collapsed .assistant-panel {
@@ -750,7 +822,7 @@ h3 {
 
 .chat-panel {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 12px;
   flex: 1;
   min-height: 0;
@@ -758,7 +830,15 @@ h3 {
 }
 
 .panel-heading h2 {
-  margin-bottom: 0;
+  margin-bottom: 4px;
+  padding-right: 34px;
+}
+
+.panel-heading p {
+  margin: 0;
+  color: var(--panel-muted);
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 .message-list {
@@ -766,7 +846,7 @@ h3 {
   align-content: start;
   gap: 10px;
   overflow: auto;
-  padding: 12px 2px;
+  padding: 8px 2px 112px;
 }
 
 .agent-thread {
@@ -775,21 +855,54 @@ h3 {
 }
 
 .message {
-  max-width: 92%;
-  border: 1px solid #d7dbea;
-  border-radius: 8px;
-  padding: 10px 12px;
-  background: #ffffff;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  max-width: 100%;
 }
 
 .message.user {
-  justify-self: end;
-  background: #eef6ff;
-  border-color: #b7d8f6;
+  justify-content: flex-end;
 }
 
 .message.assistant {
-  justify-self: start;
+  justify-content: flex-start;
+}
+
+.message-bubble {
+  max-width: calc(100% - 40px);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: var(--assistant-surface);
+}
+
+.message.user .message-bubble {
+  border-color: #b7d8f6;
+  background: var(--user-surface);
+}
+
+.message-role-circle {
+  display: inline-grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  place-items: center;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.message-role-circle.assistant {
+  background: #dce5ff;
+  color: #2546a8;
+}
+
+.message-role-circle.user {
+  order: 2;
+  background: #d7f0e5;
+  color: #0d6242;
 }
 
 .message-header {
@@ -815,21 +928,9 @@ h3 {
   margin-bottom: 0;
 }
 
-.message [data-message-part] p,
-.message > p {
+.message-bubble [data-message-part] p,
+.message-bubble > p {
   margin: 0;
-}
-
-.message-usage {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 10px;
-  margin-top: 8px;
-  border-top: 1px solid #e6e8f1;
-  padding-top: 7px;
-  color: #616161;
-  font-size: 11px;
-  font-weight: 650;
 }
 
 .message-evidence {
@@ -879,6 +980,54 @@ h3 {
   align-items: end;
 }
 
+.thread-composer-footer {
+  position: sticky;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  padding-top: 10px;
+  background: linear-gradient(to bottom, transparent, var(--panel-surface) 18%);
+}
+
+.scroll-to-bottom {
+  display: block;
+  margin: 0 auto 6px;
+  border: 0;
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: #edf2ff;
+  color: #314b9d;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.scroll-to-bottom:disabled {
+  display: none;
+}
+
+.assistant-welcome {
+  align-self: center;
+  max-width: 280px;
+  margin: 48px auto;
+  padding: 18px;
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  background: #f8faff;
+  text-align: center;
+}
+
+.assistant-welcome h3 {
+  margin-bottom: 6px;
+  font-size: 15px;
+}
+
+.assistant-welcome p {
+  margin: 0;
+  color: var(--panel-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .chat-form textarea,
 .chat-input {
   width: 100%;
@@ -896,6 +1045,15 @@ h3 {
   color: #616161;
   font-size: 12px;
   font-weight: 650;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
 }
 
 @media (max-width: 1180px) {
@@ -920,7 +1078,7 @@ h3 {
     bottom: auto;
     left: 12px;
     width: auto;
-    max-height: 34vh;
+    max-height: 42vh;
   }
 
   .left-collapsed .session-rail {
@@ -949,16 +1107,18 @@ h3 {
   }
 
   .assistant-panel {
-    top: auto;
+    top: calc(42vh + 24px);
     right: 12px;
     bottom: 12px;
     left: 12px;
     width: auto;
-    max-height: 52vh;
+    max-height: none;
   }
 
   .right-collapsed .assistant-panel {
+    top: auto;
     right: 12px;
+    bottom: 12px;
     left: auto;
     width: 52px;
   }

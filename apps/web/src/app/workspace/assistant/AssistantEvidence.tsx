@@ -1,7 +1,7 @@
 import type { KnowledgeSource } from '@onboarding/shared';
 
 function getSourceLabel(source: KnowledgeSource) {
-  return source.kind === 'web' || source.sourceType === 'web' ? 'Web' : 'Knowledge base';
+  return source.kind === 'web' || source.sourceType === 'web' ? 'Web' : 'Company knowledge';
 }
 
 export function AssistantEvidence({
@@ -24,7 +24,7 @@ export function AssistantEvidence({
       <button onClick={() => onToggle(messageId)} type="button">
         {expanded
           ? 'Hide sources'
-          : `${sources.length} source${sources.length === 1 ? '' : 's'} available`}
+          : `Show ${sources.length} source${sources.length === 1 ? '' : 's'}`}
       </button>
       {expanded ? (
         <div className="evidence-list">

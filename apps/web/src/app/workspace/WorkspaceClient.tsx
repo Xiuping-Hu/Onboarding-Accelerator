@@ -23,11 +23,19 @@ import {
   sendChat,
 } from './api';
 import { AgentChatDrawer } from './assistant/AgentChatDrawer';
+import { PlanThreadList } from './assistant/PlanThreadList';
+import { WorkspaceAssistantRuntimeProvider } from './assistant/WorkspaceAssistantRuntimeProvider';
 import {
   getAssistantDrawerToggleLabel,
   getVisibleGraph,
   getZoomedCanvasView,
 } from './workspaceModel';
+import {
+  appendSessionMessage,
+  indexSessionMessages,
+  removeSessionMessages,
+  replaceSessionMessages,
+} from './workspaceThreadModel';
 
 type NodePoint = GuideStep & { x: number; y: number };
 type HitTarget = { id: string; x: number; y: number; width: number; height: number };
@@ -72,25 +80,6 @@ const statusColor: Record<GuideStep['status'], string> = {
   'in-progress': '#6264a7',
   complete: '#107c10',
 };
-
-const emptyMessages: ChatMessage[] = [
-  {
-    id: 'assistant-welcome',
-    role: 'assistant',
-    content:
-      'Tell me what you need to do next, or ask me to search for setup visuals. I can focus the map as I answer.',
-    createdAt: new Date().toISOString(),
-  },
-];
-
-function formatTime(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(new Date(value));
-}
 
 function mergeSources(existing: KnowledgeSource[], incoming: KnowledgeSource[]) {
   const byId = new Map(existing.map((source) => [source.id, source]));
@@ -601,14 +590,15 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
   const [graph, setGraph] = useState<GuideGraph | null>(null);
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [focusStepIds, setFocusStepIds] = useState<string[]>([]);
-  const [draftGuideMap, setDraftGuideMap] = useState<DraftGuideMap | null>(null);
+  const [draftGuideMaps, setDraftGuideMaps] = useState<Record<string, DraftGuideMap | null>>({});
   const [, setSources] = useState<KnowledgeSource[]>([]);
-  const [messages, setMessages] = useState<ChatMessage[]>(emptyMessages);
+  const [messagesBySessionId, setMessagesBySessionId] = useState<Record<string, ChatMessage[]>>({});
   const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false);
   const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [isChatLoading, setIsChatLoading] = useState(false);
+  const [runningSessionIds, setRunningSessionIds] = useState<string[]>([]);
   const [apiError, setApiError] = useState<string | null>(null);
+  const activeSessionIdRef = useRef<string | null>(null);
 
   const breadcrumbs = useMemo(() => getBreadcrumbs(graph, selectedStepId), [graph, selectedStepId]);
   const visibleGraph = useMemo(
@@ -620,6 +610,14 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
     () => graph?.steps.find((step) => step.id === selectedStepId) ?? null,
     [graph, selectedStepId],
   );
+  const activeMessages = activeSessionId ? (messagesBySessionId[activeSessionId] ?? []) : [];
+  const activeDraftGuideMap = activeSessionId ? (draftGuideMaps[activeSessionId] ?? null) : null;
+  const isChatLoading = activeSessionId ? runningSessionIds.includes(activeSessionId) : false;
+  const accountLabel = account.displayName ?? account.email ?? account.userId;
+
+  useEffect(() => {
+    activeSessionIdRef.current = activeSessionId;
+  }, [activeSessionId]);
 
   const loadGuide = useCallback(async (sessionId: string) => {
     setIsLoading(true);
@@ -652,15 +650,15 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
         let nextSessions = response.sessions;
 
         if (nextSessions.length === 0) {
-          const created = await createSession({ title: 'First week path' });
+          const created = await createSession({ title: 'First-week plan' });
           nextSessions = [created.session];
         }
 
         setSessions(nextSessions);
+        setMessagesBySessionId(indexSessionMessages(nextSessions));
         const firstSession = nextSessions[0];
         if (firstSession) {
           setActiveSessionId(firstSession.id);
-          await loadGuide(firstSession.id);
         }
       } catch (error) {
         setApiError(formatError(error, 'Could not load onboarding sessions.'));
@@ -668,7 +666,7 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
         setIsLoading(false);
       }
     })();
-  }, [loadGuide]);
+  }, []);
 
   useEffect(() => {
     if (activeSessionId) {
@@ -679,32 +677,45 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
   async function handleCreateSession() {
     try {
       setApiError(null);
-      const created = await createSession({ title: `Onboarding path ${sessions.length + 1}` });
+      const created = await createSession({ title: `Onboarding plan ${sessions.length + 1}` });
       setSessions((current) => [created.session, ...current]);
       setActiveSessionId(created.session.id);
-      setMessages(emptyMessages);
+      setMessagesBySessionId((current) => ({ ...current, [created.session.id]: [] }));
       setSources([]);
-      setDraftGuideMap(null);
+      setDraftGuideMaps((current) => ({ ...current, [created.session.id]: null }));
     } catch (error) {
       setApiError(formatError(error, 'Could not create a new session.'));
     }
   }
 
   async function handleDeleteSession(sessionId: string) {
+    const session = sessions.find((candidate) => candidate.id === sessionId);
+    if (
+      sessions.length <= 1 ||
+      (typeof window !== 'undefined' &&
+        !window.confirm(
+          `Delete ${session?.title ?? 'this onboarding plan'}? This cannot be undone.`,
+        ))
+    ) {
+      return;
+    }
+
     try {
       setApiError(null);
       await deleteSession(sessionId);
       const remaining = sessions.filter((session) => session.id !== sessionId);
       setSessions(remaining);
+      setMessagesBySessionId((current) => removeSessionMessages(current, sessionId));
+      setDraftGuideMaps((current) => {
+        return Object.fromEntries(Object.entries(current).filter(([id]) => id !== sessionId));
+      });
+      setRunningSessionIds((current) => current.filter((id) => id !== sessionId));
 
       if (activeSessionId === sessionId) {
         const next = remaining[0] ?? null;
         setActiveSessionId(next?.id ?? null);
         setGraph(null);
         setSelectedStepId(null);
-        if (next) {
-          await loadGuide(next.id);
-        }
       }
     } catch (error) {
       setApiError(formatError(error, 'Could not delete the session.'));
@@ -748,7 +759,8 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
   }
 
   async function handleSendMessage(message: string) {
-    if (!activeSessionId || message.trim().length === 0) {
+    const sessionId = activeSessionId;
+    if (!sessionId || message.trim().length === 0) {
       return;
     }
 
@@ -759,41 +771,59 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
       createdAt: new Date().toISOString(),
     };
 
-    setMessages((current) => [...current, userMessage]);
-    setIsChatLoading(true);
+    setMessagesBySessionId((current) => appendSessionMessage(current, sessionId, userMessage));
+    setRunningSessionIds((current) => [...new Set([...current, sessionId])]);
 
     try {
       setApiError(null);
       const response = await sendChat({
-        sessionId: activeSessionId,
+        sessionId,
         message: userMessage.content,
         webSearchEnabled: false,
         selectedStepId: selectedStepId ?? undefined,
       });
-      setMessages((current) => [...current, response.message]);
+      if (response.session) {
+        setSessions((current) =>
+          current.map((session) => (session.id === sessionId ? response.session! : session)),
+        );
+        setMessagesBySessionId((current) =>
+          replaceSessionMessages(
+            current,
+            sessionId,
+            response.session?.chatHistory ?? current[sessionId] ?? [],
+          ),
+        );
+      } else {
+        setMessagesBySessionId((current) =>
+          appendSessionMessage(current, sessionId, response.message),
+        );
+      }
       setSources((current) => mergeSources(current, response.sources));
-      setDraftGuideMap(response.draftGuideMap ?? null);
-      if (response.focusStepIds && response.focusStepIds.length > 0) {
+      setDraftGuideMaps((current) => ({ ...current, [sessionId]: response.draftGuideMap ?? null }));
+      if (
+        activeSessionIdRef.current === sessionId &&
+        response.focusStepIds &&
+        response.focusStepIds.length > 0
+      ) {
         setFocusStepIds(response.focusStepIds);
         setSelectedStepId(response.focusStepIds[0] ?? selectedStepId);
       }
     } catch (error) {
-      setMessages((current) => [
-        ...current,
-        {
+      setMessagesBySessionId((current) =>
+        appendSessionMessage(current, sessionId, {
           id: `assistant-error-${Date.now()}`,
           role: 'assistant',
-          content: formatError(error, 'The assistant could not answer right now.'),
+          content: formatError(error, "I couldn't complete that request. Please try again."),
           createdAt: new Date().toISOString(),
-        },
-      ]);
+        }),
+      );
     } finally {
-      setIsChatLoading(false);
+      setRunningSessionIds((current) => current.filter((id) => id !== sessionId));
     }
   }
 
   async function handleCreateGuideMap() {
-    if (!activeSessionId || !draftGuideMap) {
+    if (!activeSessionId || !activeDraftGuideMap) {
       return;
     }
 
@@ -802,14 +832,14 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
       setApiError(null);
       const response = await createGuideMap({
         sessionId: activeSessionId,
-        draftGuideMap,
+        draftGuideMap: activeDraftGuideMap,
       });
       setGraph(response.graph);
       setSources((current) => mergeSources(current, response.graph.sources));
       const focusId = response.focusStepId ?? response.graph.rootId;
       setSelectedStepId(focusId);
       setFocusStepIds([focusId]);
-      setDraftGuideMap(null);
+      setDraftGuideMaps((current) => ({ ...current, [activeSessionId]: null }));
     } catch (error) {
       setApiError(formatError(error, 'Could not create the guide map.'));
     } finally {
@@ -827,125 +857,116 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
         .filter(Boolean)
         .join(' ')}
     >
-      <aside className="session-rail" aria-label="Onboarding sessions">
-        <button
-          aria-label={isLeftPanelCollapsed ? 'Expand sessions panel' : 'Collapse sessions panel'}
-          className="panel-toggle"
-          onClick={() => setIsLeftPanelCollapsed((current) => !current)}
-          type="button"
-        >
-          {isLeftPanelCollapsed ? '>' : '<'}
-        </button>
-        <div className="panel-content">
-          <div>
-            <p className="eyebrow">Onboarding</p>
-            <h1>Guidance workspace</h1>
-          </div>
-          <div className="account-summary">
-            <span>{account.displayName ?? account.email ?? account.userId}</span>
-            <small>{account.role ?? 'user'}</small>
-          </div>
-          <button className="primary-button" onClick={() => void handleCreateSession()}>
-            + New session
-          </button>
-          <nav className="session-list">
-            {sessions.map((session) => (
-              <button
-                className={session.id === activeSessionId ? 'session-item active' : 'session-item'}
-                key={session.id}
-                onClick={() => setActiveSessionId(session.id)}
-              >
-                <span>{session.title}</span>
-                <small>{formatTime(session.updatedAt)}</small>
-              </button>
-            ))}
-          </nav>
+      <WorkspaceAssistantRuntimeProvider
+        activeSessionId={activeSessionId}
+        isLoading={isLoading}
+        isRunning={isChatLoading}
+        messages={activeMessages}
+        onCreatePlan={handleCreateSession}
+        onDeletePlan={handleDeleteSession}
+        onSelectPlan={async (sessionId) => setActiveSessionId(sessionId)}
+        onSendMessage={handleSendMessage}
+        sessions={sessions}
+      >
+        <aside className="session-rail" aria-label="Onboarding plans">
           <button
-            className="ghost-button danger"
-            disabled={!activeSessionId || sessions.length <= 1}
-            onClick={() => activeSessionId && void handleDeleteSession(activeSessionId)}
-          >
-            Delete current
-          </button>
-          <button className="ghost-button" onClick={onLogout} type="button">
-            Sign out
-          </button>
-        </div>
-      </aside>
-
-      <section className="workspace" aria-busy={isLoading}>
-        <header className="topbar">
-          <div className="breadcrumbs" aria-label="Selected step breadcrumbs">
-            {isGuideEmpty ? (
-              <span>No map yet</span>
-            ) : breadcrumbs.length === 0 ? (
-              <span>Loading guide</span>
-            ) : (
-              breadcrumbs.map((crumb, index) => (
-                <button key={crumb.id} onClick={() => handleLocateStep(crumb.id)} type="button">
-                  {index > 0 ? <span aria-hidden="true">/</span> : null}
-                  {crumb.title}
-                </button>
-              ))
-            )}
-          </div>
-        </header>
-
-        {apiError ? (
-          <div className="app-error" role="alert">
-            {apiError}
-          </div>
-        ) : null}
-        {isLoading ? <div className="loading-state">Loading onboarding workspace...</div> : null}
-        {isGuideEmpty && !isLoading ? (
-          <div className="empty-map-state">
-            <h2>Create a guide map</h2>
-            <p>Ask the agent for domain knowledge, then create a map from its answer.</p>
-            <button
-              className="primary-button"
-              disabled={!draftGuideMap}
-              onClick={() => void handleCreateGuideMap()}
-              type="button"
-            >
-              Create map
-            </button>
-          </div>
-        ) : null}
-        {!isGuideEmpty && selectedStep?.hasChildren ? (
-          <button
-            className="reveal-step-button"
-            onClick={() => void handleRevealStep(selectedStep.id)}
+            aria-label={isLeftPanelCollapsed ? 'Expand plans sidebar' : 'Collapse plans sidebar'}
+            className="panel-toggle"
+            onClick={() => setIsLeftPanelCollapsed((current) => !current)}
             type="button"
           >
-            Reveal children
+            {isLeftPanelCollapsed ? <>&rsaquo;</> : <>&lsaquo;</>}
           </button>
-        ) : null}
-        <GuideCanvas
-          focusStepIds={focusStepIds}
-          graph={visibleGraph}
-          onSelectStep={(stepId) => {
-            void handleNavigateToStep(stepId);
-          }}
-          selectedStepId={selectedStepId}
-        />
-      </section>
+          <div className="panel-content">
+            <div className="panel-branding">
+              <p>Onboarding Accelerator</p>
+              <h1>Your plans</h1>
+            </div>
+            <PlanThreadList canDelete={sessions.length > 1} />
+            <div className="account-summary">
+              <span>{accountLabel}</span>
+              <small>{formatAccountRole(account.role)}</small>
+            </div>
+            <button className="ghost-button" onClick={onLogout} type="button">
+              Sign out
+            </button>
+          </div>
+        </aside>
 
-      <aside className="assistant-panel" aria-label="Chat assistant and sources">
-        <button
-          aria-expanded={!isRightPanelCollapsed}
-          aria-label={getAssistantDrawerToggleLabel(isRightPanelCollapsed)}
-          className="panel-toggle"
-          onClick={() => setIsRightPanelCollapsed((current) => !current)}
-          type="button"
-        >
-          {isRightPanelCollapsed ? '<' : '>'}
-        </button>
-        <AgentChatDrawer
-          isRunning={isChatLoading}
-          messages={messages}
-          onSendMessage={handleSendMessage}
-        />
-      </aside>
+        <section className="workspace" aria-busy={isLoading}>
+          <header className="topbar">
+            <div className="breadcrumbs" aria-label="Selected step breadcrumbs">
+              {isGuideEmpty ? (
+                <span>No map yet</span>
+              ) : breadcrumbs.length === 0 ? (
+                <span>Loading guide</span>
+              ) : (
+                breadcrumbs.map((crumb, index) => (
+                  <button key={crumb.id} onClick={() => handleLocateStep(crumb.id)} type="button">
+                    {index > 0 ? <span aria-hidden="true">/</span> : null}
+                    {crumb.title}
+                  </button>
+                ))
+              )}
+            </div>
+          </header>
+
+          {apiError ? (
+            <div className="app-error" role="alert">
+              {apiError}
+            </div>
+          ) : null}
+          {isLoading ? <div className="loading-state">Loading onboarding workspace...</div> : null}
+          {isGuideEmpty && !isLoading ? (
+            <div className="empty-map-state">
+              <h2>Create a guide map</h2>
+              <p>Ask the agent for domain knowledge, then create a map from its answer.</p>
+              <button
+                className="primary-button"
+                disabled={!activeDraftGuideMap}
+                onClick={() => void handleCreateGuideMap()}
+                type="button"
+              >
+                Create map
+              </button>
+            </div>
+          ) : null}
+          {!isGuideEmpty && selectedStep?.hasChildren ? (
+            <button
+              className="reveal-step-button"
+              onClick={() => void handleRevealStep(selectedStep.id)}
+              type="button"
+            >
+              Reveal children
+            </button>
+          ) : null}
+          <GuideCanvas
+            focusStepIds={focusStepIds}
+            graph={visibleGraph}
+            onSelectStep={(stepId) => {
+              void handleNavigateToStep(stepId);
+            }}
+            selectedStepId={selectedStepId}
+          />
+        </section>
+
+        <aside className="assistant-panel" aria-label="Onboarding assistant">
+          <button
+            aria-expanded={!isRightPanelCollapsed}
+            aria-label={getAssistantDrawerToggleLabel(isRightPanelCollapsed)}
+            className="panel-toggle"
+            onClick={() => setIsRightPanelCollapsed((current) => !current)}
+            type="button"
+          >
+            {isRightPanelCollapsed ? <>&lsaquo;</> : <>&rsaquo;</>}
+          </button>
+          <AgentChatDrawer
+            isRunning={isChatLoading}
+            messages={activeMessages}
+            userLabel={accountLabel}
+          />
+        </aside>
+      </WorkspaceAssistantRuntimeProvider>
     </main>
   );
 }
@@ -1039,4 +1060,12 @@ export default function App({ initialAccount }: { initialAccount?: AccountSessio
 
 function formatError(error: unknown, fallback: string): string {
   return error instanceof Error ? `${fallback} ${error.message}` : fallback;
+}
+
+function formatAccountRole(role: string | undefined) {
+  if (role === 'admin') {
+    return 'Administrator';
+  }
+
+  return 'Member';
 }

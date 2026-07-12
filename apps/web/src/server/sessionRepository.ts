@@ -59,7 +59,7 @@ export class InMemorySessionRepository implements SessionRepository {
     const session: StoredSession = {
       id: randomUUID(),
       ownerId,
-      title: request.title?.trim() || 'New onboarding session',
+      title: request.title?.trim() || 'Untitled onboarding plan',
       createdAt: now,
       updatedAt: now,
       settings: {

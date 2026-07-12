@@ -1,17 +1,15 @@
 import { useMemo, useState } from 'react';
 import type { ChatMessage } from '@onboarding/shared';
-import { AgentChatRuntimeProvider } from './AgentChatRuntimeProvider';
-import { AgentComposer } from './AgentComposer';
 import { AgentThread } from './AgentThread';
 
 export function AgentChatDrawer({
   isRunning,
   messages,
-  onSendMessage,
+  userLabel,
 }: {
   isRunning: boolean;
   messages: ChatMessage[];
-  onSendMessage: (message: string) => Promise<void>;
+  userLabel: string;
 }) {
   const [expandedEvidenceIds, setExpandedEvidenceIds] = useState<string[]>([]);
   const messageById = useMemo(
@@ -28,24 +26,22 @@ export function AgentChatDrawer({
   }
 
   return (
-    <AgentChatRuntimeProvider
-      isRunning={isRunning}
-      messages={messages}
-      onSendMessage={onSendMessage}
-    >
-      <section className="chat-panel">
-        <div className="panel-heading">
-          <p className="eyebrow">Agent drawer</p>
-          <h2>Ask, locate, focus</h2>
+    <section className="chat-panel">
+      <div className="panel-heading">
+        <h2>Onboarding assistant</h2>
+        <p>Ask questions and build your onboarding plan.</p>
+      </div>
+      <AgentThread
+        evidenceExpanded={expandedEvidenceIds}
+        messageById={messageById}
+        onToggleEvidence={toggleEvidence}
+        userLabel={userLabel}
+      />
+      {isRunning ? (
+        <div aria-live="polite" className="assistant-thinking" role="status">
+          Onboarding assistant is thinking...
         </div>
-        <AgentThread
-          evidenceExpanded={expandedEvidenceIds}
-          messageById={messageById}
-          onToggleEvidence={toggleEvidence}
-        />
-        {isRunning ? <div className="assistant-thinking">Thinking...</div> : null}
-        <AgentComposer />
-      </section>
-    </AgentChatRuntimeProvider>
+      ) : null}
+    </section>
   );
 }

@@ -139,8 +139,8 @@ void test('selected guide step resolves the agent drawer focus', () => {
 });
 
 void test('assistant drawer toggle label reflects collapsed state', () => {
-  assert.equal(getAssistantDrawerToggleLabel(true), 'Open agent drawer');
-  assert.equal(getAssistantDrawerToggleLabel(false), 'Close agent drawer');
+  assert.equal(getAssistantDrawerToggleLabel(true), 'Open assistant');
+  assert.equal(getAssistantDrawerToggleLabel(false), 'Close assistant');
 });
 
 void test('canvas zoom is clamped to supported scale limits', () => {
