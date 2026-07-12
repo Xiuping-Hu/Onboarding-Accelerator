@@ -879,11 +879,12 @@ h3 {
   align-items: end;
 }
 
-.chat-form textarea {
+.chat-form textarea,
+.chat-input {
   width: 100%;
   min-height: 72px;
   max-height: 140px;
-  resize: vertical;
+  resize: none !important;
   border: 1px solid #c8cee5;
   border-radius: 8px;
   padding: 10px 12px;
