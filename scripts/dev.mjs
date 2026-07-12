@@ -4,7 +4,7 @@ const commands = [{ name: 'web', args: ['run', 'dev', '-w', '@onboarding/web'] }
 
 const children = commands.map(({ name, args }) => {
   const child = spawn('npm', args, {
-    shell: false,
+    shell: true,
     stdio: ['inherit', 'pipe', 'pipe'],
   });
 
