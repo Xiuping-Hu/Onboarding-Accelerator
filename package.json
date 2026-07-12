@@ -12,6 +12,8 @@
     "build": "npm run build -w @onboarding/shared && npm run build -w @onboarding/web",
     "dev": "node scripts/dev.mjs",
     "docs:harness:update": "node scripts/update-harness-docs.mjs",
+    "rag:ingest": "tsx scripts/rag-ingest.ts",
+    "rag:reindex-snapshots": "tsx scripts/rag-reindex-snapshots.ts",
     "users:create": "node -r dotenv/config scripts/users-create.mjs",
     "format": "prettier . --write",
     "format:check": "prettier . --check",
@@ -40,10 +42,12 @@
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "dotenv": "^16.5.0",
+    "mammoth": "^1.12.0",
     "next": "^15.4.0",
     "pg": "^8.16.3",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "undici": "^7.16.0",
     "zod": "^3.25.51"
   }
 }

@@ -72,7 +72,7 @@ void test('RagService plans agent retrieval steps and annotates source provenanc
         title: 'Vector benefits policy',
         excerpt: 'Semantic policy chunk for benefits ownership.',
         uri: 'db://knowledge_chunks/benefits-policy',
-        sourceType: 'knowledge_base',
+        sourceType: 'knowledge_base' as const,
         score: 0.74,
       },
     ],
@@ -100,5 +100,21 @@ void test('RagService plans agent retrieval steps and annotates source provenanc
   assert.equal(
     retrieval.sources.find((source) => source.id === adapterSource.id)?.metadata?.retrievalTool,
     'input_adapter',
+  );
+});
+
+void test('RagService skips mock seed knowledge when it is disabled', async () => {
+  const rag = new RagService({ search: async () => [] }, [], undefined, false);
+
+  const retrieval = await rag.retrieve('first week', { webSearchEnabled: false });
+
+  assert.equal(
+    retrieval.knowledgeBaseSources.some((source) => source.id === 'first-week'),
+    false,
+  );
+  assert.ok(
+    retrieval.agent?.steps.some(
+      (step) => step.tool === 'seed_knowledge' && step.status === 'skipped',
+    ),
   );
 });

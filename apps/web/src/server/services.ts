@@ -9,7 +9,8 @@ import { PostgresAuthSessionRepository } from './authSessionRepository';
 import { ChatOrchestrationService } from './chatService';
 import { loadConfig } from './config';
 import { getDatabasePool } from './database';
-import { OpenAiEmbeddingService } from './embeddingService';
+import { DeepSeekService } from './deepSeekService';
+import { LocalHashEmbeddingService, OpenAiEmbeddingService } from './embeddingService';
 import { GuideOrchestrationService } from './guideService';
 import { NoopLoginAuditRepository, PostgresLoginAuditRepository } from './loginAuditRepository';
 import { FileLogService } from './logService';
@@ -57,29 +58,45 @@ function createServerServices() {
   const aiRates = new FileAiRateCardService(config.aiRateCardsStorePath);
   const aiAdjustments = new FileAiFeeAdjustmentService(config.aiFeeAdjustmentsStorePath);
   const aiFees = new AiFeeService(adminActivity, aiRates);
-  const openAi = new OpenAiService({
-    apiKey: config.openAiApiKey,
-    model: config.openAiModel,
-    timeoutMs: config.openAiTimeoutMs,
-    maxRetries: config.openAiMaxRetries,
-  });
+  const openAi =
+    config.aiProvider === 'deepseek'
+      ? new DeepSeekService({
+          apiKey: config.deepSeekApiKey,
+          baseUrl: config.deepSeekBaseUrl,
+          model: config.deepSeekModel,
+          timeoutMs: config.openAiTimeoutMs,
+          maxRetries: config.openAiMaxRetries,
+        })
+      : new OpenAiService({
+          apiKey: config.openAiApiKey,
+          model: config.openAiModel,
+          timeoutMs: config.openAiTimeoutMs,
+          maxRetries: config.openAiMaxRetries,
+        });
+  const embeddings =
+    config.embeddingProvider === 'local'
+      ? new LocalHashEmbeddingService()
+      : new OpenAiEmbeddingService({
+          apiKey: config.openAiApiKey,
+          model: config.openAiEmbeddingModel,
+          timeoutMs: config.openAiTimeoutMs,
+          maxRetries: config.openAiMaxRetries,
+        });
   const vectorKnowledgeBase =
     config.ragVectorEnabled && database
       ? new PgvectorKnowledgeBase(
           database,
-          new OpenAiEmbeddingService({
-            apiKey: config.openAiApiKey,
-            model: config.openAiEmbeddingModel,
-            timeoutMs: config.openAiTimeoutMs,
-            maxRetries: config.openAiMaxRetries,
-          }),
+          embeddings,
           config.ragVectorLimit,
+          config.ragAllowedAccessScopes,
+          config.embeddingProfile,
         )
       : undefined;
   const rag = new RagService(
     new DisabledWebSearchProvider(config.webSearchAllowed),
-    createConfiguredRagInputAdapters(config),
+    config.ragInputAdaptersEnabled ? createConfiguredRagInputAdapters(config) : [],
     vectorKnowledgeBase,
+    config.ragSeedKnowledgeEnabled,
   );
   const chat = new ChatOrchestrationService(sessions, rag, openAi, logs);
   const guide = new GuideOrchestrationService(sessions, rag, config.guideMaxDepth);

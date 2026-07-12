@@ -2,10 +2,12 @@ import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
+import { embeddingProfileFor } from './embeddingProfile';
 
 loadDotEnv();
 
 export interface ServerConfig {
+  aiProvider: 'openai' | 'deepseek';
   nodeEnv: string;
   rateLimitWindowMs: number;
   rateLimitMax: number;
@@ -29,6 +31,11 @@ export interface ServerConfig {
   openAiModel: string;
   openAiTimeoutMs: number;
   openAiMaxRetries: number;
+  deepSeekApiKey?: string;
+  deepSeekBaseUrl: string;
+  deepSeekModel: string;
+  embeddingProvider: 'openai' | 'local';
+  embeddingProfile: string;
   guideMaxDepth: number;
   ragSharedDirectory?: string;
   ragWebsiteAllowlist: string[];
@@ -36,11 +43,15 @@ export interface ServerConfig {
   ragMaxChunksPerSource: number;
   ragVectorEnabled: boolean;
   ragVectorLimit: number;
+  ragSeedKnowledgeEnabled: boolean;
+  ragInputAdaptersEnabled: boolean;
+  ragAllowedAccessScopes: string[];
   openAiEmbeddingModel: string;
 }
 
 export function loadConfig(): ServerConfig {
   const config: ServerConfig = {
+    aiProvider: parseAiProvider(process.env.AI_PROVIDER),
     nodeEnv: process.env.NODE_ENV ?? 'development',
     rateLimitWindowMs: Number.parseInt(process.env.RATE_LIMIT_WINDOW_MS ?? '60000', 10),
     rateLimitMax: Number.parseInt(process.env.RATE_LIMIT_MAX ?? '120', 10),
@@ -74,6 +85,11 @@ export function loadConfig(): ServerConfig {
     openAiModel: process.env.OPENAI_MODEL ?? 'gpt-4o-mini',
     openAiTimeoutMs: Number.parseInt(process.env.OPENAI_TIMEOUT_MS ?? '12000', 10),
     openAiMaxRetries: Number.parseInt(process.env.OPENAI_MAX_RETRIES ?? '2', 10),
+    deepSeekApiKey: optionalString(process.env.DEEPSEEK_API_KEY),
+    deepSeekBaseUrl: process.env.DEEPSEEK_BASE_URL ?? 'https://api.deepseek.com',
+    deepSeekModel: process.env.DEEPSEEK_MODEL ?? 'deepseek-v4-flash',
+    embeddingProvider: parseEmbeddingProvider(process.env.EMBEDDING_PROVIDER),
+    embeddingProfile: '',
     guideMaxDepth: Number.parseInt(process.env.GUIDE_MAX_DEPTH ?? '2', 10),
     ragSharedDirectory: optionalString(process.env.RAG_SHARED_DIRECTORY),
     ragWebsiteAllowlist: parseList(process.env.RAG_WEBSITE_ALLOWLIST),
@@ -81,8 +97,23 @@ export function loadConfig(): ServerConfig {
     ragMaxChunksPerSource: Number.parseInt(process.env.RAG_MAX_CHUNKS_PER_SOURCE ?? '8', 10),
     ragVectorEnabled: process.env.RAG_VECTOR_ENABLED === 'true',
     ragVectorLimit: Number.parseInt(process.env.RAG_VECTOR_LIMIT ?? '5', 10),
+    ragSeedKnowledgeEnabled:
+      process.env.RAG_SEED_KNOWLEDGE_ENABLED === undefined
+        ? (process.env.NODE_ENV ?? 'development') !== 'production'
+        : process.env.RAG_SEED_KNOWLEDGE_ENABLED === 'true',
+    ragInputAdaptersEnabled:
+      process.env.RAG_INPUT_ADAPTERS_ENABLED === undefined
+        ? (process.env.NODE_ENV ?? 'development') !== 'production'
+        : process.env.RAG_INPUT_ADAPTERS_ENABLED === 'true',
+    ragAllowedAccessScopes: parseList(process.env.RAG_ALLOWED_ACCESS_SCOPES || 'all_users'),
     openAiEmbeddingModel: process.env.OPENAI_EMBEDDING_MODEL ?? 'text-embedding-3-small',
   };
+
+  config.embeddingProfile = embeddingProfileFor(
+    config.embeddingProvider,
+    config.openAiEmbeddingModel,
+    process.env.EMBEDDING_PROFILE,
+  );
 
   validateConfig(config);
   return config;
@@ -156,6 +187,18 @@ function parseList(value: string | undefined): string[] {
       .map((entry) => entry.trim())
       .filter(Boolean) ?? []
   );
+}
+
+function parseAiProvider(value: string | undefined): 'openai' | 'deepseek' {
+  if (!value || value === 'openai') return 'openai';
+  if (value === 'deepseek') return 'deepseek';
+  throw new Error('AI_PROVIDER must be either "openai" or "deepseek"');
+}
+
+function parseEmbeddingProvider(value: string | undefined): 'openai' | 'local' {
+  if (!value || value === 'openai') return 'openai';
+  if (value === 'local') return 'local';
+  throw new Error('EMBEDDING_PROVIDER must be either "openai" or "local"');
 }
 
 function loadDotEnv(): void {

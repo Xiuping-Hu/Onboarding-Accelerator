@@ -1,5 +1,25 @@
+import { openAiFetch } from './openAiFetch';
+
 export interface EmbeddingProvider {
   embed(text: string): Promise<number[] | undefined>;
+}
+
+export class LocalHashEmbeddingService implements EmbeddingProvider {
+  constructor(private readonly dimensions = 1536) {}
+
+  async embed(text: string): Promise<number[]> {
+    const vector = Array.from({ length: this.dimensions }, () => 0);
+    const terms = text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+
+    for (const term of terms) {
+      const hash = hashTerm(term);
+      const index = hash % this.dimensions;
+      vector[index] = (vector[index] ?? 0) + 1;
+    }
+
+    const magnitude = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0));
+    return magnitude > 0 ? vector.map((value) => value / magnitude) : vector;
+  }
 }
 
 export class OpenAiEmbeddingService implements EmbeddingProvider {
@@ -37,7 +57,7 @@ export class OpenAiEmbeddingService implements EmbeddingProvider {
     );
 
     if (!response.ok) {
-      throw new Error(`OpenAI embeddings request failed with status ${response.status}`);
+      throw new Error(await openAiErrorMessage(response, 'embeddings'));
     }
 
     const payload = (await response.json()) as {
@@ -46,6 +66,14 @@ export class OpenAiEmbeddingService implements EmbeddingProvider {
 
     return payload.data?.[0]?.embedding;
   }
+}
+
+async function openAiErrorMessage(response: Response, operation: string): Promise<string> {
+  const payload = (await response.json().catch(() => undefined)) as
+    | { error?: { code?: string; message?: string; type?: string } }
+    | undefined;
+  const detail = payload?.error?.code ?? payload?.error?.type ?? payload?.error?.message;
+  return `OpenAI ${operation} request failed with status ${response.status}${detail ? ` (${detail})` : ''}`;
 }
 
 async function fetchWithRetries(
@@ -60,7 +88,7 @@ async function fetchWithRetries(
     const timeout = setTimeout(() => controller.abort(), options.timeoutMs);
 
     try {
-      const response = await fetch(url, { ...init, signal: controller.signal });
+      const response = await openAiFetch(url, { ...init, signal: controller.signal });
       if (response.ok || !isRetryableStatus(response.status) || attempt === options.maxRetries) {
         return response;
       }
@@ -86,4 +114,13 @@ function isRetryableStatus(status: number): boolean {
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function hashTerm(term: string): number {
+  let hash = 2166136261;
+  for (let index = 0; index < term.length; index += 1) {
+    hash ^= term.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
 }

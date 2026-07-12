@@ -1,0 +1,37 @@
+{
+  "sources": [
+    {
+      "id": "wayfinder",
+      "kind": "sharepoint_page",
+      "uri": "https://taxconsultingza.sharepoint.com/SitePages/Wayfinder.aspx",
+      "title": "Wayfinder",
+      "owner": "Knowledge Owner",
+      "accessScope": "all_users",
+      "refreshCadence": "weekly",
+      "sharepoint": {
+        "pageName": "Wayfinder.aspx",
+        "crawlAllPages": true,
+        "maxPages": 200
+      }
+    },
+    {
+      "id": "employee-handbook",
+      "kind": "document",
+      "uri": "file:///approved-rag/employee-handbook.md",
+      "path": "C:/approved-rag/employee-handbook.md",
+      "owner": "People Team",
+      "accessScope": "all_users",
+      "refreshCadence": "monthly"
+    },
+    {
+      "id": "reviewed-call",
+      "kind": "audio",
+      "uri": "file:///approved-rag/team-call.mp3",
+      "path": "C:/approved-rag/team-call.mp3",
+      "owner": "People Team",
+      "accessScope": "all_users",
+      "reviewed": true,
+      "refreshCadence": "manual"
+    }
+  ]
+}
