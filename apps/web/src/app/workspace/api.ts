@@ -22,6 +22,7 @@ import type {
   LoginResponse,
   LogEventsResponse,
   LogSummaryResponse,
+  MapProjectionProposal,
 } from '@onboarding/shared';
 
 export interface AccountSession {
@@ -110,6 +111,39 @@ export async function getRootGuide(payload: GuideRequest): Promise<GuideResponse
       response.session.guide.rootNodeIds.length > 0
         ? `${response.session.id}-guide-root`
         : undefined,
+    knowledgeMapEnabled: response.knowledgeMapEnabled,
+    mapProjectionProposal: response.session.guide.pendingMapProjection,
+  };
+}
+
+export async function proposePublishedGuideMap(payload: {
+  sessionId: string;
+  goal: string;
+}): Promise<MapProjectionProposal> {
+  const response = await requestJson<{ proposal: MapProjectionProposal }>(
+    `/api/sessions/${encodeURIComponent(payload.sessionId)}/guide/map/proposal`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ goal: payload.goal }),
+    },
+  );
+  return response.proposal;
+}
+
+export async function createPublishedGuideMap(payload: {
+  sessionId: string;
+  proposalId: string;
+}): Promise<GuideResponse> {
+  const response = await requestJson<CreateGuideMapResponse>(
+    `/api/sessions/${encodeURIComponent(payload.sessionId)}/guide/map`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ mode: 'published_projection', proposalId: payload.proposalId }),
+    },
+  );
+  return {
+    graph: toGuideGraph(response.session.guide, response.sources, response.session.id),
+    focusStepId: response.session.guide.rootNodeIds[0],
   };
 }
 

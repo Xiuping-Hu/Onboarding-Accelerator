@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { ZodError } from 'zod';
 import { AuthError, ForbiddenError, authenticateRequest, type AuthenticatedUser } from './auth';
 import { GuideNodeNotFoundError } from './guideService';
+import { KnowledgeMapNotFoundError, KnowledgeMapValidationError } from './knowledgeMapService';
 import { RateLimitError, checkRateLimit } from './rateLimit';
 import { getServerServices } from './services';
 import { SessionNotFoundError } from './sessionRepository';
@@ -98,6 +99,14 @@ async function toErrorResponse(
 
   if (error instanceof SessionNotFoundError || error instanceof GuideNodeNotFoundError) {
     return NextResponse.json({ error: error.message, requestId }, { status: 404 });
+  }
+
+  if (error instanceof KnowledgeMapNotFoundError) {
+    return NextResponse.json({ error: error.message, requestId }, { status: 404 });
+  }
+
+  if (error instanceof KnowledgeMapValidationError) {
+    return NextResponse.json({ error: error.message, requestId }, { status: 400 });
   }
 
   console.error(

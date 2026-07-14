@@ -95,10 +95,15 @@ export interface GuideGraphState {
   nodes: Record<string, GuideNode>;
   selectedNodeId?: string;
   expandedNodeIds: string[];
+  knowledgeMapId?: string;
+  knowledgeMapVersionId?: string;
+  projectedKnowledgeMapNodeIds?: string[];
+  pendingMapProjection?: MapProjectionProposal;
 }
 
 export interface OnboardingSession {
   id: string;
+  revision?: number;
   title: string;
   createdAt: string;
   updatedAt: string;
@@ -180,6 +185,8 @@ export interface ExpandStepRequest extends GuideRequest {
 export interface GuideResponse {
   graph: GuideGraph;
   focusStepId?: string;
+  knowledgeMapEnabled?: boolean;
+  mapProjectionProposal?: MapProjectionProposal;
 }
 
 export interface ChatRequest {
@@ -225,6 +232,7 @@ export interface GenerateGuideRootResponse {
   nodes: GuideNode[];
   session: OnboardingSession;
   sources: SourceProvenance[];
+  knowledgeMapEnabled?: boolean;
 }
 
 export interface ExpandGuideStepRequest {
@@ -425,4 +433,104 @@ export interface CreateAiFeeAdjustmentRequest {
 
 export interface AiFeeAdjustmentsResponse {
   adjustments: AiFeeAdjustment[];
+}
+
+export type KnowledgeMapNodeKind =
+  | 'concept'
+  | 'role'
+  | 'system'
+  | 'workflow'
+  | 'task'
+  | 'decision'
+  | 'resource'
+  | 'milestone';
+
+export type KnowledgeMapRelationship =
+  | 'contains'
+  | 'prerequisite'
+  | 'learning_precedes'
+  | 'workflow_transition'
+  | 'uses'
+  | 'owned_by'
+  | 'related';
+
+export type KnowledgeEvidenceHealth =
+  | 'current'
+  | 'stale'
+  | 'missing'
+  | 'conflicting'
+  | 'needs_review';
+
+export interface KnowledgeEvidenceBinding {
+  sourceId: string;
+  sourceVersionId?: string;
+  sectionKey?: string;
+  role: 'authoritative' | 'supplemental';
+}
+
+export interface KnowledgeMapDraftNode {
+  clientKey: string;
+  suggestedStableKey: string;
+  kind: KnowledgeMapNodeKind;
+  title: string;
+  summary: string;
+  owner?: string;
+  evidence: KnowledgeEvidenceBinding[];
+}
+
+export interface KnowledgeMapDraftEdge {
+  clientKey: string;
+  fromClientKey: string;
+  toClientKey: string;
+  relationship: KnowledgeMapRelationship;
+  rationale?: string;
+  evidence: KnowledgeEvidenceBinding[];
+}
+
+export interface RagKnowledgeMapDraft {
+  objective: string;
+  nodes: KnowledgeMapDraftNode[];
+  edges: KnowledgeMapDraftEdge[];
+}
+
+export interface KnowledgeMapNodeDetail {
+  id: string;
+  stableKey: string;
+  kind: KnowledgeMapNodeKind;
+  title: string;
+  summary: string;
+  owner?: string;
+  controllingDocumentRequired: boolean;
+  evidenceHealth: KnowledgeEvidenceHealth;
+  sources: SourceProvenance[];
+}
+
+export interface PublishedKnowledgeMap {
+  id: string;
+  versionId: string;
+  versionNumber: number;
+  title: string;
+  description?: string;
+  nodes: KnowledgeMapNodeDetail[];
+  edges: Array<{
+    id: string;
+    from: string;
+    to: string;
+    relationship: KnowledgeMapRelationship;
+    rationale?: string;
+  }>;
+}
+
+export interface MapProjectionProposal {
+  id: string;
+  sessionRevision: number;
+  mapId: string;
+  mapVersionId: string;
+  nodeIds: string[];
+  pathNodeIds: string[];
+  onboardingRoleKey?: string;
+  teamKey?: string;
+  goal: string;
+  createdAt: string;
+  expiresAt: string;
 }

@@ -239,6 +239,7 @@ export default function AdminClient({ initialView = 'activity' }: { initialView?
             {adminViewLabels[item]}
           </button>
         ))}
+        <a href="/admin/knowledge-maps">Knowledge maps</a>
       </nav>
 
       {error ? <div className="admin-error">{error}</div> : null}

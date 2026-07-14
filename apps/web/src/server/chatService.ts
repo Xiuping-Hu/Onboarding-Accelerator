@@ -13,6 +13,7 @@ import type { AnswerProvider } from './openAiService';
 import { NoopLogService, type LogService } from './logService';
 import type { SessionRepository } from './sessionRepository';
 import { touchSession } from './sessionRepository';
+import type { KnowledgeMapService } from './knowledgeMapService';
 
 export class ChatOrchestrationService {
   constructor(
@@ -20,12 +21,21 @@ export class ChatOrchestrationService {
     private readonly rag: RagRetriever,
     private readonly openAi: AnswerProvider,
     private readonly logs: LogService = new NoopLogService(),
+    private readonly knowledgeMaps?: KnowledgeMapService,
   ) {}
 
   async chat(sessionId: string, request: ChatRequest, ownerId: string): Promise<ChatResponse> {
     const session = await this.sessions.get(sessionId, ownerId);
     const webSearchEnabled = request.webSearchEnabled ?? session.settings.webSearchEnabled;
     const retrieval = await this.rag.retrieve(request.message, { webSearchEnabled });
+    const mapSources = await this.retrieveSelectedMapSources(
+      session,
+      request.selectedStepId,
+      ownerId,
+    );
+    if (mapSources.length) {
+      retrieval.sources = dedupeSources([...mapSources, ...retrieval.sources]);
+    }
     const guideNodeIds = findRelevantGuideNodeIds(session, request.message);
     const now = new Date().toISOString();
     const userMessage: ChatMessage = {
@@ -49,12 +59,16 @@ export class ChatOrchestrationService {
       guideNodeIds,
       usage: answer.usage,
     };
+    const persistedAssistantMessage: ChatMessage = {
+      ...assistantMessage,
+      sources: toPersistedSourceReferences(retrieval.sources),
+    };
     const draftGuideMap =
       Object.keys(session.guide.nodes).length === 0
         ? createDraftGuideMap(request.message, retrieval.sources)
         : undefined;
 
-    session.chatHistory.push(userMessage, assistantMessage);
+    session.chatHistory.push(userMessage, persistedAssistantMessage);
     const savedSession = await this.sessions.save(touchSession(session), ownerId);
 
     if (answer.usage) {
@@ -74,6 +88,25 @@ export class ChatOrchestrationService {
       draftGuideMap,
       usage: answer.usage,
     };
+  }
+
+  private async retrieveSelectedMapSources(
+    session: OnboardingSession,
+    selectedStepId: string | undefined,
+    ownerId: string,
+  ): Promise<SourceProvenance[]> {
+    if (!this.knowledgeMaps || !selectedStepId || !session.guide.knowledgeMapVersionId) return [];
+    try {
+      const scopes = await this.knowledgeMaps.accessScopesFor(ownerId);
+      const node = await this.knowledgeMaps.getNodeDetail(
+        session.guide.knowledgeMapVersionId,
+        selectedStepId,
+        scopes,
+      );
+      return node.sources;
+    } catch {
+      return [];
+    }
   }
 
   private async composeAnswer(
@@ -104,6 +137,25 @@ export class ChatOrchestrationService {
       content: composeFallbackAnswer(prompt, sources, guideNodeIds),
     };
   }
+}
+
+function dedupeSources(sources: SourceProvenance[]): SourceProvenance[] {
+  return [...new Map(sources.map((source) => [source.id, source])).values()];
+}
+
+function toPersistedSourceReferences(sources: SourceProvenance[]): SourceProvenance[] {
+  return sources.map((source) => ({
+    id: source.id,
+    title: source.title,
+    excerpt: 'Evidence is resolved after the current access policy is checked.',
+    sourceType: source.sourceType,
+    kind: source.kind,
+    metadata: Object.fromEntries(
+      Object.entries(source.metadata ?? {}).filter(([key]) =>
+        ['sourceId', 'rootSourceId', 'sourceVersionId', 'sectionKey'].includes(key),
+      ),
+    ),
+  }));
 }
 
 function composeFallbackAnswer(

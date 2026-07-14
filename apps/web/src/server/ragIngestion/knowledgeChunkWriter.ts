@@ -9,6 +9,7 @@ export async function writeKnowledgeChunks(
   embeddingProfile: string,
   rootSourceId: string,
   chunks: IngestionChunk[],
+  sourceVersionId?: string,
 ): Promise<void> {
   for (const chunk of chunks) {
     const embedding = await embeddings.embed(chunk.text);
@@ -16,10 +17,12 @@ export async function writeKnowledgeChunks(
       throw new Error('Embedding generation returned no vector; check the embedding provider.');
     }
 
-    await db.query(
-      `insert into knowledge_chunks (
-         id, embedding_profile, title, excerpt, uri, source_type, metadata, embedding, updated_at
-       ) values ($1, $2, $3, $4, $5, 'knowledge_base', $6::jsonb, $7::vector, now())
+    if (sourceVersionId) {
+      await db.query(
+        `insert into knowledge_chunks (
+         id, embedding_profile, title, excerpt, uri, source_type, metadata, embedding,
+         source_id, source_version_id, section_key, updated_at
+       ) values ($1, $2, $3, $4, $5, 'knowledge_base', $6::jsonb, $7::vector, $8, $9, $10, now())
        on conflict (id, embedding_profile) do update set
          title = excluded.title,
          excerpt = excluded.excerpt,
@@ -27,17 +30,47 @@ export async function writeKnowledgeChunks(
          source_type = excluded.source_type,
          metadata = excluded.metadata,
          embedding = excluded.embedding,
+         source_id = excluded.source_id,
+         source_version_id = excluded.source_version_id,
+         section_key = excluded.section_key,
          updated_at = excluded.updated_at`,
-      [
-        chunk.id,
-        embeddingProfile,
-        chunk.title,
-        chunk.text,
-        chunk.uri,
-        JSON.stringify({ ...chunk.metadata, embeddingProfile }),
-        formatVector(embedding),
-      ],
-    );
+        [
+          chunk.id,
+          embeddingProfile,
+          chunk.title,
+          chunk.text,
+          chunk.uri,
+          JSON.stringify({ ...chunk.metadata, embeddingProfile }),
+          formatVector(embedding),
+          rootSourceId,
+          sourceVersionId,
+          String(chunk.metadata.section ?? chunk.metadata.chunkIndex ?? ''),
+        ],
+      );
+    } else {
+      await db.query(
+        `insert into knowledge_chunks (
+           id, embedding_profile, title, excerpt, uri, source_type, metadata, embedding, updated_at
+         ) values ($1, $2, $3, $4, $5, 'knowledge_base', $6::jsonb, $7::vector, now())
+         on conflict (id, embedding_profile) do update set
+           title = excluded.title,
+           excerpt = excluded.excerpt,
+           uri = excluded.uri,
+           source_type = excluded.source_type,
+           metadata = excluded.metadata,
+           embedding = excluded.embedding,
+           updated_at = excluded.updated_at`,
+        [
+          chunk.id,
+          embeddingProfile,
+          chunk.title,
+          chunk.text,
+          chunk.uri,
+          JSON.stringify({ ...chunk.metadata, embeddingProfile }),
+          formatVector(embedding),
+        ],
+      );
+    }
   }
 
   await db.query(

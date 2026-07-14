@@ -50,6 +50,7 @@ const service = new RagIngestionService(
   },
   config.ragAllowedAccessScopes,
   config.embeddingProfile,
+  config.ragKnowledgeMapEnabled,
 );
 
 const reports = await Promise.all(sources.map((source) => service.ingest(source, dryRun)));

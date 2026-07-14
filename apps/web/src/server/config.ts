@@ -37,6 +37,7 @@ export interface ServerConfig {
   embeddingProvider: 'openai' | 'local';
   embeddingProfile: string;
   guideMaxDepth: number;
+  ragKnowledgeMapEnabled: boolean;
   ragSharedDirectory?: string;
   ragWebsiteAllowlist: string[];
   ragMaxFileBytes: number;
@@ -91,6 +92,7 @@ export function loadConfig(): ServerConfig {
     embeddingProvider: parseEmbeddingProvider(process.env.EMBEDDING_PROVIDER),
     embeddingProfile: '',
     guideMaxDepth: Number.parseInt(process.env.GUIDE_MAX_DEPTH ?? '2', 10),
+    ragKnowledgeMapEnabled: process.env.RAG_KNOWLEDGE_MAP_ENABLED === 'true',
     ragSharedDirectory: optionalString(process.env.RAG_SHARED_DIRECTORY),
     ragWebsiteAllowlist: parseList(process.env.RAG_WEBSITE_ALLOWLIST),
     ragMaxFileBytes: Number.parseInt(process.env.RAG_MAX_FILE_BYTES ?? '1048576', 10),
@@ -149,6 +151,16 @@ function validateConfig(config: ServerConfig): void {
 
   if (config.ragVectorEnabled && !config.databaseUrl) {
     throw new Error('RAG_VECTOR_ENABLED=true requires DATABASE_URL');
+  }
+
+  if (config.ragKnowledgeMapEnabled) {
+    if (!config.databaseUrl) {
+      throw new Error('RAG_KNOWLEDGE_MAP_ENABLED=true requires DATABASE_URL');
+    }
+
+    if (config.sessionStore !== 'postgres') {
+      throw new Error('RAG_KNOWLEDGE_MAP_ENABLED=true requires SESSION_STORE=postgres');
+    }
   }
 
   if (!Number.isFinite(config.postgresPoolMax) || config.postgresPoolMax <= 0) {
