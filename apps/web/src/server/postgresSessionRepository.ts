@@ -12,6 +12,7 @@ import { SessionNotFoundError, type SessionRepository, touchSession } from './se
 
 interface SessionRow {
   id: string;
+  revision?: number | string;
   owner_id: string;
   title: string;
   created_at: Date | string;
@@ -26,7 +27,7 @@ export class PostgresSessionRepository implements SessionRepository {
 
   async list(ownerId: string): Promise<SessionSummary[]> {
     const result = await this.db.query<SessionRow>(
-      `select id, owner_id, title, created_at, updated_at, settings, chat_history, guide
+      `select id, revision, owner_id, title, created_at, updated_at, settings, chat_history, guide
        from onboarding_sessions
        where owner_id = $1
        order by updated_at desc`,
@@ -47,6 +48,7 @@ export class PostgresSessionRepository implements SessionRepository {
     const now = new Date().toISOString();
     const session: OnboardingSession = {
       id: randomUUID(),
+      revision: 0,
       title: request.title?.trim() || 'Untitled onboarding plan',
       createdAt: now,
       updatedAt: now,
@@ -61,7 +63,7 @@ export class PostgresSessionRepository implements SessionRepository {
       `insert into onboarding_sessions
         (id, owner_id, title, created_at, updated_at, settings, chat_history, guide)
        values ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb)
-       returning id, owner_id, title, created_at, updated_at, settings, chat_history, guide`,
+       returning id, revision, owner_id, title, created_at, updated_at, settings, chat_history, guide`,
       [
         session.id,
         ownerId,
@@ -118,9 +120,10 @@ export class PostgresSessionRepository implements SessionRepository {
            updated_at = $3,
            settings = $4::jsonb,
            chat_history = $5::jsonb,
-           guide = $6::jsonb
-       where id = $1 and owner_id = $7
-       returning id, owner_id, title, created_at, updated_at, settings, chat_history, guide`,
+           guide = $6::jsonb,
+           revision = revision + 1
+       where id = $1 and owner_id = $7 and revision = $8
+       returning id, revision, owner_id, title, created_at, updated_at, settings, chat_history, guide`,
       [
         session.id,
         session.title,
@@ -129,6 +132,7 @@ export class PostgresSessionRepository implements SessionRepository {
         JSON.stringify(session.chatHistory),
         JSON.stringify(session.guide),
         ownerId,
+        session.revision ?? 0,
       ],
     );
 
@@ -148,7 +152,7 @@ export class PostgresSessionRepository implements SessionRepository {
 
   private async getRow(sessionId: string, ownerId: string): Promise<SessionRow> {
     const result = await this.db.query<SessionRow>(
-      `select id, owner_id, title, created_at, updated_at, settings, chat_history, guide
+      `select id, revision, owner_id, title, created_at, updated_at, settings, chat_history, guide
        from onboarding_sessions
        where id = $1 and owner_id = $2`,
       [sessionId, ownerId],
@@ -169,6 +173,7 @@ function requireRow(row: SessionRow | undefined, sessionId: string): SessionRow 
 function toPublicSession(row: SessionRow): OnboardingSession {
   return {
     id: row.id,
+    revision: Number(row.revision ?? 0),
     title: row.title,
     createdAt: toIsoString(row.created_at),
     updatedAt: toIsoString(row.updated_at),

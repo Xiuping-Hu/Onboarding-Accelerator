@@ -58,6 +58,9 @@ Set these before running with `NODE_ENV=production`:
 - `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_TIMEOUT_MS`, and `OPENAI_MAX_RETRIES`.
 - `RAG_SHARED_DIRECTORY` for shared files and `RAG_WEBSITE_ALLOWLIST` for allowed website ingestion.
 - pgvector RAG: apply `db/migrations/001_postgres_pgvector.sql`, populate `knowledge_chunks`, then set `RAG_VECTOR_ENABLED=true`, `DATABASE_URL`, and optionally `OPENAI_EMBEDDING_MODEL` and `RAG_VECTOR_LIMIT`.
+- governed knowledge maps: apply migrations through `006_rag_grounded_knowledge_maps.sql`, set
+  `SESSION_STORE=postgres`, and enable `RAG_KNOWLEDGE_MAP_ENABLED=true`. Readiness must treat missing
+  Postgres map/session persistence as a configuration failure.
 
 Apply `db/migrations/001_postgres_pgvector.sql`, `db/migrations/002_users_table.sql`, and `db/migrations/003_postgres_account_auth.sql` before enabling password auth. Use `npm run users:create -- --email admin@example.com --name "Admin" --role admin` to create the first administrator. The app intentionally has no `/register` page or registration API.
 

@@ -58,6 +58,7 @@ export class InMemorySessionRepository implements SessionRepository {
     const now = new Date().toISOString();
     const session: StoredSession = {
       id: randomUUID(),
+      revision: 0,
       ownerId,
       title: request.title?.trim() || 'Untitled onboarding plan',
       createdAt: now,
@@ -119,6 +120,7 @@ export class InMemorySessionRepository implements SessionRepository {
 
     const stored: StoredSession = {
       ...cloneSession(session),
+      revision: (existing.revision ?? 0) + 1,
       ownerId: existing.ownerId,
     };
     this.sessions.set(session.id, stored);

@@ -12,6 +12,7 @@ import { getDatabasePool } from './database';
 import { DeepSeekService } from './deepSeekService';
 import { LocalHashEmbeddingService, OpenAiEmbeddingService } from './embeddingService';
 import { GuideOrchestrationService } from './guideService';
+import { KnowledgeMapService } from './knowledgeMapService';
 import { NoopLoginAuditRepository, PostgresLoginAuditRepository } from './loginAuditRepository';
 import { FileLogService } from './logService';
 import { OpenAiService } from './openAiService';
@@ -52,6 +53,8 @@ function createServerServices() {
     config.sessionStore === 'postgres' && database
       ? new PostgresSessionRepository(database)
       : new FileSessionRepository(config.sessionStorePath);
+  const knowledgeMaps =
+    config.ragKnowledgeMapEnabled && database ? new KnowledgeMapService(database) : undefined;
   const logs = new FileLogService(config.logStorePath);
   const adminActivity = new AdminActivityLogService(config.logStorePath);
   const adminAudit = new FileAdminAuditService(config.adminAuditStorePath);
@@ -98,7 +101,7 @@ function createServerServices() {
     vectorKnowledgeBase,
     config.ragSeedKnowledgeEnabled,
   );
-  const chat = new ChatOrchestrationService(sessions, rag, openAi, logs);
+  const chat = new ChatOrchestrationService(sessions, rag, openAi, logs, knowledgeMaps);
   const guide = new GuideOrchestrationService(sessions, rag, config.guideMaxDepth);
   const metrics = {
     startedAt: new Date().toISOString(),
@@ -117,6 +120,7 @@ function createServerServices() {
     config,
     guide,
     loginAudit,
+    knowledgeMaps,
     logs,
     metrics,
     openAi,

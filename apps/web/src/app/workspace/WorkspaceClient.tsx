@@ -7,11 +7,13 @@ import type {
   GuideGraph,
   GuideStep,
   KnowledgeSource,
+  MapProjectionProposal,
   OnboardingSession,
 } from '@onboarding/shared';
 import {
   type AccountSession,
   createGuideMap,
+  createPublishedGuideMap,
   createSession,
   deleteSession,
   expandStep,
@@ -20,6 +22,7 @@ import {
   listSessions,
   loginAccount,
   logoutAccount,
+  proposePublishedGuideMap,
   sendChat,
 } from './api';
 import { AgentChatDrawer } from './assistant/AgentChatDrawer';
@@ -591,6 +594,10 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [focusStepIds, setFocusStepIds] = useState<string[]>([]);
   const [draftGuideMaps, setDraftGuideMaps] = useState<Record<string, DraftGuideMap | null>>({});
+  const [knowledgeMapEnabled, setKnowledgeMapEnabled] = useState(false);
+  const [mapProjectionProposal, setMapProjectionProposal] = useState<MapProjectionProposal | null>(
+    null,
+  );
   const [, setSources] = useState<KnowledgeSource[]>([]);
   const [messagesBySessionId, setMessagesBySessionId] = useState<Record<string, ChatMessage[]>>({});
   const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false);
@@ -624,6 +631,8 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
     try {
       setApiError(null);
       const response = await getRootGuide({ sessionId, webSearchEnabled: false });
+      setKnowledgeMapEnabled(response.knowledgeMapEnabled === true);
+      setMapProjectionProposal(response.mapProjectionProposal ?? null);
       setGraph(response.graph);
       setSources((current) => mergeSources(current, response.graph.sources));
       const focusId = response.focusStepId ?? response.graph.rootId;
@@ -847,6 +856,35 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
     }
   }
 
+  async function handlePublishedMap() {
+    if (!activeSessionId) return;
+    setIsLoading(true);
+    try {
+      setApiError(null);
+      if (!mapProjectionProposal) {
+        const proposal = await proposePublishedGuideMap({
+          sessionId: activeSessionId,
+          goal: 'Understand my role, tools, workflows, and first onboarding steps.',
+        });
+        setMapProjectionProposal(proposal);
+        return;
+      }
+      const response = await createPublishedGuideMap({
+        sessionId: activeSessionId,
+        proposalId: mapProjectionProposal.id,
+      });
+      setGraph(response.graph);
+      setMapProjectionProposal(null);
+      const focusId = response.focusStepId ?? response.graph.rootId;
+      setSelectedStepId(focusId);
+      setFocusStepIds([focusId]);
+    } catch (error) {
+      setApiError(formatError(error, 'Could not create the company knowledge map.'));
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
   return (
     <main
       className={[
@@ -919,16 +957,35 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
           {isLoading ? <div className="loading-state">Loading onboarding workspace...</div> : null}
           {isGuideEmpty && !isLoading ? (
             <div className="empty-map-state">
-              <h2>Create a guide map</h2>
-              <p>Ask the agent for domain knowledge, then create a map from its answer.</p>
-              <button
-                className="primary-button"
-                disabled={!activeDraftGuideMap}
-                onClick={() => void handleCreateGuideMap()}
-                type="button"
-              >
-                Create map
-              </button>
+              <h2>Create your onboarding map</h2>
+              {knowledgeMapEnabled ? (
+                <>
+                  <p>
+                    {mapProjectionProposal
+                      ? `Preview ready with ${mapProjectionProposal.nodeIds.length} reviewed company knowledge nodes.`
+                      : 'Start with the current reviewed company knowledge map.'}
+                  </p>
+                  <button
+                    className="primary-button"
+                    onClick={() => void handlePublishedMap()}
+                    type="button"
+                  >
+                    {mapProjectionProposal ? 'Create reviewed map' : 'Preview company map'}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p>Ask the assistant for domain knowledge, then create a map from its answer.</p>
+                  <button
+                    className="primary-button"
+                    disabled={!activeDraftGuideMap}
+                    onClick={() => void handleCreateGuideMap()}
+                    type="button"
+                  >
+                    Create map
+                  </button>
+                </>
+              )}
             </div>
           ) : null}
           {!isGuideEmpty && selectedStep?.hasChildren ? (

@@ -18,6 +18,7 @@ superseded, and future-planning documents can be referenced without competing wi
 | 011    | `archive/011-dynamic-agent-created-guide-map.md`   | Complete   | Empty-first guide maps created from agent domain knowledge.              |
 | 012    | `archive/012-rag-ingestion-sop.md`                 | Proposed   | Production RAG ingestion SOP for files, media, websites, and SharePoint. |
 | 013    | `archive/013-assistant-ui-workspace-panels.md`     | Proposed   | Unified assistant-ui plan navigation and production chat panels.         |
+| 014    | `archive/014-rag-grounded-knowledge-map.md`        | Proposed   | Versioned, reviewed knowledge maps with RAG navigation and source truth. |
 
 Current runtime documentation lives in `README.md`, `docs/production-readiness.md`, and the generated
 harness docs under `docs/harness/generated`.

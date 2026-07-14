@@ -1,8 +1,10 @@
 import type { DatabaseClient } from '../database';
+import { withTransaction } from '../database';
 import type { EmbeddingProvider } from '../embeddingService';
 import { chunkDocument } from './chunker';
 import { extractSources, type SharePointCredentials } from './extractors';
 import { writeKnowledgeChunks } from './knowledgeChunkWriter';
+import { registerSourceVersion } from './sourceVersionWriter';
 import type { IngestionReport, IngestionSource } from './types';
 
 export class RagIngestionService {
@@ -12,6 +14,7 @@ export class RagIngestionService {
     private readonly sharePointCredentials: SharePointCredentials,
     private readonly allowedAccessScopes: string[],
     private readonly embeddingProfile: string,
+    private readonly sourceVersioningEnabled = false,
   ) {}
 
   async ingest(source: IngestionSource, dryRun: boolean): Promise<IngestionReport> {
@@ -45,13 +48,27 @@ export class RagIngestionService {
         };
       }
 
-      await writeKnowledgeChunks(
-        this.db,
-        this.embeddings,
-        this.embeddingProfile,
-        source.id,
-        chunks,
-      );
+      if (this.sourceVersioningEnabled) {
+        await withTransaction(this.db, async (db) => {
+          const sourceVersionId = await registerSourceVersion(db, source, documents);
+          await writeKnowledgeChunks(
+            db,
+            this.embeddings,
+            this.embeddingProfile,
+            source.id,
+            chunks,
+            sourceVersionId,
+          );
+        });
+      } else {
+        await writeKnowledgeChunks(
+          this.db,
+          this.embeddings,
+          this.embeddingProfile,
+          source.id,
+          chunks,
+        );
+      }
       return { sourceId: source.id, status: 'indexed', chunkCount: chunks.length, warnings };
     } catch (error) {
       return {
