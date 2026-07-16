@@ -1100,6 +1100,67 @@ h3 {
   background: var(--panel-surface);
 }
 
+.roadmap-reference-control {
+  min-width: 0;
+  color: var(--panel-muted);
+  font-size: 12px;
+}
+
+.roadmap-reference-add {
+  max-width: 100%;
+  border: 1px dashed #9aa8d6;
+  border-radius: 8px;
+  padding: 6px 8px;
+  overflow: hidden;
+  background: #f7f9ff;
+  color: #314b9d;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roadmap-reference-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid #9aa8d6;
+  border-radius: 9px;
+  padding: 7px 8px;
+  background: #edf2ff;
+  color: #24356f;
+}
+
+.roadmap-reference-chip span {
+  display: grid;
+  min-width: 0;
+}
+
+.roadmap-reference-chip small,
+.roadmap-reference-chip strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roadmap-reference-chip button {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font-size: 18px;
+}
+
+.message-roadmap-reference {
+  display: block;
+  margin-bottom: 6px;
+  color: #314b9d;
+  font-weight: 700;
+}
+
 .thread-scroll-footer {
   position: sticky;
   right: 0;

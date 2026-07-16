@@ -25,8 +25,9 @@ Shared contracts live in `packages/shared/src/index.ts`.
 - `PATCH /api/sessions/:sessionId` accepts `UpdateSessionRequest` and returns `UpdateSessionResponse`.
 - `DELETE /api/sessions/:sessionId` returns `204`.
 - `POST /api/sessions/:sessionId/chat` accepts `ChatRequest` and returns `ChatResponse`.
-- `POST /api/sessions/:sessionId/guide/root` accepts `GenerateGuideRootRequest` and returns `GenerateGuideRootResponse`.
-- `POST /api/sessions/:sessionId/guide/expand` accepts `ExpandGuideStepRequest` and returns `ExpandGuideStepResponse`.
+- `POST /api/sessions/:sessionId/guide/root` reads the current authorized published roadmap from Postgres and returns `GenerateGuideRootResponse` without generating session-specific topology.
+- `POST /api/admin/knowledge-maps/proposals` groups reviewed RAG sources into domain-categorized roadmap drafts.
+- `POST /api/admin/knowledge-maps` stores a reviewed roadmap draft and the version publish endpoint makes it available to eligible sessions.
 - `POST /api/ask` accepts `AskRequest` and returns `AskResponse`.
 - `GET /api/logs/summary` returns `LogSummaryResponse`.
 - `GET /api/logs/recent?limit=10` returns `LogEventsResponse`.

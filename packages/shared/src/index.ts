@@ -59,6 +59,12 @@ export interface CurrentUserResponse {
 
 export type ChatRole = 'user' | 'assistant' | 'system';
 
+export interface RoadmapNodeReference {
+  nodeId: string;
+  title: string;
+  summary?: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: ChatRole;
@@ -67,6 +73,7 @@ export interface ChatMessage {
   sources?: SourceProvenance[];
   guideNodeIds?: string[];
   focusStepIds?: string[];
+  roadmapReferences?: RoadmapNodeReference[];
   usage?: AiUsageStats;
 }
 
@@ -98,7 +105,6 @@ export interface GuideGraphState {
   knowledgeMapId?: string;
   knowledgeMapVersionId?: string;
   projectedKnowledgeMapNodeIds?: string[];
-  pendingMapProjection?: MapProjectionProposal;
 }
 
 export interface OnboardingSession {
@@ -178,22 +184,17 @@ export interface GuideRequest {
   webSearchEnabled: boolean;
 }
 
-export interface ExpandStepRequest extends GuideRequest {
-  stepId: string;
-}
-
 export interface GuideResponse {
   graph: GuideGraph;
   focusStepId?: string;
   knowledgeMapEnabled?: boolean;
-  mapProjectionProposal?: MapProjectionProposal;
 }
 
 export interface ChatRequest {
   sessionId: string;
   message: string;
   webSearchEnabled: boolean;
-  selectedStepId?: string;
+  referencedNodeId?: string;
 }
 
 export interface ChatResponse {
@@ -202,24 +203,7 @@ export interface ChatResponse {
   sources: SourceProvenance[];
   guideNodeIds?: string[];
   focusStepIds?: string[];
-  draftGuideMap?: DraftGuideMap;
   usage?: AiUsageStats;
-}
-
-export interface DraftGuideMap {
-  title: string;
-  summary?: string;
-  nodes: DraftGuideMapNode[];
-}
-
-export interface DraftGuideMapNode {
-  clientId: string;
-  parentClientId?: string;
-  title: string;
-  summary: string;
-  detail?: string;
-  sourceIds?: string[];
-  position: number;
 }
 
 export interface GenerateGuideRootRequest {
@@ -233,31 +217,6 @@ export interface GenerateGuideRootResponse {
   session: OnboardingSession;
   sources: SourceProvenance[];
   knowledgeMapEnabled?: boolean;
-}
-
-export interface ExpandGuideStepRequest {
-  nodeId: string;
-  instruction?: string;
-  webSearchEnabled?: boolean;
-}
-
-export interface ExpandGuideStepResponse {
-  parentNodeId: string;
-  childNodeIds: string[];
-  nodes: GuideNode[];
-  session: OnboardingSession;
-  sources: SourceProvenance[];
-}
-
-export interface CreateGuideMapRequest {
-  draftGuideMap: DraftGuideMap;
-}
-
-export interface CreateGuideMapResponse {
-  rootNodeIds: string[];
-  nodes: GuideNode[];
-  session: OnboardingSession;
-  sources: SourceProvenance[];
 }
 
 export interface AiUsageStats {
@@ -519,18 +478,4 @@ export interface PublishedKnowledgeMap {
     relationship: KnowledgeMapRelationship;
     rationale?: string;
   }>;
-}
-
-export interface MapProjectionProposal {
-  id: string;
-  sessionRevision: number;
-  mapId: string;
-  mapVersionId: string;
-  nodeIds: string[];
-  pathNodeIds: string[];
-  onboardingRoleKey?: string;
-  teamKey?: string;
-  goal: string;
-  createdAt: string;
-  expiresAt: string;
 }

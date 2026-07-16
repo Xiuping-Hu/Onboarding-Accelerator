@@ -9,7 +9,6 @@ import type {
   AdminAuditResponse,
   AiFeeSummaryResponse,
   ChatResponse,
-  CreateGuideMapResponse,
   CreateSessionResponse,
   GenerateGuideRootResponse,
 } from '@onboarding/shared';
@@ -27,8 +26,6 @@ void test('Next API handlers create sessions, generate guides, chat, and expose 
 
   const sessionsRoute = await import('./api/sessions/route');
   const guideRootRoute = await import('./api/sessions/[sessionId]/guide/root/route');
-  const guideMapRoute = await import('./api/sessions/[sessionId]/guide/map/route');
-  const guideExpandRoute = await import('./api/sessions/[sessionId]/guide/expand/route');
   const chatRoute = await import('./api/sessions/[sessionId]/chat/route');
   const logsRoute = await import('./api/logs/recent/route');
   const meRoute = await import('./api/auth/me/route');
@@ -69,25 +66,6 @@ void test('Next API handlers create sessions, generate guides, chat, and expose 
   const chat = (await chatResponse.json()) as ChatResponse;
   assert.equal(chat.message.role, 'assistant');
   assert.match(chat.message.content, /onboarding/i);
-  assert.ok(chat.draftGuideMap);
-
-  const mapResponse = await guideMapRoute.POST(
-    jsonRequest(`http://localhost/api/sessions/${created.session.id}/guide/map`, {
-      draftGuideMap: chat.draftGuideMap,
-    }),
-    { params: Promise.resolve({ sessionId: created.session.id }) },
-  );
-  assert.equal(mapResponse.status, 200);
-  const map = (await mapResponse.json()) as CreateGuideMapResponse;
-  assert.ok(map.rootNodeIds.length > 0);
-
-  const expandResponse = await guideExpandRoute.POST(
-    jsonRequest(`http://localhost/api/sessions/${created.session.id}/guide/expand`, {
-      nodeId: map.rootNodeIds[0],
-    }),
-    { params: Promise.resolve({ sessionId: created.session.id }) },
-  );
-  assert.equal(expandResponse.status, 200);
 
   const logsResponse = await logsRoute.GET(
     new NextRequest('http://localhost/api/logs/recent?limit=10', {

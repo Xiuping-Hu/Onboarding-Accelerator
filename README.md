@@ -45,8 +45,9 @@ embeddings, and set `RAG_VECTOR_ENABLED=true`.
 To enable governed RAG knowledge maps, apply `db/migrations/006_rag_grounded_knowledge_maps.sql`,
 set `SESSION_STORE=postgres`, and set `RAG_KNOWLEDGE_MAP_ENABLED=true`. Administrators can create a
 validated draft through `POST /api/admin/knowledge-maps` and publish it through the version publish
-endpoint. New onboarding sessions can then preview and explicitly create a projection of the current
-published map. The feature remains disabled by default so existing file-backed guide maps continue
+endpoint. The proposal flow groups reviewed RAG sources into onboarding domains, stores the reviewed
+roadmap in Postgres, and every eligible session reads the current published roadmap directly. The
+feature remains disabled by default so existing file-backed guide maps continue
 to work unchanged.
 
 ## RAG ingestion

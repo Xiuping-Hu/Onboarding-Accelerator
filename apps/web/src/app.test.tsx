@@ -96,38 +96,16 @@ const graph: GuideGraph = {
   sources: [],
 };
 
-void test('selected root branch hides sibling branches', () => {
+void test('selecting a roadmap domain keeps the full stored roadmap visible', () => {
   const visible = getVisibleGraph(graph, 'a');
 
-  assert.deepEqual(
-    visible?.steps.map((step) => step.id),
-    ['root', 'a', 'a1', 'a2', 'a3', 'a1a'],
-  );
-  assert.equal(
-    visible?.steps.some((step) => step.id === 'b'),
-    false,
-  );
-  assert.equal(
-    visible?.steps.some((step) => step.id === 'c'),
-    false,
-  );
+  assert.deepEqual(visible, graph);
 });
 
-void test('selecting a child hides its sibling nodes while keeping ancestors and descendants', () => {
+void test('selecting a child keeps sibling domains available without reveal actions', () => {
   const visible = getVisibleGraph(graph, 'a1');
 
-  assert.deepEqual(
-    visible?.steps.map((step) => step.id),
-    ['root', 'a', 'a1', 'a1a'],
-  );
-  assert.equal(
-    visible?.steps.some((step) => step.id === 'a2'),
-    false,
-  );
-  assert.equal(
-    visible?.steps.some((step) => step.id === 'a3'),
-    false,
-  );
+  assert.deepEqual(visible, graph);
 });
 
 void test('selected guide step resolves the agent drawer focus', () => {

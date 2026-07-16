@@ -22,7 +22,7 @@ export function AgentThread({
         onToggleEvidence={onToggleEvidence}
       />
     ),
-    UserMessage: () => <UserMessage userLabel={userLabel} />,
+    UserMessage: () => <UserMessage messageById={messageById} userLabel={userLabel} />,
   };
 
   return (

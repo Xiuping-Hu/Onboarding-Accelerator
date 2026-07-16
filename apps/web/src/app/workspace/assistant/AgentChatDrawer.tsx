@@ -1,15 +1,23 @@
 import { useMemo, useState } from 'react';
-import type { ChatMessage } from '@onboarding/shared';
+import type { ChatMessage, GuideStep } from '@onboarding/shared';
 import { AgentComposer } from './AgentComposer';
 import { AgentThread } from './AgentThread';
 
 export function AgentChatDrawer({
   isRunning,
   messages,
+  onAddReference,
+  onRemoveReference,
+  referenceCandidate,
+  referencedStep,
   userLabel,
 }: {
   isRunning: boolean;
   messages: ChatMessage[];
+  onAddReference: () => void;
+  onRemoveReference: () => void;
+  referenceCandidate: GuideStep | null;
+  referencedStep: GuideStep | null;
   userLabel: string;
 }) {
   const [expandedEvidenceIds, setExpandedEvidenceIds] = useState<string[]>([]);
@@ -44,7 +52,12 @@ export function AgentChatDrawer({
             Onboarding assistant is thinking...
           </div>
         ) : null}
-        <AgentComposer />
+        <AgentComposer
+          onAddReference={onAddReference}
+          onRemoveReference={onRemoveReference}
+          referenceCandidate={referenceCandidate}
+          referencedStep={referencedStep}
+        />
       </div>
     </section>
   );

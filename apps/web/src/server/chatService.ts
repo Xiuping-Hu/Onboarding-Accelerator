@@ -3,9 +3,9 @@ import type {
   ChatMessage,
   ChatRequest,
   ChatResponse,
-  DraftGuideMap,
   GuideNode,
   OnboardingSession,
+  RoadmapNodeReference,
   SourceProvenance,
 } from '@onboarding/shared';
 import type { RagRetriever } from './ragService';
@@ -28,21 +28,30 @@ export class ChatOrchestrationService {
     const session = await this.sessions.get(sessionId, ownerId);
     const webSearchEnabled = request.webSearchEnabled ?? session.settings.webSearchEnabled;
     const retrieval = await this.rag.retrieve(request.message, { webSearchEnabled });
-    const mapSources = await this.retrieveSelectedMapSources(
+    const roadmapReference = await this.resolveRoadmapReference(
       session,
-      request.selectedStepId,
+      request.referencedNodeId,
       ownerId,
     );
-    if (mapSources.length) {
-      retrieval.sources = dedupeSources([...mapSources, ...retrieval.sources]);
+    if (roadmapReference.sources.length) {
+      retrieval.sources = dedupeSources([...roadmapReference.sources, ...retrieval.sources]);
     }
-    const guideNodeIds = findRelevantGuideNodeIds(session, request.message);
+    const guideNodeIds = unique([
+      ...(roadmapReference.reference ? [roadmapReference.reference.nodeId] : []),
+      ...findRelevantGuideNodeIds(session, request.message),
+    ]);
     const now = new Date().toISOString();
     const userMessage: ChatMessage = {
       id: randomUUID(),
       role: 'user',
       content: request.message,
       createdAt: now,
+      ...(roadmapReference.reference
+        ? {
+            guideNodeIds: [roadmapReference.reference.nodeId],
+            roadmapReferences: [roadmapReference.reference],
+          }
+        : {}),
     };
     const answer = await this.composeAnswer(
       session,
@@ -57,17 +66,13 @@ export class ChatOrchestrationService {
       createdAt: now,
       sources: retrieval.sources,
       guideNodeIds,
+      ...(roadmapReference.reference ? { focusStepIds: [roadmapReference.reference.nodeId] } : {}),
       usage: answer.usage,
     };
     const persistedAssistantMessage: ChatMessage = {
       ...assistantMessage,
       sources: toPersistedSourceReferences(retrieval.sources),
     };
-    const draftGuideMap =
-      Object.keys(session.guide.nodes).length === 0
-        ? createDraftGuideMap(request.message, retrieval.sources)
-        : undefined;
-
     session.chatHistory.push(userMessage, persistedAssistantMessage);
     const savedSession = await this.sessions.save(touchSession(session), ownerId);
 
@@ -85,28 +90,38 @@ export class ChatOrchestrationService {
       session: savedSession,
       sources: retrieval.sources,
       guideNodeIds,
-      draftGuideMap,
+      focusStepIds: assistantMessage.focusStepIds,
       usage: answer.usage,
     };
   }
 
-  private async retrieveSelectedMapSources(
+  private async resolveRoadmapReference(
     session: OnboardingSession,
-    selectedStepId: string | undefined,
+    nodeId: string | undefined,
     ownerId: string,
-  ): Promise<SourceProvenance[]> {
-    if (!this.knowledgeMaps || !selectedStepId || !session.guide.knowledgeMapVersionId) return [];
-    try {
-      const scopes = await this.knowledgeMaps.accessScopesFor(ownerId);
-      const node = await this.knowledgeMaps.getNodeDetail(
-        session.guide.knowledgeMapVersionId,
-        selectedStepId,
-        scopes,
-      );
-      return node.sources;
-    } catch {
-      return [];
+  ): Promise<{ reference?: RoadmapNodeReference; sources: SourceProvenance[] }> {
+    if (!nodeId) return { sources: [] };
+
+    if (this.knowledgeMaps) {
+      try {
+        const scopes = await this.knowledgeMaps.accessScopesFor(ownerId);
+        const map = await this.knowledgeMaps.getPublished(scopes);
+        const node = await this.knowledgeMaps.getNodeDetail(map.versionId, nodeId, scopes);
+        return {
+          reference: { nodeId: node.id, title: node.title, summary: node.summary },
+          sources: node.sources,
+        };
+      } catch {
+        return { sources: [] };
+      }
     }
+
+    const node = session.guide.nodes[nodeId];
+    if (!node) return { sources: [] };
+    return {
+      reference: { nodeId: node.id, title: node.title, summary: node.summary },
+      sources: node.sources,
+    };
   }
 
   private async composeAnswer(
@@ -141,6 +156,10 @@ export class ChatOrchestrationService {
 
 function dedupeSources(sources: SourceProvenance[]): SourceProvenance[] {
   return [...new Map(sources.map((source) => [source.id, source])).values()];
+}
+
+function unique(values: string[]): string[] {
+  return [...new Set(values)];
 }
 
 function toPersistedSourceReferences(sources: SourceProvenance[]): SourceProvenance[] {
@@ -197,64 +216,4 @@ function findRelevantGuideNodeIds(session: OnboardingSession, query: string): st
 function nodeMatchesTerms(node: GuideNode, terms: string[]): boolean {
   const haystack = `${node.title} ${node.summary} ${node.detail ?? ''}`.toLowerCase();
   return terms.some((term) => term.length > 2 && haystack.includes(term));
-}
-
-function createDraftGuideMap(prompt: string, sources: SourceProvenance[]): DraftGuideMap {
-  const selectedSources = sources.slice(0, 4);
-  const rootNodes =
-    selectedSources.length > 0
-      ? selectedSources.map((source, index) => ({
-          clientId: `root-${index + 1}`,
-          title: source.title,
-          summary: source.excerpt,
-          detail: `Use ${source.title} to answer "${prompt}" and identify the next onboarding action.`,
-          sourceIds: [source.id],
-          position: index,
-        }))
-      : [
-          {
-            clientId: 'root-1',
-            title: 'Clarify the domain',
-            summary: `Collect the core concepts needed to answer "${prompt}".`,
-            detail:
-              'Ask for source material or connect knowledge sources before committing the map.',
-            sourceIds: [],
-            position: 0,
-          },
-          {
-            clientId: 'root-2',
-            title: 'Identify workflows',
-            summary: 'List the workflows, owners, and decisions that shape the domain.',
-            detail: 'Turn the domain answer into concrete onboarding steps.',
-            sourceIds: [],
-            position: 1,
-          },
-        ];
-
-  const childNodes = rootNodes.flatMap((rootNode, index) => [
-    {
-      clientId: `${rootNode.clientId}-context`,
-      parentClientId: rootNode.clientId,
-      title: `${rootNode.title}: Context`,
-      summary: 'Summarize the key facts, language, and constraints.',
-      detail: rootNode.detail,
-      sourceIds: rootNode.sourceIds,
-      position: index * 2,
-    },
-    {
-      clientId: `${rootNode.clientId}-action`,
-      parentClientId: rootNode.clientId,
-      title: `${rootNode.title}: Action`,
-      summary: 'Capture the practical next step for onboarding.',
-      detail: 'Convert the domain knowledge into an observable task.',
-      sourceIds: rootNode.sourceIds,
-      position: index * 2 + 1,
-    },
-  ]);
-
-  return {
-    title: `Map for ${prompt}`,
-    summary: 'Generated from the latest agent answer.',
-    nodes: [...rootNodes, ...childNodes],
-  };
 }

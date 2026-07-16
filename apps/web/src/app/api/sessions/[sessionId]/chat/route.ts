@@ -5,7 +5,7 @@ import { handleApiRoute } from '@/server/routeHandler';
 const chatRequestSchema = z.object({
   message: z.string().min(1),
   webSearchEnabled: z.boolean().optional(),
-  selectedStepId: z.string().optional(),
+  referencedNodeId: z.string().optional(),
 });
 
 type RouteContext = { params: Promise<{ sessionId: string }> };

@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto';
 import { NextResponse, type NextRequest } from 'next/server';
 import { ZodError } from 'zod';
 import { AuthError, ForbiddenError, authenticateRequest, type AuthenticatedUser } from './auth';
-import { GuideNodeNotFoundError } from './guideService';
 import { KnowledgeMapNotFoundError, KnowledgeMapValidationError } from './knowledgeMapService';
 import { RateLimitError, checkRateLimit } from './rateLimit';
 import { getServerServices } from './services';
@@ -97,7 +96,7 @@ async function toErrorResponse(
     );
   }
 
-  if (error instanceof SessionNotFoundError || error instanceof GuideNodeNotFoundError) {
+  if (error instanceof SessionNotFoundError) {
     return NextResponse.json({ error: error.message, requestId }, { status: 404 });
   }
 

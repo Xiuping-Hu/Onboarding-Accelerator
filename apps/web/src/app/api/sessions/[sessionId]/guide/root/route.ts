@@ -1,6 +1,8 @@
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { handleApiRoute } from '@/server/routeHandler';
+import { KnowledgeMapNotFoundError } from '@/server/knowledgeMapService';
+import { projectKnowledgeMapToGuide } from '@/server/knowledgeMapProjection';
 
 const guideRootRequestSchema = z.object({
   prompt: z.string().optional(),
@@ -13,22 +15,35 @@ export async function POST(request: NextRequest, context: RouteContext) {
   const { sessionId } = await context.params;
   return handleApiRoute(request, async ({ request: apiRequest, services, user }) => {
     const payload = guideRootRequestSchema.parse(await apiRequest.json());
-    const response = await services.guide.generateRoot(sessionId, payload, user.id);
-    if (!services.knowledgeMaps || !response.session.guide.knowledgeMapId) {
+    if (!services.knowledgeMaps) {
+      const response = await services.guide.generateRoot(sessionId, payload, user.id);
       return {
         ...response,
-        knowledgeMapEnabled: Boolean(services.knowledgeMaps),
+        knowledgeMapEnabled: false,
       };
     }
+
+    const session = await services.sessions.get(sessionId, user.id);
     const scopes = await services.knowledgeMaps.accessScopesFor(user.id);
-    const map = await services.knowledgeMaps.getPublished(
-      scopes,
-      response.session.guide.knowledgeMapId,
-    );
-    return {
-      ...response,
-      knowledgeMapEnabled: true,
-      sources: map.nodes.flatMap((node) => node.sources),
-    };
+    try {
+      const map = await services.knowledgeMaps.getPublished(scopes);
+      const guide = projectKnowledgeMapToGuide(map);
+      return {
+        rootNodeIds: guide.rootNodeIds,
+        nodes: guide.rootNodeIds.map((nodeId) => guide.nodes[nodeId]).filter(Boolean),
+        session: { ...session, guide },
+        sources: map.nodes.flatMap((node) => node.sources),
+        knowledgeMapEnabled: true,
+      };
+    } catch (error) {
+      if (!(error instanceof KnowledgeMapNotFoundError)) throw error;
+      return {
+        rootNodeIds: [],
+        nodes: [],
+        session,
+        sources: [],
+        knowledgeMapEnabled: true,
+      };
+    }
   });
 }

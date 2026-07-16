@@ -102,7 +102,7 @@ function createServerServices() {
     config.ragSeedKnowledgeEnabled,
   );
   const chat = new ChatOrchestrationService(sessions, rag, openAi, logs, knowledgeMaps);
-  const guide = new GuideOrchestrationService(sessions, rag, config.guideMaxDepth);
+  const guide = new GuideOrchestrationService(sessions);
   const metrics = {
     startedAt: new Date().toISOString(),
     requestsTotal: 0,

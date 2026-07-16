@@ -3,7 +3,7 @@ import test from 'node:test';
 import type { DatabaseClient } from './database';
 import { KnowledgeMapService } from './knowledgeMapService';
 
-void test('knowledge map proposals use current source versions as authoritative evidence', async () => {
+void test('knowledge map proposals group current source versions into grounded domains', async () => {
   const db: DatabaseClient = {
     query: async () => ({
       command: 'SELECT',
@@ -34,8 +34,14 @@ void test('knowledge map proposals use current source versions as authoritative 
     'source-b',
   ]);
 
-  assert.equal(draft.nodes.length, 2);
-  assert.equal(draft.nodes[0]?.evidence[0]?.sourceVersionId, 'version-a');
-  assert.equal(draft.nodes[0]?.evidence[0]?.role, 'authoritative');
-  assert.equal(draft.edges[0]?.relationship, 'learning_precedes');
+  assert.equal(draft.nodes.length, 4);
+  assert.deepEqual(
+    draft.nodes.filter((node) => !node.clientKey.includes('-source-')).map((node) => node.title),
+    ['Tools & Access', 'Workflows & Operations'],
+  );
+  const accessNode = draft.nodes.find((node) => node.title === 'Access setup');
+  assert.equal(accessNode?.evidence[0]?.sourceVersionId, 'version-a');
+  assert.equal(accessNode?.evidence[0]?.role, 'authoritative');
+  assert.equal(draft.edges.length, 2);
+  assert.ok(draft.edges.every((edge) => edge.relationship === 'contains'));
 });

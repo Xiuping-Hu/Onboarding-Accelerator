@@ -2,13 +2,8 @@ import type {
   CurrentUserResponse,
   ChatRequest,
   ChatResponse,
-  CreateGuideMapRequest,
-  CreateGuideMapResponse,
   CreateSessionRequest,
   CreateSessionResponse,
-  DraftGuideMap,
-  ExpandGuideStepResponse,
-  ExpandStepRequest,
   GenerateGuideRootResponse,
   GuideGraph,
   GuideGraphState,
@@ -22,7 +17,6 @@ import type {
   LoginResponse,
   LogEventsResponse,
   LogSummaryResponse,
-  MapProjectionProposal,
 } from '@onboarding/shared';
 
 export interface AccountSession {
@@ -112,74 +106,6 @@ export async function getRootGuide(payload: GuideRequest): Promise<GuideResponse
         ? `${response.session.id}-guide-root`
         : undefined,
     knowledgeMapEnabled: response.knowledgeMapEnabled,
-    mapProjectionProposal: response.session.guide.pendingMapProjection,
-  };
-}
-
-export async function proposePublishedGuideMap(payload: {
-  sessionId: string;
-  goal: string;
-}): Promise<MapProjectionProposal> {
-  const response = await requestJson<{ proposal: MapProjectionProposal }>(
-    `/api/sessions/${encodeURIComponent(payload.sessionId)}/guide/map/proposal`,
-    {
-      method: 'POST',
-      body: JSON.stringify({ goal: payload.goal }),
-    },
-  );
-  return response.proposal;
-}
-
-export async function createPublishedGuideMap(payload: {
-  sessionId: string;
-  proposalId: string;
-}): Promise<GuideResponse> {
-  const response = await requestJson<CreateGuideMapResponse>(
-    `/api/sessions/${encodeURIComponent(payload.sessionId)}/guide/map`,
-    {
-      method: 'POST',
-      body: JSON.stringify({ mode: 'published_projection', proposalId: payload.proposalId }),
-    },
-  );
-  return {
-    graph: toGuideGraph(response.session.guide, response.sources, response.session.id),
-    focusStepId: response.session.guide.rootNodeIds[0],
-  };
-}
-
-export async function expandStep(payload: ExpandStepRequest): Promise<GuideResponse> {
-  const response = await requestJson<ExpandGuideStepResponse>(
-    `/api/sessions/${encodeURIComponent(payload.sessionId)}/guide/expand`,
-    {
-      method: 'POST',
-      body: JSON.stringify({
-        nodeId: payload.stepId,
-        webSearchEnabled: payload.webSearchEnabled,
-      }),
-    },
-  );
-  return {
-    graph: toGuideGraph(response.session.guide, response.sources, response.session.id),
-    focusStepId: response.childNodeIds[0] ?? response.parentNodeId,
-  };
-}
-
-export async function createGuideMap(payload: {
-  sessionId: string;
-  draftGuideMap: DraftGuideMap;
-}): Promise<GuideResponse> {
-  const response = await requestJson<CreateGuideMapResponse>(
-    `/api/sessions/${encodeURIComponent(payload.sessionId)}/guide/map`,
-    {
-      method: 'POST',
-      body: JSON.stringify({
-        draftGuideMap: payload.draftGuideMap,
-      } satisfies CreateGuideMapRequest),
-    },
-  );
-  return {
-    graph: toGuideGraph(response.session.guide, response.sources, response.session.id),
-    focusStepId: response.session.guide.rootNodeIds[0],
   };
 }
 

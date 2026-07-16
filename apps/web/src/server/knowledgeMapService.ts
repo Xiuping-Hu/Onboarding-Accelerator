@@ -62,6 +62,14 @@ type SourceRow = {
   section_key: string | null;
 };
 
+type ProposalSourceRow = {
+  source_id: string;
+  source_version_id: string;
+  title: string;
+  excerpt: string;
+  owner: string;
+};
+
 export class KnowledgeMapService {
   constructor(private readonly db: DatabaseClient) {}
 
@@ -83,13 +91,7 @@ export class KnowledgeMapService {
   }
 
   async proposeFromSources(objective: string, sourceIds: string[]): Promise<RagKnowledgeMapDraft> {
-    const result = await this.db.query<{
-      source_id: string;
-      source_version_id: string;
-      title: string;
-      excerpt: string;
-      owner: string;
-    }>(
+    const result = await this.db.query<ProposalSourceRow>(
       `select distinct on (s.id) s.id as source_id, sv.id as source_version_id,
               s.title, c.excerpt, s.owner
        from knowledge_sources s
@@ -102,32 +104,48 @@ export class KnowledgeMapService {
     if (!result.rows.length) {
       throw new KnowledgeMapValidationError('No current reviewed source chunks were found.');
     }
-    const nodes: KnowledgeMapDraftNode[] = result.rows.map((row, index) => ({
-      clientKey: `source-${index + 1}`,
-      suggestedStableKey: slugify(row.title) || `source-${index + 1}`,
-      kind: 'concept',
-      title: row.title,
-      summary: row.excerpt.slice(0, 500),
-      owner: row.owner,
-      evidence: [
-        {
-          sourceId: row.source_id,
-          sourceVersionId: row.source_version_id,
-          role: 'authoritative',
-        },
-      ],
-    }));
+    const grouped = groupSourcesByDomain(result.rows);
+    const nodes: KnowledgeMapDraftNode[] = [];
+    const edges: RagKnowledgeMapDraft['edges'] = [];
+
+    for (const group of grouped) {
+      const domainClientKey = `domain-${group.domain.key}`;
+      nodes.push({
+        clientKey: domainClientKey,
+        suggestedStableKey: domainClientKey,
+        kind: 'concept',
+        title: group.domain.title,
+        summary: group.domain.summary,
+        evidence: group.sources.map(toAuthoritativeBinding),
+      });
+
+      for (const [sourceIndex, row] of group.sources.entries()) {
+        const clientKey = `${domainClientKey}-source-${sourceIndex + 1}`;
+        const evidence = [toAuthoritativeBinding(row)];
+        nodes.push({
+          clientKey,
+          suggestedStableKey: `${group.domain.key}-${slugify(row.title) || 'source'}-${sourceIndex + 1}`,
+          kind: group.domain.nodeKind,
+          title: row.title,
+          summary: row.excerpt.slice(0, 500),
+          owner: row.owner,
+          evidence,
+        });
+        edges.push({
+          clientKey: `${domainClientKey}-contains-${sourceIndex + 1}`,
+          fromClientKey: domainClientKey,
+          toClientKey: clientKey,
+          relationship: 'contains',
+          rationale: `${row.title} belongs to the ${group.domain.title} onboarding domain.`,
+          evidence,
+        });
+      }
+    }
+
     return {
       objective,
       nodes,
-      edges: nodes.slice(1).map((node, index) => ({
-        clientKey: `path-${index + 1}`,
-        fromClientKey: nodes[index]!.clientKey,
-        toClientKey: node.clientKey,
-        relationship: 'learning_precedes',
-        rationale: `Suggested onboarding sequence for ${objective}.`,
-        evidence: node.evidence,
-      })),
+      edges,
     };
   }
 
@@ -354,6 +372,106 @@ export class KnowledgeMapService {
         ...(edge.rationale ? { rationale: edge.rationale } : {}),
       }));
   }
+}
+
+const roadmapDomains: Array<{
+  key: string;
+  title: string;
+  summary: string;
+  nodeKind: KnowledgeMapDraftNode['kind'];
+  keywords: string[];
+}> = [
+  {
+    key: 'tools-access',
+    title: 'Tools & Access',
+    summary: 'Systems, accounts, devices, security, and access required to begin work.',
+    nodeKind: 'system',
+    keywords: [
+      'access',
+      'account',
+      'device',
+      'login',
+      'security',
+      'software',
+      'system',
+      'tool',
+      'it',
+    ],
+  },
+  {
+    key: 'policies-compliance',
+    title: 'Policies & Compliance',
+    summary: 'Company rules, required controls, standards, and compliance obligations.',
+    nodeKind: 'resource',
+    keywords: ['compliance', 'policy', 'rule', 'standard', 'privacy', 'legal', 'risk', 'conduct'],
+  },
+  {
+    key: 'people-culture',
+    title: 'People, Roles & Culture',
+    summary: 'Teams, responsibilities, communication norms, and company culture.',
+    nodeKind: 'role',
+    keywords: ['culture', 'manager', 'people', 'role', 'team', 'communication', 'meeting', 'owner'],
+  },
+  {
+    key: 'workflows-operations',
+    title: 'Workflows & Operations',
+    summary: 'Operational processes, decisions, handoffs, and recurring work.',
+    nodeKind: 'workflow',
+    keywords: ['workflow', 'process', 'operation', 'handoff', 'approval', 'client', 'procedure'],
+  },
+  {
+    key: 'products-customers',
+    title: 'Products & Customers',
+    summary: 'Products, services, customers, and the value the company delivers.',
+    nodeKind: 'concept',
+    keywords: ['customer', 'product', 'service', 'market', 'sales', 'client journey'],
+  },
+  {
+    key: 'training-development',
+    title: 'Training & Development',
+    summary: 'Required learning, certifications, milestones, and development paths.',
+    nodeKind: 'milestone',
+    keywords: ['training', 'learn', 'course', 'certification', 'development', 'onboarding'],
+  },
+];
+
+const fallbackRoadmapDomain = {
+  key: 'company-knowledge',
+  title: 'Company Knowledge',
+  summary: 'Reviewed company knowledge that supports the onboarding journey.',
+  nodeKind: 'concept' as const,
+  keywords: [],
+};
+
+function groupSourcesByDomain(rows: ProposalSourceRow[]) {
+  const grouped = new Map<
+    string,
+    {
+      domain: (typeof roadmapDomains)[number] | typeof fallbackRoadmapDomain;
+      sources: ProposalSourceRow[];
+    }
+  >();
+
+  for (const row of rows) {
+    const haystack = `${row.title} ${row.excerpt} ${row.owner}`.toLowerCase();
+    const domain =
+      roadmapDomains.find((candidate) =>
+        candidate.keywords.some((keyword) => haystack.includes(keyword)),
+      ) ?? fallbackRoadmapDomain;
+    const group = grouped.get(domain.key) ?? { domain, sources: [] };
+    group.sources.push(row);
+    grouped.set(domain.key, group);
+  }
+
+  return [...grouped.values()];
+}
+
+function toAuthoritativeBinding(row: ProposalSourceRow): KnowledgeEvidenceBinding {
+  return {
+    sourceId: row.source_id,
+    sourceVersionId: row.source_version_id,
+    role: 'authoritative',
+  };
 }
 
 function slugify(value: string): string {

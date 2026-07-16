@@ -42,7 +42,9 @@ export function KnowledgeMapAdminClient() {
       );
       setDraftText(JSON.stringify(response.draft, null, 2));
       setSaved(null);
-      setStatus('Draft generated. Review every node, edge, owner, and evidence binding.');
+      setStatus(
+        'Domain-categorized draft generated. Review every node, edge, owner, and evidence binding.',
+      );
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Could not generate the draft.');
     } finally {
@@ -81,7 +83,7 @@ export function KnowledgeMapAdminClient() {
           body: JSON.stringify({ changeNote: `Initial reviewed publication for ${objective}` }),
         },
       );
-      setStatus('Knowledge map published. Eligible learners can now preview it.');
+      setStatus('Roadmap published. Eligible sessions now load it directly from the database.');
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Could not publish the map.');
     } finally {
@@ -102,7 +104,10 @@ export function KnowledgeMapAdminClient() {
         <div className="admin-panel-heading">
           <div>
             <h2>Grounded map draft</h2>
-            <p>Generate from reviewed sources, inspect the structure, then publish explicitly.</p>
+            <p>
+              Generate domain categories from reviewed RAG sources, inspect the structure, then
+              publish it for every eligible session.
+            </p>
           </div>
         </div>
         <div className="admin-inline-form">

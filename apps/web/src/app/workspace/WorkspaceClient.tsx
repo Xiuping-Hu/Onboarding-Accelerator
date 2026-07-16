@@ -2,27 +2,21 @@ import { Component, useCallback, useEffect, useMemo, useRef, useState } from 're
 import type { ErrorInfo, ReactNode } from 'react';
 import type {
   ChatMessage,
-  DraftGuideMap,
   GuideEdge,
   GuideGraph,
   GuideStep,
   KnowledgeSource,
-  MapProjectionProposal,
   OnboardingSession,
 } from '@onboarding/shared';
 import {
   type AccountSession,
-  createGuideMap,
-  createPublishedGuideMap,
   createSession,
   deleteSession,
-  expandStep,
   getCurrentAccount,
   getRootGuide,
   listSessions,
   loginAccount,
   logoutAccount,
-  proposePublishedGuideMap,
   sendChat,
 } from './api';
 import { AgentChatDrawer } from './assistant/AgentChatDrawer';
@@ -197,11 +191,13 @@ function getBreadcrumbs(graph: GuideGraph | null, selectedStepId: string | null)
 
 function GuideCanvas({
   graph,
+  sessionId,
   selectedStepId,
   focusStepIds,
   onSelectStep,
 }: {
   graph: GuideGraph | null;
+  sessionId: string | null;
   selectedStepId: string | null;
   focusStepIds: string[];
   onSelectStep: (stepId: string) => void;
@@ -211,6 +207,7 @@ function GuideCanvas({
   const hitsRef = useRef<HitTarget[]>([]);
   const viewRef = useRef({ offsetX: 120, offsetY: 160, scale: 1, pulse: 0 });
   const targetViewRef = useRef({ offsetX: 120, offsetY: 160, scale: 1 });
+  const initializedSessionIdRef = useRef<string | null>(null);
   const dragRef = useRef<{
     pointerId: number;
     startX: number;
@@ -250,18 +247,25 @@ function GuideCanvas({
       return;
     }
 
-    const activeId = focusStepIds[0] ?? selectedStepId ?? graph?.rootId;
-    const activeNode = activeId ? nodesById.get(activeId) : undefined;
+    const rootNode = graph?.rootId ? nodesById.get(graph.rootId) : undefined;
     const rect = canvas.getBoundingClientRect();
 
-    if (activeNode && rect.width > 0 && rect.height > 0) {
-      targetViewRef.current = {
-        scale: activeNode.depth > 1 ? 0.88 : 1,
-        offsetX: rect.width / 2 - activeNode.x * (activeNode.depth > 1 ? 0.88 : 1),
-        offsetY: rect.height / 2 - activeNode.y * (activeNode.depth > 1 ? 0.88 : 1),
+    if (
+      rootNode &&
+      rect.width > 0 &&
+      rect.height > 0 &&
+      initializedSessionIdRef.current !== sessionId
+    ) {
+      const nextView = {
+        scale: 1,
+        offsetX: rect.width / 2 - rootNode.x,
+        offsetY: rect.height / 2 - rootNode.y,
       };
+      targetViewRef.current = nextView;
+      viewRef.current = { ...nextView, pulse: viewRef.current.pulse };
+      initializedSessionIdRef.current = sessionId;
     }
-  }, [focusStepIds, graph?.rootId, nodesById, selectedStepId]);
+  }, [graph?.rootId, nodesById, sessionId]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -286,10 +290,6 @@ function GuideCanvas({
       context.clearRect(0, 0, width, height);
 
       const view = viewRef.current;
-      const target = targetViewRef.current;
-      view.offsetX += (target.offsetX - view.offsetX) * 0.08;
-      view.offsetY += (target.offsetY - view.offsetY) * 0.08;
-      view.scale += (target.scale - view.scale) * 0.08;
       view.pulse += 0.035;
 
       const gradient = context.createLinearGradient(0, 0, width, height);
@@ -594,11 +594,8 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
   const [graph, setGraph] = useState<GuideGraph | null>(null);
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [focusStepIds, setFocusStepIds] = useState<string[]>([]);
-  const [draftGuideMaps, setDraftGuideMaps] = useState<Record<string, DraftGuideMap | null>>({});
   const [knowledgeMapEnabled, setKnowledgeMapEnabled] = useState(false);
-  const [mapProjectionProposal, setMapProjectionProposal] = useState<MapProjectionProposal | null>(
-    null,
-  );
+  const [referencedStepId, setReferencedStepId] = useState<string | null>(null);
   const [, setSources] = useState<KnowledgeSource[]>([]);
   const [messagesBySessionId, setMessagesBySessionId] = useState<Record<string, ChatMessage[]>>({});
   const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false);
@@ -610,6 +607,7 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
   const [deleteDialogError, setDeleteDialogError] = useState<string | null>(null);
   const [isDeletingSession, setIsDeletingSession] = useState(false);
   const activeSessionIdRef = useRef<string | null>(null);
+  const guideLoadRequestRef = useRef(0);
   const deleteTriggerRef = useRef<HTMLElement | null>(null);
 
   const breadcrumbs = useMemo(() => getBreadcrumbs(graph, selectedStepId), [graph, selectedStepId]);
@@ -622,8 +620,12 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
     () => graph?.steps.find((step) => step.id === selectedStepId) ?? null,
     [graph, selectedStepId],
   );
+  const referenceCandidate = selectedStep?.id === graph?.rootId ? null : selectedStep;
   const activeMessages = activeSessionId ? (messagesBySessionId[activeSessionId] ?? []) : [];
-  const activeDraftGuideMap = activeSessionId ? (draftGuideMaps[activeSessionId] ?? null) : null;
+  const referencedStep = useMemo(
+    () => graph?.steps.find((step) => step.id === referencedStepId) ?? null,
+    [graph, referencedStepId],
+  );
   const isChatLoading = activeSessionId ? runningSessionIds.includes(activeSessionId) : false;
   const accountLabel = account.displayName ?? account.email ?? account.userId;
   const deleteDialogSession = deleteDialogSessionId
@@ -635,12 +637,15 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
   }, [activeSessionId]);
 
   const loadGuide = useCallback(async (sessionId: string) => {
+    const requestId = ++guideLoadRequestRef.current;
     setIsLoading(true);
     try {
       setApiError(null);
       const response = await getRootGuide({ sessionId, webSearchEnabled: false });
+      if (requestId !== guideLoadRequestRef.current || activeSessionIdRef.current !== sessionId) {
+        return;
+      }
       setKnowledgeMapEnabled(response.knowledgeMapEnabled === true);
-      setMapProjectionProposal(response.mapProjectionProposal ?? null);
       setGraph(response.graph);
       setSources((current) => mergeSources(current, response.graph.sources));
       const focusId = response.focusStepId ?? response.graph.rootId;
@@ -652,9 +657,14 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
       setSelectedStepId(focusId);
       setFocusStepIds([focusId]);
     } catch (error) {
+      if (requestId !== guideLoadRequestRef.current || activeSessionIdRef.current !== sessionId) {
+        return;
+      }
       setApiError(formatError(error, 'Could not load the guide from the onboarding service.'));
     } finally {
-      setIsLoading(false);
+      if (requestId === guideLoadRequestRef.current) {
+        setIsLoading(false);
+      }
     }
   }, []);
 
@@ -687,6 +697,11 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
 
   useEffect(() => {
     if (activeSessionId) {
+      setGraph(null);
+      setSelectedStepId(null);
+      setFocusStepIds([]);
+      setReferencedStepId(null);
+      setSources([]);
       void loadGuide(activeSessionId);
     }
   }, [activeSessionId, loadGuide]);
@@ -699,7 +714,6 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
       setActiveSessionId(created.session.id);
       setMessagesBySessionId((current) => ({ ...current, [created.session.id]: [] }));
       setSources([]);
-      setDraftGuideMaps((current) => ({ ...current, [created.session.id]: null }));
     } catch (error) {
       setApiError(formatError(error, 'Could not create a new session.'));
     }
@@ -739,9 +753,6 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
       const remaining = sessions.filter((session) => session.id !== sessionId);
       setSessions(remaining);
       setMessagesBySessionId((current) => removeSessionMessages(current, sessionId));
-      setDraftGuideMaps((current) => {
-        return Object.fromEntries(Object.entries(current).filter(([id]) => id !== sessionId));
-      });
       setRunningSessionIds((current) => current.filter((id) => id !== sessionId));
 
       if (activeSessionId === sessionId) {
@@ -760,35 +771,9 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
     }
   }
 
-  async function handleNavigateToStep(stepId: string) {
+  function handleSelectStep(stepId: string) {
     setSelectedStepId(stepId);
-    setFocusStepIds([stepId]);
-  }
-
-  async function handleRevealStep(stepId: string) {
-    if (!activeSessionId) {
-      return;
-    }
-
-    const step = graph?.steps.find((candidate) => candidate.id === stepId);
-    if (!step || !step.hasChildren) {
-      return;
-    }
-
-    try {
-      setApiError(null);
-      const response = await expandStep({
-        sessionId: activeSessionId,
-        stepId,
-        webSearchEnabled: false,
-      });
-      setGraph(response.graph);
-      setSources((current) => mergeSources(current, response.graph.sources));
-      setSelectedStepId(stepId);
-      setFocusStepIds([stepId]);
-    } catch (error) {
-      setApiError(formatError(error, 'Could not reveal that guide step.'));
-    }
+    setFocusStepIds([]);
   }
 
   function handleLocateStep(stepId: string) {
@@ -802,15 +787,25 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
       return;
     }
 
+    const reference = referencedStepId && referencedStep ? referencedStep : null;
     const userMessage: ChatMessage = {
       id: `user-${Date.now()}`,
       role: 'user',
       content: message.trim(),
       createdAt: new Date().toISOString(),
+      ...(reference
+        ? {
+            guideNodeIds: [reference.id],
+            roadmapReferences: [
+              { nodeId: reference.id, title: reference.title, summary: reference.summary },
+            ],
+          }
+        : {}),
     };
 
     setMessagesBySessionId((current) => appendSessionMessage(current, sessionId, userMessage));
     setRunningSessionIds((current) => [...new Set([...current, sessionId])]);
+    setReferencedStepId(null);
 
     try {
       setApiError(null);
@@ -818,7 +813,7 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
         sessionId,
         message: userMessage.content,
         webSearchEnabled: false,
-        selectedStepId: selectedStepId ?? undefined,
+        referencedNodeId: reference?.id,
       });
       if (response.session) {
         setSessions((current) =>
@@ -837,7 +832,6 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
         );
       }
       setSources((current) => mergeSources(current, response.sources));
-      setDraftGuideMaps((current) => ({ ...current, [sessionId]: response.draftGuideMap ?? null }));
       if (
         activeSessionIdRef.current === sessionId &&
         response.focusStepIds &&
@@ -857,60 +851,6 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
       );
     } finally {
       setRunningSessionIds((current) => current.filter((id) => id !== sessionId));
-    }
-  }
-
-  async function handleCreateGuideMap() {
-    if (!activeSessionId || !activeDraftGuideMap) {
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      setApiError(null);
-      const response = await createGuideMap({
-        sessionId: activeSessionId,
-        draftGuideMap: activeDraftGuideMap,
-      });
-      setGraph(response.graph);
-      setSources((current) => mergeSources(current, response.graph.sources));
-      const focusId = response.focusStepId ?? response.graph.rootId;
-      setSelectedStepId(focusId);
-      setFocusStepIds([focusId]);
-      setDraftGuideMaps((current) => ({ ...current, [activeSessionId]: null }));
-    } catch (error) {
-      setApiError(formatError(error, 'Could not create the guide map.'));
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  async function handlePublishedMap() {
-    if (!activeSessionId) return;
-    setIsLoading(true);
-    try {
-      setApiError(null);
-      if (!mapProjectionProposal) {
-        const proposal = await proposePublishedGuideMap({
-          sessionId: activeSessionId,
-          goal: 'Understand my role, tools, workflows, and first onboarding steps.',
-        });
-        setMapProjectionProposal(proposal);
-        return;
-      }
-      const response = await createPublishedGuideMap({
-        sessionId: activeSessionId,
-        proposalId: mapProjectionProposal.id,
-      });
-      setGraph(response.graph);
-      setMapProjectionProposal(null);
-      const focusId = response.focusStepId ?? response.graph.rootId;
-      setSelectedStepId(focusId);
-      setFocusStepIds([focusId]);
-    } catch (error) {
-      setApiError(formatError(error, 'Could not create the company knowledge map.'));
-    } finally {
-      setIsLoading(false);
     }
   }
 
@@ -986,52 +926,19 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
           {isLoading ? <div className="loading-state">Loading onboarding workspace...</div> : null}
           {isGuideEmpty && !isLoading ? (
             <div className="empty-map-state">
-              <h2>Create your onboarding map</h2>
-              {knowledgeMapEnabled ? (
-                <>
-                  <p>
-                    {mapProjectionProposal
-                      ? `Preview ready with ${mapProjectionProposal.nodeIds.length} reviewed company knowledge nodes.`
-                      : 'Start with the current reviewed company knowledge map.'}
-                  </p>
-                  <button
-                    className="primary-button"
-                    onClick={() => void handlePublishedMap()}
-                    type="button"
-                  >
-                    {mapProjectionProposal ? 'Create reviewed map' : 'Preview company map'}
-                  </button>
-                </>
-              ) : (
-                <>
-                  <p>Ask the assistant for domain knowledge, then create a map from its answer.</p>
-                  <button
-                    className="primary-button"
-                    disabled={!activeDraftGuideMap}
-                    onClick={() => void handleCreateGuideMap()}
-                    type="button"
-                  >
-                    Create map
-                  </button>
-                </>
-              )}
+              <h2>Roadmap unavailable</h2>
+              <p>
+                {knowledgeMapEnabled
+                  ? 'No published roadmap is available for your access scope. Ask an administrator to generate and publish one from reviewed RAG sources.'
+                  : 'The database-backed roadmap is not enabled for this environment.'}
+              </p>
             </div>
-          ) : null}
-          {!isGuideEmpty && selectedStep?.hasChildren ? (
-            <button
-              className="reveal-step-button"
-              onClick={() => void handleRevealStep(selectedStep.id)}
-              type="button"
-            >
-              Reveal children
-            </button>
           ) : null}
           <GuideCanvas
             focusStepIds={focusStepIds}
             graph={visibleGraph}
-            onSelectStep={(stepId) => {
-              void handleNavigateToStep(stepId);
-            }}
+            onSelectStep={handleSelectStep}
+            sessionId={activeSessionId}
             selectedStepId={selectedStepId}
           />
         </section>
@@ -1049,6 +956,12 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
           <AgentChatDrawer
             isRunning={isChatLoading}
             messages={activeMessages}
+            onAddReference={() => {
+              if (referenceCandidate) setReferencedStepId(referenceCandidate.id);
+            }}
+            onRemoveReference={() => setReferencedStepId(null)}
+            referenceCandidate={referenceCandidate}
+            referencedStep={referencedStep}
             userLabel={accountLabel}
           />
         </aside>
