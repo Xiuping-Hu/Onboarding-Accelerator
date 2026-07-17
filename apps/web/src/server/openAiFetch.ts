@@ -4,18 +4,37 @@ let configuredProxyUrl: string | undefined;
 let proxyDispatcher: ProxyAgent | undefined;
 
 export async function openAiFetch(url: string, init: RequestInit): Promise<Response> {
-  const proxyUrl = process.env.OPENAI_PROXY_URL?.trim() || process.env.HTTPS_PROXY?.trim();
+  const proxyUrl = resolveProviderProxyUrl(
+    process.env.OPENAI_PROXY_URL?.trim() || process.env.HTTPS_PROXY?.trim(),
+  );
 
   return providerFetch(url, init, proxyUrl);
 }
 
 export async function deepSeekFetch(url: string, init: RequestInit): Promise<Response> {
-  const proxyUrl =
+  const proxyUrl = resolveProviderProxyUrl(
     process.env.DEEPSEEK_PROXY_URL?.trim() ||
-    process.env.OPENAI_PROXY_URL?.trim() ||
-    process.env.HTTPS_PROXY?.trim();
+      process.env.OPENAI_PROXY_URL?.trim() ||
+      process.env.HTTPS_PROXY?.trim(),
+  );
 
   return providerFetch(url, init, proxyUrl);
+}
+
+export function resolveProviderProxyUrl(
+  proxyUrl: string | undefined,
+  isVercel = process.env.VERCEL === '1',
+): string | undefined {
+  if (!proxyUrl || !isVercel) {
+    return proxyUrl;
+  }
+
+  try {
+    const hostname = new URL(proxyUrl).hostname.replace(/^\[|\]$/g, '').toLowerCase();
+    return ['localhost', '127.0.0.1', '::1'].includes(hostname) ? undefined : proxyUrl;
+  } catch {
+    return proxyUrl;
+  }
 }
 
 async function providerFetch(

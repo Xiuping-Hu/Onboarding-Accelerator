@@ -58,6 +58,9 @@ Set these before running with `NODE_ENV=production`:
 - `AI_RATE_CARDS_STORE_PATH`: writable durable path for AI rate-card JSON storage.
 - `AI_FEE_ADJUSTMENTS_STORE_PATH`: writable durable path for manual AI fee adjustment JSONL storage.
 - `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_TIMEOUT_MS`, and `OPENAI_MAX_RETRIES`.
+- Do not copy loopback provider proxies such as `DEEPSEEK_PROXY_URL=http://127.0.0.1:10808` into
+  Vercel. They refer to the developer machine locally but to the serverless function in production;
+  Vercel runtime calls ignore loopback proxy values as a defensive fallback.
 - `RAG_SHARED_DIRECTORY` for shared files and `RAG_WEBSITE_ALLOWLIST` for allowed website ingestion.
 - pgvector RAG: apply `db/migrations/001_postgres_pgvector.sql`, populate `knowledge_chunks`, then set `RAG_VECTOR_ENABLED=true`, `DATABASE_URL`, and optionally `OPENAI_EMBEDDING_MODEL` and `RAG_VECTOR_LIMIT`.
 - governed knowledge maps: apply migrations through `006_rag_grounded_knowledge_maps.sql`, set

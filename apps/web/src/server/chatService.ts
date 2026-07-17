@@ -87,7 +87,7 @@ export class ChatOrchestrationService {
 
     return {
       message: assistantMessage,
-      session: savedSession,
+      session: withAuthorizedResponseMessage(savedSession, assistantMessage),
       sources: retrieval.sources,
       guideNodeIds,
       focusStepIds: assistantMessage.focusStepIds,
@@ -152,6 +152,18 @@ export class ChatOrchestrationService {
       content: composeFallbackAnswer(prompt, sources, guideNodeIds),
     };
   }
+}
+
+function withAuthorizedResponseMessage(
+  session: OnboardingSession,
+  assistantMessage: ChatMessage,
+): OnboardingSession {
+  return {
+    ...session,
+    chatHistory: session.chatHistory.map((message) =>
+      message.id === assistantMessage.id ? assistantMessage : message,
+    ),
+  };
 }
 
 function dedupeSources(sources: SourceProvenance[]): SourceProvenance[] {

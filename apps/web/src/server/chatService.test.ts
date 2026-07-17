@@ -64,4 +64,14 @@ void test('chat persists an explicit roadmap node reference and uses its evidenc
   assert.deepEqual(response.focusStepIds, ['node-access']);
   assert.equal(response.session?.chatHistory[0]?.roadmapReferences?.[0]?.title, 'Tools & Access');
   assert.equal(response.session?.chatHistory[0]?.guideNodeIds?.[0], 'node-access');
+  assert.equal(
+    response.session?.chatHistory[1]?.sources?.[0]?.excerpt,
+    'Use the approved access request process.',
+  );
+
+  const persistedSession = await sessions.get(session.id, ownerId);
+  assert.equal(
+    persistedSession.chatHistory[1]?.sources?.[0]?.excerpt,
+    'Evidence is resolved after the current access policy is checked.',
+  );
 });
