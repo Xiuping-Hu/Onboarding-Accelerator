@@ -14,7 +14,7 @@ import { LocalHashEmbeddingService, OpenAiEmbeddingService } from './embeddingSe
 import { GuideOrchestrationService } from './guideService';
 import { KnowledgeMapService } from './knowledgeMapService';
 import { NoopLoginAuditRepository, PostgresLoginAuditRepository } from './loginAuditRepository';
-import { FileLogService } from './logService';
+import { ConsoleLogService, FileLogService } from './logService';
 import { OpenAiService } from './openAiService';
 import { PgvectorKnowledgeBase } from './pgvectorKnowledgeBase';
 import { PostgresSessionRepository } from './postgresSessionRepository';
@@ -55,7 +55,10 @@ function createServerServices() {
       : new FileSessionRepository(config.sessionStorePath);
   const knowledgeMaps =
     config.ragKnowledgeMapEnabled && database ? new KnowledgeMapService(database) : undefined;
-  const logs = new FileLogService(config.logStorePath);
+  // Vercel functions do not provide a durable writable project filesystem. Emit structured logs
+  // to the platform collector there; keep the file store for local and explicitly hosted runtimes.
+  const logs =
+    process.env.VERCEL === '1' ? new ConsoleLogService() : new FileLogService(config.logStorePath);
   const adminActivity = new AdminActivityLogService(config.logStorePath);
   const adminAudit = new FileAdminAuditService(config.adminAuditStorePath);
   const aiRates = new FileAiRateCardService(config.aiRateCardsStorePath);

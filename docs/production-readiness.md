@@ -52,7 +52,8 @@ Set these before running with `NODE_ENV=production`:
 
 - Authentication: set `AUTH_DISABLED=false`, `DATABASE_URL`, `AUTH_COOKIE_NAME`, `AUTH_SESSION_DURATION_MS`, `AUTH_SECURE_COOKIE=true`, `AUTH_LOGIN_RATE_LIMIT_WINDOW_MS`, and `AUTH_LOGIN_RATE_LIMIT_MAX`.
 - Session storage: use `SESSION_STORE=postgres` with `DATABASE_URL` for multi-instance deployments, or `SESSION_STORE=file` plus `SESSION_STORE_PATH` for local/single-instance JSON storage.
-- `LOG_STORE_PATH`: writable durable path for JSONL request, error, and AI usage logs.
+- Logging: Vercel deployments emit structured request, error, and AI usage logs to the platform
+  collector. Other runtimes use `LOG_STORE_PATH`, which must point to a writable durable path.
 - `ADMIN_AUDIT_STORE_PATH`: writable durable path for JSONL admin audit events.
 - `AI_RATE_CARDS_STORE_PATH`: writable durable path for AI rate-card JSON storage.
 - `AI_FEE_ADJUSTMENTS_STORE_PATH`: writable durable path for manual AI fee adjustment JSONL storage.

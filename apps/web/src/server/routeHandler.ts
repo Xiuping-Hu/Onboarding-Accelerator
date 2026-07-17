@@ -48,14 +48,16 @@ export async function handleApiRoute(
 
   response.headers.set('x-request-id', requestId);
   services.metrics.responsesTotal += 1;
-  await services.logs.recordRequest({
-    requestId,
-    method: request.method,
-    path: request.nextUrl.pathname,
-    statusCode: response.status,
-    durationMs: Date.now() - startedAt,
-    userId: user?.id,
-  });
+  await safelyRecordLog(() =>
+    services.logs.recordRequest({
+      requestId,
+      method: request.method,
+      path: request.nextUrl.pathname,
+      statusCode: response.status,
+      durationMs: Date.now() - startedAt,
+      userId: user?.id,
+    }),
+  );
   return response;
 }
 
@@ -117,12 +119,28 @@ async function toErrorResponse(
       message: error instanceof Error ? error.message : 'Unknown error',
     }),
   );
-  await services.logs.recordError({
-    requestId,
-    method: request.method,
-    path: request.nextUrl.pathname,
-    message: error instanceof Error ? error.message : 'Unknown error',
-    userId: user?.id,
-  });
+  await safelyRecordLog(() =>
+    services.logs.recordError({
+      requestId,
+      method: request.method,
+      path: request.nextUrl.pathname,
+      message: error instanceof Error ? error.message : 'Unknown error',
+      userId: user?.id,
+    }),
+  );
   return NextResponse.json({ error: 'Unexpected server error', requestId }, { status: 500 });
+}
+
+async function safelyRecordLog(record: () => Promise<void>): Promise<void> {
+  try {
+    await record();
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        level: 'error',
+        message: 'Failed to persist application log',
+        cause: error instanceof Error ? error.message : 'Unknown error',
+      }),
+    );
+  }
 }

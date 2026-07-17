@@ -181,6 +181,28 @@ export class NoopLogService implements LogService {
   }
 }
 
+export class ConsoleLogService implements LogService {
+  async recordRequest(input: RequestLogInput): Promise<void> {
+    console.info(JSON.stringify({ ...createBaseEvent('info'), type: 'request', ...input }));
+  }
+
+  async recordAiUsage(input: AiUsageLogInput): Promise<void> {
+    console.info(JSON.stringify({ ...createBaseEvent('info'), type: 'ai_usage', ...input }));
+  }
+
+  async recordError(input: ErrorLogInput): Promise<void> {
+    console.error(JSON.stringify({ ...createBaseEvent('error'), type: 'error', ...input }));
+  }
+
+  async summarize(): Promise<LogSummaryResponse> {
+    return createEmptySummary();
+  }
+
+  async listRecent(): Promise<LogEventsResponse> {
+    return { events: [] };
+  }
+}
+
 function createBaseEvent<TLevel extends BaseLogEvent['level']>(
   level: TLevel,
 ): BaseLogEvent & { level: TLevel } {
