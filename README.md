@@ -23,10 +23,9 @@ npm run docs:harness:update
 
 `npm run dev` starts the Next.js app at `http://localhost:3000`. With `AUTH_DISABLED=true`, local
 development opens the protected workspace as `local-dev-user`. Real sign-in uses the Tax Consulting
-SA Microsoft Entra tenant through OIDC authorization code flow with PKCE. Apply
-`db/migrations/001_postgres_pgvector.sql` through
-`db/migrations/007_microsoft_entra_auth.sql`, set `AUTH_DISABLED=false`, `DATABASE_URL`, and the
-`AUTH_MICROSOFT_*` settings from `.env.example`.
+SA Microsoft Entra tenant through OIDC authorization code flow with PKCE. Set `DATABASE_URL`, run
+`npm run db:migrate:deploy`, then set `AUTH_DISABLED=false` and the `AUTH_MICROSOFT_*` settings from
+`.env.example`.
 
 Register a Web redirect URI of
 `http://localhost:3000/api/auth/microsoft/callback` for local testing and the equivalent HTTPS URI
@@ -48,17 +47,21 @@ existing local role is preserved. Browser sessions continue to use a random hash
 pre-provisioned.
 
 By default sessions persist to `SESSION_STORE_PATH`. Set `SESSION_STORE=postgres` with
-`DATABASE_URL` to use Postgres-backed sessions. To enable pgvector retrieval, apply
-`db/migrations/001_postgres_pgvector.sql`, populate `knowledge_chunks` with 1536-dimension
-embeddings, and set `RAG_VECTOR_ENABLED=true`.
+`DATABASE_URL` to use Postgres-backed sessions. To enable pgvector retrieval, deploy the Prisma
+migrations, populate `knowledge_chunks` with 1536-dimension embeddings, and set
+`RAG_VECTOR_ENABLED=true`.
 
-To enable governed RAG knowledge maps, apply `db/migrations/006_rag_grounded_knowledge_maps.sql`,
-set `SESSION_STORE=postgres`, and set `RAG_KNOWLEDGE_MAP_ENABLED=true`. Administrators can create a
+To enable governed RAG knowledge maps, deploy the Prisma migrations, set `SESSION_STORE=postgres`,
+and set `RAG_KNOWLEDGE_MAP_ENABLED=true`. Administrators can create a
 validated draft through `POST /api/admin/knowledge-maps` and publish it through the version publish
 endpoint. The proposal flow groups reviewed RAG sources into onboarding domains, stores the reviewed
 roadmap in Postgres, and every eligible session reads the current published roadmap directly. The
 feature remains disabled by default so existing file-backed guide maps continue
 to work unchanged.
+
+`prisma/migrations` is the active schema history. The former `db/migrations` files are retained only
+as a read-only historical archive. See [Prisma migration adoption](docs/prisma-migration-adoption.md)
+before deploying to a database created with the former migration workflow.
 
 ## RAG ingestion
 

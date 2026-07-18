@@ -1,5 +1,5 @@
 import { loadConfig } from '../apps/web/src/server/config';
-import { getDatabasePool } from '../apps/web/src/server/database';
+import { getPrismaClient } from '../apps/web/src/server/infrastructure/prisma/prismaClient';
 import {
   LocalHashEmbeddingService,
   OpenAiEmbeddingService,
@@ -7,7 +7,10 @@ import {
 } from '../apps/web/src/server/embeddingService';
 import { closeOpenAiFetch } from '../apps/web/src/server/openAiFetch';
 import { chunkDocument } from '../apps/web/src/server/ragIngestion/chunker';
-import { writeKnowledgeChunks } from '../apps/web/src/server/ragIngestion/knowledgeChunkWriter';
+import {
+  embedKnowledgeChunks,
+  writeKnowledgeChunks,
+} from '../apps/web/src/server/ragIngestion/knowledgeChunkWriter';
 import type { IngestionDocument, IngestionSource } from '../apps/web/src/server/ragIngestion/types';
 
 process.env.AUTH_DISABLED ??= 'true';
@@ -22,17 +25,27 @@ if (config.embeddingProvider === 'openai' && !config.openAiApiKey && !dryRun) {
   throw new Error('OPENAI_API_KEY is required for the OpenAI embedding profile.');
 }
 
-const db = getDatabasePool(config.databaseUrl);
-const snapshots = await db.query<SnapshotRow>(
-  `select source_id, uri, title, content, metadata, captured_at,
-          coalesce(metadata->>'rootSourceId', source_id) as root_source_id
-   from rag_source_snapshots
-   where $1::text is null or coalesce(metadata->>'rootSourceId', source_id) = $1
-   order by captured_at`,
-  [sourceFilter ?? null],
-);
+const db = getPrismaClient({
+  connectionString: config.databaseUrl,
+  max: config.postgresPoolMax,
+  ssl: config.postgresSsl,
+});
+const snapshots = (await db.ragSourceSnapshot.findMany({ orderBy: { capturedAt: 'asc' } }))
+  .map<SnapshotRow>((row) => {
+    const metadata = parseMetadata(row.metadata);
+    return {
+      source_id: row.sourceId,
+      uri: row.uri,
+      title: row.title,
+      content: row.content,
+      metadata,
+      captured_at: row.capturedAt,
+      root_source_id: stringMetadata(metadata.rootSourceId) ?? row.sourceId,
+    };
+  })
+  .filter((row) => !sourceFilter || row.root_source_id === sourceFilter);
 
-if (!snapshots.rows.length) throw new Error('No source snapshots matched the supplied filter.');
+if (!snapshots.length) throw new Error('No source snapshots matched the supplied filter.');
 
 const embeddings: EmbeddingProvider =
   config.embeddingProvider === 'local'
@@ -44,7 +57,7 @@ const embeddings: EmbeddingProvider =
         maxRetries: config.openAiMaxRetries,
       });
 const groups = new Map<string, SnapshotRow[]>();
-for (const row of snapshots.rows) {
+for (const row of snapshots) {
   const rows = groups.get(row.root_source_id) ?? [];
   rows.push(row);
   groups.set(row.root_source_id, rows);
@@ -53,7 +66,8 @@ for (const row of snapshots.rows) {
 for (const [rootSourceId, rows] of groups) {
   const chunks = rows.flatMap((row) => chunkDocument(snapshotDocument(row, rootSourceId)));
   if (!dryRun) {
-    await writeKnowledgeChunks(db, embeddings, config.embeddingProfile, rootSourceId, chunks);
+    const embeddedChunks = await embedKnowledgeChunks(embeddings, chunks);
+    await writeKnowledgeChunks(db, config.embeddingProfile, rootSourceId, embeddedChunks);
   }
   console.info(
     JSON.stringify({
@@ -67,7 +81,7 @@ for (const [rootSourceId, rows] of groups) {
 }
 
 await closeOpenAiFetch();
-await db.end();
+await db.$disconnect();
 
 function snapshotDocument(row: SnapshotRow, rootSourceId: string): IngestionDocument {
   const metadata = parseMetadata(row.metadata);

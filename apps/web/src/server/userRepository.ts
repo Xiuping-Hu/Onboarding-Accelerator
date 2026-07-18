@@ -1,4 +1,6 @@
-import type { DatabaseClient } from './database';
+import type { User } from '@/generated/prisma/client';
+import type { PrismaDatabase } from './infrastructure/prisma/prismaTypes';
+import { mapPrismaError } from './infrastructure/prisma/prismaErrorMapper';
 
 export interface UserRecord {
   id: string;
@@ -44,82 +46,45 @@ export interface MicrosoftUserRepositoryPort extends UserRepositoryPort {
   }): Promise<UserRecord | undefined>;
 }
 
-interface UserRow {
-  id: string;
-  email: string;
-  display_name: string;
-  password_hash: string | null;
-  microsoft_tenant_id: string | null;
-  microsoft_object_id: string | null;
-  role: string;
-  is_active: boolean;
-  last_login_at: Date | string | null;
-  created_at: Date | string;
-  updated_at: Date | string;
-}
-
-export class PostgresUserRepository implements UserRepositoryPort {
-  constructor(private readonly db: DatabaseClient) {}
+export class PrismaUserRepository implements MicrosoftUserRepositoryPort {
+  constructor(private readonly db: PrismaDatabase) {}
 
   async findByEmail(email: string): Promise<UserRecord | undefined> {
-    const result = await this.db.query<UserRow>(
-      `select id, email, display_name, password_hash, microsoft_tenant_id, microsoft_object_id,
-              role, is_active, last_login_at, created_at, updated_at
-       from users
-       where lower(email) = $1
-       limit 1`,
-      [normalizeEmail(email)],
-    );
-
-    return result.rows[0] ? toUserRecord(result.rows[0]) : undefined;
+    const user = await this.db.user.findUnique({ where: { email: normalizeEmail(email) } });
+    return user ? toUserRecord(user) : undefined;
   }
 
   async findById(id: string): Promise<UserRecord | undefined> {
-    const result = await this.db.query<UserRow>(
-      `select id, email, display_name, password_hash, microsoft_tenant_id, microsoft_object_id,
-              role, is_active, last_login_at, created_at, updated_at
-       from users
-       where id = $1
-       limit 1`,
-      [id],
-    );
-
-    return result.rows[0] ? toUserRecord(result.rows[0]) : undefined;
+    const user = await this.db.user.findUnique({ where: { id } });
+    return user ? toUserRecord(user) : undefined;
   }
 
   async create(input: CreateUserInput): Promise<UserRecord> {
-    const result = await this.db.query<UserRow>(
-      `insert into users (email, display_name, password_hash, role, is_active)
-       values ($1, $2, $3, $4, $5)
-       returning id, email, display_name, password_hash, microsoft_tenant_id, microsoft_object_id,
-                 role, is_active, last_login_at, created_at, updated_at`,
-      [
-        normalizeEmail(input.email),
-        input.displayName.trim(),
-        input.passwordHash,
-        input.role.trim() || 'user',
-        input.isActive ?? true,
-      ],
-    );
-
-    return toUserRecord(requireUserRow(result.rows[0]));
+    try {
+      return toUserRecord(
+        await this.db.user.create({
+          data: {
+            email: normalizeEmail(input.email),
+            displayName: input.displayName.trim(),
+            passwordHash: input.passwordHash,
+            role: input.role.trim() || 'user',
+            isActive: input.isActive ?? true,
+          },
+        }),
+      );
+    } catch (error) {
+      mapPrismaError(error);
+    }
   }
 
   async findByMicrosoftIdentity(
     tenantId: string,
     objectId: string,
   ): Promise<UserRecord | undefined> {
-    const result = await this.db.query<UserRow>(
-      `select id, email, display_name, password_hash, microsoft_tenant_id, microsoft_object_id,
-              role, is_active, last_login_at, created_at, updated_at
-       from users
-       where microsoft_tenant_id = $1
-         and microsoft_object_id = $2
-       limit 1`,
-      [tenantId, objectId],
-    );
-
-    return result.rows[0] ? toUserRecord(result.rows[0]) : undefined;
+    const user = await this.db.user.findFirst({
+      where: { microsoftTenantId: tenantId, microsoftObjectId: objectId },
+    });
+    return user ? toUserRecord(user) : undefined;
   }
 
   async bindMicrosoftIdentity(input: {
@@ -128,23 +93,22 @@ export class PostgresUserRepository implements UserRepositoryPort {
     objectId: string;
     displayName: string;
   }): Promise<UserRecord | undefined> {
-    const result = await this.db.query<UserRow>(
-      `update users
-       set microsoft_tenant_id = $2,
-           microsoft_object_id = $3,
-           display_name = $4,
-           updated_at = now()
-       where id = $1
-         and (
-           (microsoft_tenant_id is null and microsoft_object_id is null)
-           or (microsoft_tenant_id = $2 and microsoft_object_id = $3)
-         )
-       returning id, email, display_name, password_hash, microsoft_tenant_id, microsoft_object_id,
-                 role, is_active, last_login_at, created_at, updated_at`,
-      [input.id, input.tenantId, input.objectId, input.displayName.trim()],
-    );
-
-    return result.rows[0] ? toUserRecord(result.rows[0]) : undefined;
+    const result = await this.db.user.updateMany({
+      where: {
+        id: input.id,
+        OR: [
+          { microsoftTenantId: null, microsoftObjectId: null },
+          { microsoftTenantId: input.tenantId, microsoftObjectId: input.objectId },
+        ],
+      },
+      data: {
+        microsoftTenantId: input.tenantId,
+        microsoftObjectId: input.objectId,
+        displayName: input.displayName.trim(),
+        updatedAt: new Date(),
+      },
+    });
+    return result.count === 1 ? this.findById(input.id) : undefined;
   }
 
   async createMicrosoftUser(input: {
@@ -153,27 +117,29 @@ export class PostgresUserRepository implements UserRepositoryPort {
     tenantId: string;
     objectId: string;
   }): Promise<UserRecord | undefined> {
-    const result = await this.db.query<UserRow>(
-      `insert into users
-        (email, display_name, password_hash, microsoft_tenant_id, microsoft_object_id, role, is_active)
-       values ($1, $2, null, $3, $4, 'user', true)
-       on conflict do nothing
-       returning id, email, display_name, password_hash, microsoft_tenant_id, microsoft_object_id,
-                 role, is_active, last_login_at, created_at, updated_at`,
-      [normalizeEmail(input.email), input.displayName.trim(), input.tenantId, input.objectId],
-    );
-
-    return result.rows[0] ? toUserRecord(result.rows[0]) : undefined;
+    try {
+      const user = await this.db.user.create({
+        data: {
+          email: normalizeEmail(input.email),
+          displayName: input.displayName.trim(),
+          passwordHash: null,
+          microsoftTenantId: input.tenantId,
+          microsoftObjectId: input.objectId,
+          role: 'user',
+          isActive: true,
+        },
+      });
+      return toUserRecord(user);
+    } catch {
+      return undefined;
+    }
   }
 
   async updateLastLogin(id: string, at: Date): Promise<void> {
-    await this.db.query(
-      `update users
-       set last_login_at = $2,
-           updated_at = now()
-       where id = $1`,
-      [id, at.toISOString()],
-    );
+    await this.db.user.updateMany({
+      where: { id },
+      data: { lastLoginAt: at, updatedAt: new Date() },
+    });
   }
 }
 
@@ -181,30 +147,18 @@ export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
-function requireUserRow(row: UserRow | undefined): UserRow {
-  if (!row) {
-    throw new Error('User write did not return a row');
-  }
-
-  return row;
-}
-
-function toUserRecord(row: UserRow): UserRecord {
+function toUserRecord(row: User): UserRecord {
   return {
     id: row.id,
     email: row.email,
-    displayName: row.display_name,
-    ...(row.password_hash ? { passwordHash: row.password_hash } : {}),
-    ...(row.microsoft_tenant_id ? { microsoftTenantId: row.microsoft_tenant_id } : {}),
-    ...(row.microsoft_object_id ? { microsoftObjectId: row.microsoft_object_id } : {}),
+    displayName: row.displayName,
+    ...(row.passwordHash ? { passwordHash: row.passwordHash } : {}),
+    ...(row.microsoftTenantId ? { microsoftTenantId: row.microsoftTenantId } : {}),
+    ...(row.microsoftObjectId ? { microsoftObjectId: row.microsoftObjectId } : {}),
     role: row.role,
-    isActive: row.is_active,
-    ...(row.last_login_at ? { lastLoginAt: toIsoString(row.last_login_at) } : {}),
-    createdAt: toIsoString(row.created_at),
-    updatedAt: toIsoString(row.updated_at),
+    isActive: row.isActive,
+    ...(row.lastLoginAt ? { lastLoginAt: row.lastLoginAt.toISOString() } : {}),
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
   };
-}
-
-function toIsoString(value: Date | string): string {
-  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }

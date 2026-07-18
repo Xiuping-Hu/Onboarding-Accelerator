@@ -1,0 +1,314 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../apps/web/src/generated/prisma"
+  runtime      = "nodejs"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model OnboardingSession {
+  id          String   @id @db.Uuid
+  ownerId     String   @map("owner_id")
+  title       String
+  createdAt   DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @map("updated_at") @db.Timestamptz(6)
+  settings    Json     @default("{}")
+  chatHistory Json     @default("[]") @map("chat_history")
+  guide       Json     @default("{}")
+  revision    BigInt   @default(0)
+
+  @@index([ownerId, updatedAt(sort: Desc)], map: "onboarding_sessions_owner_updated_idx")
+  @@map("onboarding_sessions")
+}
+
+model KnowledgeChunk {
+  id               String
+  title            String
+  excerpt          String
+  uri              String?
+  sourceType       String                @default("knowledge_base") @map("source_type")
+  metadata         Json                  @default("{}")
+  embedding        Unsupported("vector")
+  updatedAt        DateTime              @default(now()) @map("updated_at") @db.Timestamptz(6)
+  embeddingProfile String                @default("openai:text-embedding-3-small") @map("embedding_profile")
+  sourceId         String?               @map("source_id")
+  sourceVersionId  String?               @map("source_version_id")
+  sectionKey       String?               @map("section_key")
+
+  @@id([id, embeddingProfile])
+  @@index([embeddingProfile], map: "knowledge_chunks_embedding_profile_idx")
+  @@index([sourceId, sourceVersionId], map: "knowledge_chunks_source_version_idx")
+  @@map("knowledge_chunks")
+}
+
+model User {
+  id                String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email             String            @unique
+  displayName       String            @map("display_name")
+  passwordHash      String?           @map("password_hash")
+  role              String            @default("user")
+  isActive          Boolean           @default(true) @map("is_active")
+  lastLoginAt       DateTime?         @map("last_login_at") @db.Timestamptz(6)
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime          @default(now()) @map("updated_at") @db.Timestamptz(6)
+  microsoftTenantId String?           @map("microsoft_tenant_id")
+  microsoftObjectId String?           @map("microsoft_object_id")
+  authSessions      AuthSession[]
+  loginAuditEvents  LoginAuditEvent[]
+
+  @@index([role], map: "users_role_idx")
+  @@index([isActive], map: "users_active_idx")
+  @@map("users")
+}
+
+model AuthSession {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  sessionTokenHash String    @unique @map("session_token_hash")
+  expiresAt        DateTime  @map("expires_at") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  lastSeenAt       DateTime  @default(now()) @map("last_seen_at") @db.Timestamptz(6)
+  revokedAt        DateTime? @map("revoked_at") @db.Timestamptz(6)
+  userAgent        String?   @map("user_agent")
+  ipAddress        String?   @map("ip_address")
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("auth_sessions")
+}
+
+model LoginAuditEvent {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String?  @map("user_id") @db.Uuid
+  email     String?
+  eventType String   @map("event_type")
+  success   Boolean
+  reason    String?
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([userId, createdAt(sort: Desc)], map: "login_audit_events_user_created_idx")
+  @@index([createdAt(sort: Desc)], map: "login_audit_events_created_idx")
+  @@map("login_audit_events")
+}
+
+model RagSourceSnapshot {
+  sourceId   String   @id @map("source_id")
+  uri        String
+  title      String
+  content    String
+  metadata   Json     @default("{}")
+  capturedAt DateTime @default(now()) @map("captured_at") @db.Timestamptz(6)
+
+  @@map("rag_source_snapshots")
+}
+
+model KnowledgeSource {
+  id               String
+  uri              String
+  title            String
+  owner            String
+  accessScope      String                      @default("all_users") @map("access_scope")
+  refreshCadence   String                      @default("manual") @map("refresh_cadence")
+  currentVersionId String?                     @map("current_version_id")
+  createdAt        DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime                    @default(now()) @map("updated_at") @db.Timestamptz(6)
+  currentVersion   KnowledgeSourceVersion?     @relation("CurrentKnowledgeSourceVersion", fields: [currentVersionId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "knowledge_sources_current_version_fk")
+  versions         KnowledgeSourceVersion[]    @relation("KnowledgeSourceVersions")
+  mapBindings      KnowledgeMapSourceBinding[]
+
+  @@id([id])
+  @@map("knowledge_sources")
+}
+
+model KnowledgeSourceVersion {
+  id                String
+  sourceId          String                      @map("source_id")
+  contentHash       String                      @map("content_hash")
+  upstreamUpdatedAt DateTime                    @map("upstream_updated_at") @db.Timestamptz(6)
+  capturedAt        DateTime                    @default(now()) @map("captured_at") @db.Timestamptz(6)
+  metadata          Json                        @default("{}")
+  source            KnowledgeSource             @relation("KnowledgeSourceVersions", fields: [sourceId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  currentForSources KnowledgeSource[]           @relation("CurrentKnowledgeSourceVersion")
+  mapBindings       KnowledgeMapSourceBinding[]
+
+  @@id([id])
+  @@unique([sourceId, contentHash])
+  @@map("knowledge_source_versions")
+}
+
+model KnowledgeMap {
+  id                 String
+  slug               String                @unique
+  title              String
+  description        String?
+  tenantId           String?               @map("tenant_id")
+  defaultAccessScope String                @default("all_users") @map("default_access_scope")
+  currentVersionId   String?               @map("current_version_id")
+  createdAt          DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime              @default(now()) @map("updated_at") @db.Timestamptz(6)
+  currentVersion     KnowledgeMapVersion?  @relation("CurrentKnowledgeMapVersion", fields: [currentVersionId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "knowledge_maps_current_version_fk")
+  versions           KnowledgeMapVersion[] @relation("KnowledgeMapVersions")
+
+  @@id([id])
+  @@map("knowledge_maps")
+}
+
+model KnowledgeMapVersion {
+  id             String
+  mapId          String                       @map("map_id")
+  versionNumber  Int                          @map("version_number")
+  status         String
+  changeNote     String?                      @map("change_note")
+  createdBy      String                       @map("created_by")
+  publishedBy    String?                      @map("published_by")
+  createdAt      DateTime                     @default(now()) @map("created_at") @db.Timestamptz(6)
+  publishedAt    DateTime?                    @map("published_at") @db.Timestamptz(6)
+  map            KnowledgeMap                 @relation("KnowledgeMapVersions", fields: [mapId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  currentForMaps KnowledgeMap[]               @relation("CurrentKnowledgeMapVersion")
+  nodes          KnowledgeMapNode[]
+  edges          KnowledgeMapEdge[]
+  sourceBindings KnowledgeMapSourceBinding[]
+  evidenceHealth KnowledgeMapEvidenceHealth[]
+  suggestions    KnowledgeMapSuggestion[]
+  feedback       KnowledgeMapFeedback[]
+
+  @@id([id])
+  @@unique([mapId, versionNumber])
+  @@map("knowledge_map_versions")
+}
+
+model KnowledgeMapNode {
+  id                          String
+  mapVersionId                String                      @map("map_version_id")
+  stableKey                   String                      @map("stable_key")
+  kind                        String
+  title                       String
+  summary                     String
+  owner                       String?
+  displayOrder                Int                         @default(0) @map("display_order")
+  accessScope                 String                      @default("all_users") @map("access_scope")
+  controllingDocumentRequired Boolean                     @default(false) @map("controlling_document_required")
+  mapVersion                  KnowledgeMapVersion         @relation(fields: [mapVersionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  outgoingEdges               KnowledgeMapEdge[]          @relation("KnowledgeMapEdgeFrom")
+  incomingEdges               KnowledgeMapEdge[]          @relation("KnowledgeMapEdgeTo")
+  sourceBindings              KnowledgeMapSourceBinding[]
+  feedback                    KnowledgeMapFeedback[]
+
+  @@id([id])
+  @@unique([mapVersionId, stableKey])
+  @@map("knowledge_map_nodes")
+}
+
+model KnowledgeMapEdge {
+  id             String
+  mapVersionId   String                      @map("map_version_id")
+  fromNodeId     String                      @map("from_node_id")
+  toNodeId       String                      @map("to_node_id")
+  relationship   String
+  rationale      String?
+  displayOrder   Int                         @default(0) @map("display_order")
+  mapVersion     KnowledgeMapVersion         @relation(fields: [mapVersionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  fromNode       KnowledgeMapNode            @relation("KnowledgeMapEdgeFrom", fields: [fromNodeId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  toNode         KnowledgeMapNode            @relation("KnowledgeMapEdgeTo", fields: [toNodeId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  sourceBindings KnowledgeMapSourceBinding[]
+
+  @@id([id])
+  @@map("knowledge_map_edges")
+}
+
+model KnowledgeMapSourceBinding {
+  id              String
+  mapVersionId    String                  @map("map_version_id")
+  nodeId          String?                 @map("node_id")
+  edgeId          String?                 @map("edge_id")
+  sourceId        String                  @map("source_id")
+  sourceVersionId String?                 @map("source_version_id")
+  sectionKey      String?                 @map("section_key")
+  evidenceRole    String                  @map("evidence_role")
+  mapVersion      KnowledgeMapVersion     @relation(fields: [mapVersionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  node            KnowledgeMapNode?       @relation(fields: [nodeId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  edge            KnowledgeMapEdge?       @relation(fields: [edgeId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  source          KnowledgeSource         @relation(fields: [sourceId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  sourceVersion   KnowledgeSourceVersion? @relation(fields: [sourceVersionId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@id([id])
+  @@map("knowledge_map_source_bindings")
+}
+
+model KnowledgeMapEvidenceHealth {
+  mapVersionId String              @map("map_version_id")
+  targetType   String              @map("target_type")
+  targetId     String              @map("target_id")
+  state        String
+  reason       String?
+  evaluatedAt  DateTime            @default(now()) @map("evaluated_at") @db.Timestamptz(6)
+  mapVersion   KnowledgeMapVersion @relation(fields: [mapVersionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([mapVersionId, targetType, targetId])
+  @@map("knowledge_map_evidence_health")
+}
+
+model KnowledgeAudienceMembership {
+  accountId   String    @map("account_id")
+  tenantId    String?   @map("tenant_id")
+  accessScope String    @map("access_scope")
+  assignedBy  String?   @map("assigned_by")
+  validFrom   DateTime  @default(now()) @map("valid_from") @db.Timestamptz(6)
+  validUntil  DateTime? @map("valid_until") @db.Timestamptz(6)
+
+  @@id([accountId, accessScope])
+  @@map("knowledge_audience_memberships")
+}
+
+model KnowledgeMapSuggestion {
+  id           String
+  mapVersionId String              @map("map_version_id")
+  proposal     Json
+  status       String              @default("pending")
+  createdBy    String              @map("created_by")
+  reviewedBy   String?             @map("reviewed_by")
+  createdAt    DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  reviewedAt   DateTime?           @map("reviewed_at") @db.Timestamptz(6)
+  mapVersion   KnowledgeMapVersion @relation(fields: [mapVersionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([id])
+  @@map("knowledge_map_suggestions")
+}
+
+model KnowledgeMapFeedback {
+  id           String
+  mapVersionId String              @map("map_version_id")
+  nodeId       String?             @map("node_id")
+  messageId    String?             @map("message_id")
+  category     String
+  comment      String?
+  status       String              @default("open")
+  createdBy    String              @map("created_by")
+  createdAt    DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  resolvedBy   String?             @map("resolved_by")
+  resolvedAt   DateTime?           @map("resolved_at") @db.Timestamptz(6)
+  mapVersion   KnowledgeMapVersion @relation(fields: [mapVersionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  node         KnowledgeMapNode?   @relation(fields: [nodeId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@id([id])
+  @@map("knowledge_map_feedback")
+}
+
+model KnowledgeMapAuditEvent {
+  id           String
+  actorUserId  String   @map("actor_user_id")
+  action       String
+  mapId        String?  @map("map_id")
+  mapVersionId String?  @map("map_version_id")
+  targetId     String?  @map("target_id")
+  metadata     Json     @default("{}")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@id([id])
+  @@map("knowledge_map_audit_events")
+}

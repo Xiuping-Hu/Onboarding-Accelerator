@@ -1,15 +1,14 @@
-import type { DatabaseClient } from '../database';
-import { withTransaction } from '../database';
+import type { PrismaClient } from '@/generated/prisma/client';
 import type { EmbeddingProvider } from '../embeddingService';
 import { chunkDocument } from './chunker';
 import { extractSources, type SharePointCredentials } from './extractors';
-import { writeKnowledgeChunks } from './knowledgeChunkWriter';
+import { embedKnowledgeChunks, writeKnowledgeChunks } from './knowledgeChunkWriter';
 import { registerSourceVersion } from './sourceVersionWriter';
 import type { IngestionReport, IngestionSource } from './types';
 
 export class RagIngestionService {
   constructor(
-    private readonly db: DatabaseClient,
+    private readonly db: PrismaClient | undefined,
     private readonly embeddings: EmbeddingProvider,
     private readonly sharePointCredentials: SharePointCredentials,
     private readonly allowedAccessScopes: string[],
@@ -48,26 +47,21 @@ export class RagIngestionService {
         };
       }
 
+      if (!this.db) throw new Error('DATABASE_URL is required for ingestion writes.');
+      const embeddedChunks = await embedKnowledgeChunks(this.embeddings, chunks);
       if (this.sourceVersioningEnabled) {
-        await withTransaction(this.db, async (db) => {
+        await this.db.$transaction(async (db) => {
           const sourceVersionId = await registerSourceVersion(db, source, documents);
           await writeKnowledgeChunks(
             db,
-            this.embeddings,
             this.embeddingProfile,
             source.id,
-            chunks,
+            embeddedChunks,
             sourceVersionId,
           );
         });
       } else {
-        await writeKnowledgeChunks(
-          this.db,
-          this.embeddings,
-          this.embeddingProfile,
-          source.id,
-          chunks,
-        );
+        await writeKnowledgeChunks(this.db, this.embeddingProfile, source.id, embeddedChunks);
       }
       return { sourceId: source.id, status: 'indexed', chunkCount: chunks.length, warnings };
     } catch (error) {

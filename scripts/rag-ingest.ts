@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import { loadConfig } from '../apps/web/src/server/config';
-import { getDatabasePool } from '../apps/web/src/server/database';
+import { getPrismaClient } from '../apps/web/src/server/infrastructure/prisma/prismaClient';
 import {
   LocalHashEmbeddingService,
   OpenAiEmbeddingService,
@@ -31,8 +31,12 @@ const sources = registry.sources.filter(
 if (!sources.length) throw new Error('No registered sources match the supplied filter.');
 
 const database = config.databaseUrl
-  ? getDatabasePool(config.databaseUrl)
-  : { query: async () => ({ command: 'SELECT', rowCount: 0, oid: 0, fields: [], rows: [] }) };
+  ? getPrismaClient({
+      connectionString: config.databaseUrl,
+      max: config.postgresPoolMax,
+      ssl: config.postgresSsl,
+    })
+  : undefined;
 const service = new RagIngestionService(
   database,
   config.embeddingProvider === 'local'
@@ -57,6 +61,7 @@ const reports = await Promise.all(sources.map((source) => service.ingest(source,
 for (const report of reports) console.info(JSON.stringify(report));
 if (reports.some((report) => report.status === 'failed')) process.exitCode = 1;
 await closeOpenAiFetch();
+await database?.$disconnect();
 
 function argumentValue(name: string): string | undefined {
   const index = args.indexOf(name);

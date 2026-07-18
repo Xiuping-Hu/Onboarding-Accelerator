@@ -1,6 +1,7 @@
 import type { SourceProvenance } from '@onboarding/shared';
-import type { DatabaseClient } from './database';
+import { Prisma } from '@/generated/prisma/client';
 import type { EmbeddingProvider } from './embeddingService';
+import type { PrismaDatabase } from './infrastructure/prisma/prismaTypes';
 
 interface KnowledgeChunkRow {
   id: string;
@@ -14,7 +15,7 @@ interface KnowledgeChunkRow {
 
 export class PgvectorKnowledgeBase {
   constructor(
-    private readonly db: DatabaseClient,
+    private readonly db: PrismaDatabase,
     private readonly embeddings: EmbeddingProvider,
     private readonly limit = 5,
     private readonly allowedAccessScopes: string[] = ['all_users'],
@@ -29,8 +30,12 @@ export class PgvectorKnowledgeBase {
     const isLocalProfile = this.embeddingProfile.startsWith('local:');
     const queryTerms = isLocalProfile ? keywordTerms(query) : [];
 
-    const result = await this.db.query<KnowledgeChunkRow>(
-      `select id,
+    const vector = formatVector(embedding);
+    const terms = queryTerms.length
+      ? Prisma.sql`array[${Prisma.join(queryTerms)}]::text[]`
+      : Prisma.sql`array[]::text[]`;
+    const result = await this.db.$queryRaw<KnowledgeChunkRow[]>(Prisma.sql`
+       select id,
               title,
               excerpt,
               uri,
@@ -38,29 +43,20 @@ export class PgvectorKnowledgeBase {
               metadata,
               least(
                 0.99,
-                greatest(0, 1 - (embedding <=> $1::vector)) +
-                  case when $5::boolean then
+                greatest(0, 1 - (embedding <=> ${vector}::vector)) +
+                  case when ${isLocalProfile}::boolean then
                     (select count(*)::float * 0.25
-                     from unnest($6::text[]) as term
+                     from unnest(${terms}) as term
                      where lower(concat_ws(' ', title, excerpt)) like '%' || term || '%')
                   else 0 end
               ) as score
        from knowledge_chunks
-       where embedding_profile = $2
-         and coalesce(metadata->>'accessScope', 'all_users') = any($3::text[])
+       where embedding_profile = ${this.embeddingProfile}
+         and coalesce(metadata->>'accessScope', 'all_users') in (${Prisma.join(this.allowedAccessScopes)})
        order by score desc
-       limit $4`,
-      [
-        formatVector(embedding),
-        this.embeddingProfile,
-        this.allowedAccessScopes,
-        this.limit,
-        isLocalProfile,
-        queryTerms,
-      ],
-    );
+       limit ${this.limit}`);
 
-    return result.rows.map((row) => {
+    return result.map((row) => {
       const score = typeof row.score === 'number' ? row.score : Number.parseFloat(row.score);
 
       return {

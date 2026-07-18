@@ -1,4 +1,4 @@
-import type { DatabaseClient } from './database';
+import type { PrismaDatabase } from './infrastructure/prisma/prismaTypes';
 
 export type LoginAuditEventType = 'login_success' | 'login_failure' | 'login_inactive' | 'logout';
 
@@ -16,24 +16,21 @@ export interface LoginAuditRepositoryPort {
   record(input: LoginAuditInput): Promise<void>;
 }
 
-export class PostgresLoginAuditRepository implements LoginAuditRepositoryPort {
-  constructor(private readonly db: DatabaseClient) {}
+export class PrismaLoginAuditRepository implements LoginAuditRepositoryPort {
+  constructor(private readonly db: PrismaDatabase) {}
 
   async record(input: LoginAuditInput): Promise<void> {
-    await this.db.query(
-      `insert into login_audit_events
-        (user_id, email, event_type, success, reason, ip_address, user_agent)
-       values ($1, $2, $3, $4, $5, $6, $7)`,
-      [
-        input.userId ?? null,
-        input.email ?? null,
-        input.eventType,
-        input.success,
-        input.reason ?? null,
-        input.ipAddress ?? null,
-        input.userAgent ?? null,
-      ],
-    );
+    await this.db.loginAuditEvent.create({
+      data: {
+        userId: input.userId,
+        email: input.email,
+        eventType: input.eventType,
+        success: input.success,
+        reason: input.reason,
+        ipAddress: input.ipAddress,
+        userAgent: input.userAgent,
+      },
+    });
   }
 }
 

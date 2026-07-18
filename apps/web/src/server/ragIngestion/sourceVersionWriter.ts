@@ -1,9 +1,10 @@
 import { createHash, randomUUID } from 'node:crypto';
-import type { DatabaseClient } from '../database';
+import type { Prisma } from '@/generated/prisma/client';
+import type { PrismaDatabase } from '../infrastructure/prisma/prismaTypes';
 import type { IngestionDocument, IngestionSource } from './types';
 
 export async function registerSourceVersion(
-  db: DatabaseClient,
+  db: PrismaDatabase,
   source: IngestionSource,
   documents: IngestionDocument[],
 ): Promise<string> {
@@ -15,47 +16,48 @@ export async function registerSourceVersion(
     )
     .digest('hex');
   const upstreamUpdatedAt = latestUpdatedAt(documents);
-  const existing = await db.query<{ id: string }>(
-    `select id from knowledge_source_versions where source_id = $1 and content_hash = $2`,
-    [source.id, contentHash],
-  );
-  const versionId = existing.rows[0]?.id ?? randomUUID();
+  const existing = await db.knowledgeSourceVersion.findUnique({
+    where: { sourceId_contentHash: { sourceId: source.id, contentHash } },
+    select: { id: true },
+  });
+  const versionId = existing?.id ?? randomUUID();
 
-  await db.query(
-    `insert into knowledge_sources
-     (id, uri, title, owner, access_scope, refresh_cadence, current_version_id, created_at, updated_at)
-     values ($1, $2, $3, $4, $5, $6, null, now(), now())
-     on conflict (id) do update set
-       uri = excluded.uri, title = excluded.title, owner = excluded.owner,
-       access_scope = excluded.access_scope, refresh_cadence = excluded.refresh_cadence,
-       updated_at = now()`,
-    [
-      source.id,
-      source.uri,
-      source.title ?? source.id,
-      source.owner,
-      source.accessScope,
-      source.refreshCadence ?? 'manual',
-    ],
-  );
-  if (!existing.rows[0]) {
-    await db.query(
-      `insert into knowledge_source_versions
-       (id, source_id, content_hash, upstream_updated_at, captured_at, metadata)
-       values ($1, $2, $3, $4, now(), $5::jsonb)`,
-      [
-        versionId,
-        source.id,
+  await db.knowledgeSource.upsert({
+    where: { id: source.id },
+    create: {
+      id: source.id,
+      uri: source.uri,
+      title: source.title ?? source.id,
+      owner: source.owner,
+      accessScope: source.accessScope,
+      refreshCadence: source.refreshCadence ?? 'manual',
+    },
+    update: {
+      uri: source.uri,
+      title: source.title ?? source.id,
+      owner: source.owner,
+      accessScope: source.accessScope,
+      refreshCadence: source.refreshCadence ?? 'manual',
+      updatedAt: new Date(),
+    },
+  });
+  if (!existing) {
+    await db.knowledgeSourceVersion.create({
+      data: {
+        id: versionId,
+        sourceId: source.id,
         contentHash,
-        upstreamUpdatedAt,
-        JSON.stringify({ documentCount: documents.length, sourceKind: source.kind }),
-      ],
-    );
+        upstreamUpdatedAt: new Date(upstreamUpdatedAt),
+        metadata: JSON.parse(
+          JSON.stringify({ documentCount: documents.length, sourceKind: source.kind }),
+        ) as Prisma.InputJsonValue,
+      },
+    });
   }
-  await db.query(
-    `update knowledge_sources set current_version_id = $2, updated_at = now() where id = $1`,
-    [source.id, versionId],
-  );
+  await db.knowledgeSource.update({
+    where: { id: source.id },
+    data: { currentVersionId: versionId, updatedAt: new Date() },
+  });
   return versionId;
 }
 

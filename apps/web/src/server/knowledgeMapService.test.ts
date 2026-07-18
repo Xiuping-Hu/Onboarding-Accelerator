@@ -1,35 +1,36 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { DatabaseClient } from './database';
-import { KnowledgeMapService } from './knowledgeMapService';
+import type { PrismaClient } from '@/generated/prisma/client';
+import { PrismaKnowledgeMapRepository } from './knowledgeMapService';
 
 void test('knowledge map proposals group current source versions into grounded domains', async () => {
-  const db: DatabaseClient = {
-    query: async () => ({
-      command: 'SELECT',
-      rowCount: 2,
-      oid: 0,
-      fields: [],
-      rows: [
-        {
-          source_id: 'source-a',
-          source_version_id: 'version-a',
-          title: 'Access setup',
-          excerpt: 'Request access and confirm the approved systems.',
-          owner: 'IT',
-        },
-        {
-          source_id: 'source-b',
-          source_version_id: 'version-b',
-          title: 'First workflow',
-          excerpt: 'Complete the first reviewed workflow.',
-          owner: 'Operations',
-        },
-      ],
-    }),
+  const sources = [
+    {
+      id: 'source-a',
+      title: 'Access setup',
+      owner: 'IT',
+      currentVersion: { id: 'version-a' },
+    },
+    {
+      id: 'source-b',
+      title: 'First workflow',
+      owner: 'Operations',
+      currentVersion: { id: 'version-b' },
+    },
+  ];
+  const excerpts: Record<string, string> = {
+    'source-a': 'Request access and confirm the approved systems.',
+    'source-b': 'Complete the first reviewed workflow.',
   };
+  let chunkIndex = 0;
+  const db = {
+    knowledgeSource: { findMany: async () => sources },
+    knowledgeChunk: {
+      findFirst: async () => ({ excerpt: excerpts[sources[chunkIndex++]?.id ?? ''] }),
+    },
+  } as unknown as PrismaClient;
 
-  const draft = await new KnowledgeMapService(db).proposeFromSources('First week', [
+  const draft = await new PrismaKnowledgeMapRepository(db).proposeFromSources('First week', [
     'source-a',
     'source-b',
   ]);

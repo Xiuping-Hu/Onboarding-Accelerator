@@ -2,12 +2,12 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import App from './App';
 import { getCurrentUserFromCookies } from '../../server/auth';
-import { getServerServices } from '../../server/services';
+import { getAppContainer } from '../../server/bootstrap/appContainer';
 
 export const dynamic = 'force-dynamic';
 
 export default async function WorkspacePage() {
-  const services = getServerServices();
+  const services = getAppContainer();
 
   try {
     const user = await getCurrentUserFromCookies(await cookies(), services);

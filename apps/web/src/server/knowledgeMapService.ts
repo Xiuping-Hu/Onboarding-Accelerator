@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { Prisma, PrismaClient } from '@/generated/prisma/client';
 import type {
   KnowledgeEvidenceBinding,
   KnowledgeEvidenceHealth,
@@ -9,8 +10,7 @@ import type {
   RagKnowledgeMapDraft,
   SourceProvenance,
 } from '@onboarding/shared';
-import type { DatabaseClient } from './database';
-import { withTransaction } from './database';
+import type { PrismaDatabase } from './infrastructure/prisma/prismaTypes';
 
 export class KnowledgeMapNotFoundError extends Error {
   constructor() {
@@ -24,6 +24,50 @@ export class KnowledgeMapValidationError extends Error {
     super(message);
     this.name = 'KnowledgeMapValidationError';
   }
+}
+
+export interface CreateKnowledgeMapDraftInput {
+  slug: string;
+  title: string;
+  description?: string;
+  accessScope: string;
+  draft: RagKnowledgeMapDraft;
+}
+
+export interface KnowledgeMapRepositoryPort {
+  getPublished(accessScopes: string[], mapId?: string): Promise<PublishedKnowledgeMap>;
+  proposeFromSources(objective: string, sourceIds: string[]): Promise<RagKnowledgeMapDraft>;
+  getNodeDetail(
+    mapVersionId: string,
+    nodeId: string,
+    accessScopes: string[],
+  ): Promise<KnowledgeMapNodeDetail>;
+  search(
+    mapVersionId: string,
+    query: string,
+    accessScopes: string[],
+  ): Promise<KnowledgeMapNodeDetail[]>;
+  createDraft(
+    input: CreateKnowledgeMapDraftInput,
+    actorUserId: string,
+  ): Promise<{ mapId: string; versionId: string }>;
+  publish(
+    mapId: string,
+    versionId: string,
+    actorUserId: string,
+    changeNote?: string,
+  ): Promise<void>;
+  submitFeedback(
+    input: {
+      mapVersionId: string;
+      nodeId?: string;
+      messageId?: string;
+      category: string;
+      comment?: string;
+    },
+    actorUserId: string,
+  ): Promise<void>;
+  accessScopesFor(accountId: string): Promise<string[]>;
 }
 
 type VersionRow = {
@@ -53,15 +97,6 @@ type EdgeRow = {
   rationale: string | null;
 };
 
-type SourceRow = {
-  node_id: string;
-  id: string;
-  title: string;
-  uri: string;
-  source_version_id: string | null;
-  section_key: string | null;
-};
-
 type ProposalSourceRow = {
   source_id: string;
   source_version_id: string;
@@ -70,8 +105,8 @@ type ProposalSourceRow = {
   owner: string;
 };
 
-export class KnowledgeMapService {
-  constructor(private readonly db: DatabaseClient) {}
+export class PrismaKnowledgeMapRepository implements KnowledgeMapRepositoryPort {
+  constructor(private readonly db: PrismaClient) {}
 
   async getPublished(accessScopes: string[], mapId?: string): Promise<PublishedKnowledgeMap> {
     const version = await this.findPublishedVersion(accessScopes, mapId);
@@ -91,20 +126,32 @@ export class KnowledgeMapService {
   }
 
   async proposeFromSources(objective: string, sourceIds: string[]): Promise<RagKnowledgeMapDraft> {
-    const result = await this.db.query<ProposalSourceRow>(
-      `select distinct on (s.id) s.id as source_id, sv.id as source_version_id,
-              s.title, c.excerpt, s.owner
-       from knowledge_sources s
-       join knowledge_source_versions sv on sv.id = s.current_version_id
-       join knowledge_chunks c on c.source_id = s.id and c.source_version_id = sv.id
-       where s.id = any($1::text[])
-       order by s.id, c.updated_at desc`,
-      [sourceIds],
-    );
-    if (!result.rows.length) {
+    const sources = await this.db.knowledgeSource.findMany({
+      where: { id: { in: sourceIds }, currentVersionId: { not: null } },
+      include: { currentVersion: true },
+    });
+    const rows: ProposalSourceRow[] = [];
+    for (const source of sources) {
+      if (!source.currentVersion) continue;
+      const chunk = await this.db.knowledgeChunk.findFirst({
+        where: { sourceId: source.id, sourceVersionId: source.currentVersion.id },
+        orderBy: { updatedAt: 'desc' },
+        select: { excerpt: true },
+      });
+      if (chunk) {
+        rows.push({
+          source_id: source.id,
+          source_version_id: source.currentVersion.id,
+          title: source.title,
+          excerpt: chunk.excerpt,
+          owner: source.owner,
+        });
+      }
+    }
+    if (!rows.length) {
       throw new KnowledgeMapValidationError('No current reviewed source chunks were found.');
     }
-    const grouped = groupSourcesByDomain(result.rows);
+    const grouped = groupSourcesByDomain(rows);
     const nodes: KnowledgeMapDraftNode[] = [];
     const edges: RagKnowledgeMapDraft['edges'] = [];
 
@@ -167,54 +214,72 @@ export class KnowledgeMapService {
   ): Promise<KnowledgeMapNodeDetail[]> {
     const normalized = query.trim();
     if (!normalized) return [];
-    const result = await this.db.query<NodeRow>(
-      `select n.id, n.stable_key, n.kind, n.title, n.summary, n.owner,
-              n.controlling_document_required,
-              coalesce(h.state, 'needs_review') as evidence_health
-       from knowledge_map_nodes n
-       join knowledge_map_versions v on v.id = n.map_version_id
-       left join knowledge_map_evidence_health h
-         on h.map_version_id = n.map_version_id and h.target_type = 'node' and h.target_id = n.id
-       where n.map_version_id = $1
-         and n.access_scope = any($2::text[])
-         and (n.title ilike '%' || $3 || '%' or n.summary ilike '%' || $3 || '%')
-       order by n.display_order, n.title
-       limit 20`,
-      [mapVersionId, accessScopes, normalized],
-    );
+    const nodes = await this.db.knowledgeMapNode.findMany({
+      where: {
+        mapVersionId,
+        accessScope: { in: accessScopes },
+        OR: [
+          { title: { contains: normalized, mode: 'insensitive' } },
+          { summary: { contains: normalized, mode: 'insensitive' } },
+        ],
+      },
+      orderBy: [{ displayOrder: 'asc' }, { title: 'asc' }],
+      take: 20,
+    });
+    const health = await this.db.knowledgeMapEvidenceHealth.findMany({
+      where: { mapVersionId, targetType: 'node', targetId: { in: nodes.map((node) => node.id) } },
+    });
+    const healthById = new Map(health.map((item) => [item.targetId, item.state]));
+    const rows: NodeRow[] = nodes.map((node) => ({
+      id: node.id,
+      stable_key: node.stableKey,
+      kind: node.kind as KnowledgeMapNodeDetail['kind'],
+      title: node.title,
+      summary: node.summary,
+      owner: node.owner,
+      controlling_document_required: node.controllingDocumentRequired,
+      evidence_health:
+        (healthById.get(node.id) as KnowledgeEvidenceHealth | undefined) ?? 'needs_review',
+    }));
     const sources = await this.loadSources(
-      result.rows.map((row) => row.id),
+      rows.map((row) => row.id),
       accessScopes,
     );
-    return result.rows.map((row) => toNode(row, sources.get(row.id) ?? []));
+    return rows.map((row) => toNode(row, sources.get(row.id) ?? []));
   }
 
   async createDraft(
-    input: {
-      slug: string;
-      title: string;
-      description?: string;
-      accessScope: string;
-      draft: RagKnowledgeMapDraft;
-    },
+    input: CreateKnowledgeMapDraftInput,
     actorUserId: string,
   ): Promise<{ mapId: string; versionId: string }> {
     validateDraft(input.draft);
 
-    return withTransaction(this.db, async (db) => {
+    return this.db.$transaction(async (db) => {
       const mapId = randomUUID();
       const versionId = randomUUID();
       const now = new Date().toISOString();
-      await db.query(
-        `insert into knowledge_maps (id, slug, title, description, default_access_scope, created_at, updated_at)
-         values ($1, $2, $3, $4, $5, $6, $6)`,
-        [mapId, input.slug, input.title, input.description ?? null, input.accessScope, now],
-      );
-      await db.query(
-        `insert into knowledge_map_versions (id, map_id, version_number, status, change_note, created_by, created_at)
-         values ($1, $2, 1, 'draft', $3, $4, $5)`,
-        [versionId, mapId, `RAG proposal: ${input.draft.objective}`, actorUserId, now],
-      );
+      await db.knowledgeMap.create({
+        data: {
+          id: mapId,
+          slug: input.slug,
+          title: input.title,
+          description: input.description,
+          defaultAccessScope: input.accessScope,
+          createdAt: new Date(now),
+          updatedAt: new Date(now),
+        },
+      });
+      await db.knowledgeMapVersion.create({
+        data: {
+          id: versionId,
+          mapId,
+          versionNumber: 1,
+          status: 'draft',
+          changeNote: `RAG proposal: ${input.draft.objective}`,
+          createdBy: actorUserId,
+          createdAt: new Date(now),
+        },
+      });
       await insertDraft(db, versionId, input.accessScope, input.draft);
       await insertAudit(db, actorUserId, 'knowledge_map.draft_create', mapId, versionId);
       return { mapId, versionId };
@@ -227,22 +292,24 @@ export class KnowledgeMapService {
     actorUserId: string,
     changeNote?: string,
   ): Promise<void> {
-    await withTransaction(this.db, async (db) => {
+    await this.db.$transaction(async (db) => {
       const validation = await validateVersion(db, mapId, versionId);
       if (!validation.valid) throw new KnowledgeMapValidationError(validation.message);
       const now = new Date().toISOString();
-      const updated = await db.query(
-        `update knowledge_map_versions
-         set status = 'published', published_by = $3, published_at = $4,
-             change_note = coalesce($5, change_note)
-         where id = $1 and map_id = $2 and status = 'draft'`,
-        [versionId, mapId, actorUserId, now, changeNote ?? null],
-      );
-      if (updated.rowCount !== 1) throw new KnowledgeMapNotFoundError();
-      await db.query(
-        `update knowledge_maps set current_version_id = $2, updated_at = $3 where id = $1`,
-        [mapId, versionId, now],
-      );
+      const updated = await db.knowledgeMapVersion.updateMany({
+        where: { id: versionId, mapId, status: 'draft' },
+        data: {
+          status: 'published',
+          publishedBy: actorUserId,
+          publishedAt: new Date(now),
+          ...(changeNote ? { changeNote } : {}),
+        },
+      });
+      if (updated.count !== 1) throw new KnowledgeMapNotFoundError();
+      await db.knowledgeMap.update({
+        where: { id: mapId },
+        data: { currentVersionId: versionId, updatedAt: new Date(now) },
+      });
       await insertAudit(db, actorUserId, 'knowledge_map.publish', mapId, versionId, { changeNote });
     });
   }
@@ -257,45 +324,50 @@ export class KnowledgeMapService {
     },
     actorUserId: string,
   ): Promise<void> {
-    await this.db.query(
-      `insert into knowledge_map_feedback
-       (id, map_version_id, node_id, message_id, category, comment, created_by)
-       values ($1, $2, $3, $4, $5, $6, $7)`,
-      [
-        randomUUID(),
-        input.mapVersionId,
-        input.nodeId ?? null,
-        input.messageId ?? null,
-        input.category,
-        input.comment ?? null,
-        actorUserId,
-      ],
-    );
+    await this.db.knowledgeMapFeedback.create({
+      data: {
+        id: randomUUID(),
+        mapVersionId: input.mapVersionId,
+        nodeId: input.nodeId,
+        messageId: input.messageId,
+        category: input.category,
+        comment: input.comment,
+        createdBy: actorUserId,
+      },
+    });
   }
 
   async accessScopesFor(accountId: string): Promise<string[]> {
-    const result = await this.db.query<{ access_scope: string }>(
-      `select access_scope from knowledge_audience_memberships
-       where account_id = $1 and valid_from <= now() and (valid_until is null or valid_until > now())`,
-      [accountId],
-    );
-    return result.rows.length ? result.rows.map((row) => row.access_scope) : ['all_users'];
+    const now = new Date();
+    const memberships = await this.db.knowledgeAudienceMembership.findMany({
+      where: {
+        accountId,
+        validFrom: { lte: now },
+        OR: [{ validUntil: null }, { validUntil: { gt: now } }],
+      },
+      select: { accessScope: true },
+    });
+    return memberships.length ? memberships.map((row) => row.accessScope) : ['all_users'];
   }
 
   private async findPublishedVersion(accessScopes: string[], mapId?: string): Promise<VersionRow> {
-    const result = await this.db.query<VersionRow>(
-      `select m.id as map_id, v.id as version_id, v.version_number, m.title, m.description
-       from knowledge_maps m
-       join knowledge_map_versions v on v.id = m.current_version_id and v.status = 'published'
-       where m.default_access_scope = any($1::text[])
-         and ($2::text is null or m.id = $2)
-       order by m.updated_at desc
-       limit 1`,
-      [accessScopes, mapId ?? null],
-    );
-    const row = result.rows[0];
-    if (!row) throw new KnowledgeMapNotFoundError();
-    return row;
+    const map = await this.db.knowledgeMap.findFirst({
+      where: {
+        defaultAccessScope: { in: accessScopes },
+        ...(mapId ? { id: mapId } : {}),
+        currentVersion: { is: { status: 'published' } },
+      },
+      orderBy: { updatedAt: 'desc' },
+      include: { currentVersion: true },
+    });
+    if (!map?.currentVersion) throw new KnowledgeMapNotFoundError();
+    return {
+      map_id: map.id,
+      version_id: map.currentVersion.id,
+      version_number: map.currentVersion.versionNumber,
+      title: map.title,
+      description: map.description,
+    };
   }
 
   private async loadNodes(
@@ -303,23 +375,34 @@ export class KnowledgeMapService {
     accessScopes: string[],
     nodeId?: string,
   ): Promise<KnowledgeMapNodeDetail[]> {
-    const result = await this.db.query<NodeRow>(
-      `select n.id, n.stable_key, n.kind, n.title, n.summary, n.owner,
-              n.controlling_document_required,
-              coalesce(h.state, 'needs_review') as evidence_health
-       from knowledge_map_nodes n
-       left join knowledge_map_evidence_health h
-         on h.map_version_id = n.map_version_id and h.target_type = 'node' and h.target_id = n.id
-       where n.map_version_id = $1 and n.access_scope = any($2::text[])
-         and ($3::text is null or n.id = $3)
-       order by n.display_order, n.title`,
-      [mapVersionId, accessScopes, nodeId ?? null],
-    );
+    const nodes = await this.db.knowledgeMapNode.findMany({
+      where: {
+        mapVersionId,
+        accessScope: { in: accessScopes },
+        ...(nodeId ? { id: nodeId } : {}),
+      },
+      orderBy: [{ displayOrder: 'asc' }, { title: 'asc' }],
+    });
+    const health = await this.db.knowledgeMapEvidenceHealth.findMany({
+      where: { mapVersionId, targetType: 'node', targetId: { in: nodes.map((node) => node.id) } },
+    });
+    const healthById = new Map(health.map((item) => [item.targetId, item.state]));
+    const rows: NodeRow[] = nodes.map((node) => ({
+      id: node.id,
+      stable_key: node.stableKey,
+      kind: node.kind as KnowledgeMapNodeDetail['kind'],
+      title: node.title,
+      summary: node.summary,
+      owner: node.owner,
+      controlling_document_required: node.controllingDocumentRequired,
+      evidence_health:
+        (healthById.get(node.id) as KnowledgeEvidenceHealth | undefined) ?? 'needs_review',
+    }));
     const sources = await this.loadSources(
-      result.rows.map((row) => row.id),
+      rows.map((row) => row.id),
       accessScopes,
     );
-    return result.rows.map((row) => toNode(row, sources.get(row.id) ?? []));
+    return rows.map((row) => toNode(row, sources.get(row.id) ?? []));
   }
 
   private async loadSources(
@@ -328,41 +411,45 @@ export class KnowledgeMapService {
   ): Promise<Map<string, SourceProvenance[]>> {
     const byNode = new Map<string, SourceProvenance[]>();
     if (!nodeIds.length) return byNode;
-    const result = await this.db.query<SourceRow>(
-      `select b.node_id, s.id, s.title, s.uri, b.source_version_id, b.section_key
-       from knowledge_map_source_bindings b
-       join knowledge_sources s on s.id = b.source_id
-       where b.node_id = any($1::text[]) and s.access_scope = any($2::text[])`,
-      [nodeIds, accessScopes],
-    );
-    for (const row of result.rows) {
-      const sources = byNode.get(row.node_id) ?? [];
+    const bindings = await this.db.knowledgeMapSourceBinding.findMany({
+      where: { nodeId: { in: nodeIds }, source: { accessScope: { in: accessScopes } } },
+      include: { source: true },
+    });
+    for (const binding of bindings) {
+      if (!binding.nodeId) continue;
+      const sources = byNode.get(binding.nodeId) ?? [];
       sources.push({
-        id: row.id,
-        title: row.title,
-        excerpt: row.section_key
-          ? `Section: ${row.section_key}`
+        id: binding.source.id,
+        title: binding.source.title,
+        excerpt: binding.sectionKey
+          ? `Section: ${binding.sectionKey}`
           : 'Approved company knowledge source.',
-        uri: row.uri,
+        uri: binding.source.uri,
         sourceType: 'knowledge_base',
         metadata: {
-          sourceVersionId: row.source_version_id ?? undefined,
-          sectionKey: row.section_key ?? undefined,
+          sourceVersionId: binding.sourceVersionId ?? undefined,
+          sectionKey: binding.sectionKey ?? undefined,
         },
       });
-      byNode.set(row.node_id, sources);
+      byNode.set(binding.nodeId, sources);
     }
     return byNode;
   }
 
   private async loadEdges(mapVersionId: string, allowedIds: Set<string>) {
     if (!allowedIds.size) return [];
-    const result = await this.db.query<EdgeRow>(
-      `select id, from_node_id, to_node_id, relationship, rationale
-       from knowledge_map_edges where map_version_id = $1 order by display_order, id`,
-      [mapVersionId],
-    );
-    return result.rows
+    const edges = await this.db.knowledgeMapEdge.findMany({
+      where: { mapVersionId },
+      orderBy: [{ displayOrder: 'asc' }, { id: 'asc' }],
+    });
+    return edges
+      .map<EdgeRow>((edge) => ({
+        id: edge.id,
+        from_node_id: edge.fromNodeId,
+        to_node_id: edge.toNodeId,
+        relationship: edge.relationship as KnowledgeMapRelationship,
+        rationale: edge.rationale,
+      }))
       .filter((edge) => allowedIds.has(edge.from_node_id) && allowedIds.has(edge.to_node_id))
       .map((edge) => ({
         id: edge.id,
@@ -497,7 +584,7 @@ function toNode(row: NodeRow, sources: SourceProvenance[]): KnowledgeMapNodeDeta
 }
 
 async function insertDraft(
-  db: DatabaseClient,
+  db: PrismaDatabase,
   versionId: string,
   accessScope: string,
   draft: RagKnowledgeMapDraft,
@@ -506,74 +593,67 @@ async function insertDraft(
   for (const [position, node] of draft.nodes.entries()) {
     const id = randomUUID();
     nodesByKey.set(node.clientKey, { id, node });
-    await db.query(
-      `insert into knowledge_map_nodes
-       (id, map_version_id, stable_key, kind, title, summary, owner, display_order, access_scope)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      [
+    await db.knowledgeMapNode.create({
+      data: {
         id,
-        versionId,
-        node.suggestedStableKey,
-        node.kind,
-        node.title,
-        node.summary,
-        node.owner ?? null,
-        position,
+        mapVersionId: versionId,
+        stableKey: node.suggestedStableKey,
+        kind: node.kind,
+        title: node.title,
+        summary: node.summary,
+        owner: node.owner,
+        displayOrder: position,
         accessScope,
-      ],
-    );
+      },
+    });
     await insertBindings(db, versionId, id, undefined, node.evidence);
-    await db.query(
-      `insert into knowledge_map_evidence_health
-       (map_version_id, target_type, target_id, state, evaluated_at)
-       values ($1, 'node', $2, 'current', now())`,
-      [versionId, id],
-    );
+    await db.knowledgeMapEvidenceHealth.create({
+      data: { mapVersionId: versionId, targetType: 'node', targetId: id, state: 'current' },
+    });
   }
   for (const [position, edge] of draft.edges.entries()) {
     const from = nodesByKey.get(edge.fromClientKey);
     const to = nodesByKey.get(edge.toClientKey);
     if (!from || !to) throw new KnowledgeMapValidationError('Edge references an unknown node.');
     const id = randomUUID();
-    await db.query(
-      `insert into knowledge_map_edges
-       (id, map_version_id, from_node_id, to_node_id, relationship, rationale, display_order)
-       values ($1, $2, $3, $4, $5, $6, $7)`,
-      [id, versionId, from.id, to.id, edge.relationship, edge.rationale ?? null, position],
-    );
+    await db.knowledgeMapEdge.create({
+      data: {
+        id,
+        mapVersionId: versionId,
+        fromNodeId: from.id,
+        toNodeId: to.id,
+        relationship: edge.relationship,
+        rationale: edge.rationale,
+        displayOrder: position,
+      },
+    });
     await insertBindings(db, versionId, undefined, id, edge.evidence);
-    await db.query(
-      `insert into knowledge_map_evidence_health
-       (map_version_id, target_type, target_id, state, evaluated_at)
-       values ($1, 'edge', $2, 'current', now())`,
-      [versionId, id],
-    );
+    await db.knowledgeMapEvidenceHealth.create({
+      data: { mapVersionId: versionId, targetType: 'edge', targetId: id, state: 'current' },
+    });
   }
 }
 
 async function insertBindings(
-  db: DatabaseClient,
+  db: PrismaDatabase,
   versionId: string,
   nodeId: string | undefined,
   edgeId: string | undefined,
   evidence: KnowledgeEvidenceBinding[],
 ): Promise<void> {
   for (const binding of evidence) {
-    await db.query(
-      `insert into knowledge_map_source_bindings
-       (id, map_version_id, node_id, edge_id, source_id, source_version_id, section_key, evidence_role)
-       values ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [
-        randomUUID(),
-        versionId,
-        nodeId ?? null,
-        edgeId ?? null,
-        binding.sourceId,
-        binding.sourceVersionId ?? null,
-        binding.sectionKey ?? null,
-        binding.role,
-      ],
-    );
+    await db.knowledgeMapSourceBinding.create({
+      data: {
+        id: randomUUID(),
+        mapVersionId: versionId,
+        nodeId,
+        edgeId,
+        sourceId: binding.sourceId,
+        sourceVersionId: binding.sourceVersionId,
+        sectionKey: binding.sectionKey,
+        evidenceRole: binding.role,
+      },
+    });
   }
 }
 
@@ -610,43 +690,43 @@ function validateDraft(draft: RagKnowledgeMapDraft): void {
 }
 
 async function validateVersion(
-  db: DatabaseClient,
+  db: PrismaDatabase,
   mapId: string,
   versionId: string,
 ): Promise<{ valid: boolean; message: string }> {
-  const version = await db.query<{ count: string }>(
-    `select count(*)::text as count from knowledge_map_versions
-     where id = $1 and map_id = $2 and status = 'draft'`,
-    [versionId, mapId],
-  );
-  if (version.rows[0]?.count !== '1')
-    return { valid: false, message: 'Draft version was not found.' };
-  const ungrounded = await db.query<{ count: string }>(
-    `select count(*)::text as count from knowledge_map_nodes n
-     where n.map_version_id = $1 and not exists (
-       select 1 from knowledge_map_source_bindings b
-       where b.node_id = n.id and b.evidence_role = 'authoritative'
-     )`,
-    [versionId],
-  );
-  if (ungrounded.rows[0]?.count !== '0') {
+  const version = await db.knowledgeMapVersion.findFirst({
+    where: { id: versionId, mapId, status: 'draft' },
+    select: { id: true },
+  });
+  if (!version) return { valid: false, message: 'Draft version was not found.' };
+  const ungrounded = await db.knowledgeMapNode.count({
+    where: {
+      mapVersionId: versionId,
+      sourceBindings: { none: { evidenceRole: 'authoritative' } },
+    },
+  });
+  if (ungrounded !== 0) {
     return { valid: false, message: 'Every published node requires authoritative evidence.' };
   }
   return { valid: true, message: '' };
 }
 
 async function insertAudit(
-  db: DatabaseClient,
+  db: PrismaDatabase,
   actorUserId: string,
   action: string,
   mapId: string,
   versionId: string,
   metadata: Record<string, unknown> = {},
 ): Promise<void> {
-  await db.query(
-    `insert into knowledge_map_audit_events
-     (id, actor_user_id, action, map_id, map_version_id, metadata)
-     values ($1, $2, $3, $4, $5, $6::jsonb)`,
-    [randomUUID(), actorUserId, action, mapId, versionId, JSON.stringify(metadata)],
-  );
+  await db.knowledgeMapAuditEvent.create({
+    data: {
+      id: randomUUID(),
+      actorUserId,
+      action,
+      mapId,
+      mapVersionId: versionId,
+      metadata: JSON.parse(JSON.stringify(metadata)) as Prisma.InputJsonValue,
+    },
+  });
 }

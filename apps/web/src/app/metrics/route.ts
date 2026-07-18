@@ -1,6 +1,5 @@
-import { publicJson } from '@/server/routeHandler';
-import { getServerServices } from '@/server/services';
+import { createRouteHandler } from '@/server/core/http/createRouteHandler';
 
-export function GET() {
-  return publicJson(getServerServices().metrics);
-}
+export const GET = createRouteHandler('public', (controllers) => controllers.system.metrics, {
+  logRequest: false,
+});

@@ -1,5 +1,5 @@
-import { publicJson } from '@/server/routeHandler';
+import { createRouteHandler } from '@/server/core/http/createRouteHandler';
 
-export function GET() {
-  return publicJson({ status: 'ok', service: 'onboarding-web' });
-}
+export const GET = createRouteHandler('public', (controllers) => controllers.system.health, {
+  logRequest: false,
+});
