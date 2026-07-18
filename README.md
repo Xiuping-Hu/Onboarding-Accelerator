@@ -22,20 +22,30 @@ npm run docs:harness:update
 ```
 
 `npm run dev` starts the Next.js app at `http://localhost:3000`. With `AUTH_DISABLED=true`, local
-development opens the protected workspace as `local-dev-user`. For the real account flow, apply
-`db/migrations/001_postgres_pgvector.sql`, `db/migrations/002_users_table.sql`, and
-`db/migrations/003_postgres_account_auth.sql`, followed by the RAG snapshot/profile migrations
-`db/migrations/004_rag_source_snapshots.sql` and
-`db/migrations/005_knowledge_embedding_profiles.sql`; set `AUTH_DISABLED=false` and
-`DATABASE_URL`; then create an account:
+development opens the protected workspace as `local-dev-user`. Real sign-in uses the Tax Consulting
+SA Microsoft Entra tenant through OIDC authorization code flow with PKCE. Apply
+`db/migrations/001_postgres_pgvector.sql` through
+`db/migrations/007_microsoft_entra_auth.sql`, set `AUTH_DISABLED=false`, `DATABASE_URL`, and the
+`AUTH_MICROSOFT_*` settings from `.env.example`.
+
+Register a Web redirect URI of
+`http://localhost:3000/api/auth/microsoft/callback` for local testing and the equivalent HTTPS URI
+for each deployed environment. The Entra application must be single-tenant and use tenant
+`e0bc1e92-f544-4358-8d5f-5aabe36f1df6`. The app requests only `openid profile email`; it does not
+store Microsoft access or refresh tokens.
+
+With `AUTH_MICROSOFT_AUTO_PROVISION=true`, a tenant user is added to the local `users` table on first
+sign-in with role `user`. To pre-provision an administrator, run:
 
 ```powershell
 npm run users:create -- --email admin@example.com --name "Admin" --role admin
 ```
 
-The script prompts for a password, stores only a bcrypt hash, and inserts the user into Postgres.
-There is no public registration route. As a fallback, direct SQL account creation must use a
-precomputed password hash; never insert plaintext passwords.
+The script creates the local user without a password. On first Microsoft sign-in, the verified
+immutable tenant/object identity (`tid` + `oid`) binds to that row by normalized email while the
+existing local role is preserved. Browser sessions continue to use a random hashed token in
+`auth_sessions`, linked to `users.id`. Set `AUTH_MICROSOFT_AUTO_PROVISION=false` if every user must be
+pre-provisioned.
 
 By default sessions persist to `SESSION_STORE_PATH`. Set `SESSION_STORE=postgres` with
 `DATABASE_URL` to use Postgres-backed sessions. To enable pgvector retrieval, apply

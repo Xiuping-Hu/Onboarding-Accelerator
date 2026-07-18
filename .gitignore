@@ -11,3 +11,4 @@ data/
 .vite/
 .next/
 *.local
+*.tsbuildinfo

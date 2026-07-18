@@ -207,6 +207,37 @@ h3 {
   box-shadow: 0 24px 60px rgba(31, 33, 48, 0.12);
 }
 
+.login-description {
+  margin: 10px 0 22px;
+  color: #616161;
+  line-height: 1.5;
+}
+
+.microsoft-login-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 42px;
+  text-decoration: none;
+}
+
+.microsoft-mark {
+  display: grid;
+  grid-template-columns: repeat(2, 8px);
+  gap: 2px;
+}
+
+.microsoft-mark span {
+  width: 8px;
+  height: 8px;
+  background: #ffffff;
+}
+
+.admin-login .microsoft-login-button {
+  margin-top: 24px;
+}
+
 .login-form {
   display: grid;
   gap: 14px;

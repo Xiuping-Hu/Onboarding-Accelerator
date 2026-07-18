@@ -15,8 +15,11 @@ export interface ServerConfig {
   authCookieName: string;
   authSessionDurationMs: number;
   authSecureCookie: boolean;
-  authLoginRateLimitWindowMs: number;
-  authLoginRateLimitMax: number;
+  authMicrosoftTenantId?: string;
+  authMicrosoftClientId?: string;
+  authMicrosoftClientSecret?: string;
+  authMicrosoftRedirectUri?: string;
+  authMicrosoftAutoProvision: boolean;
   databaseUrl?: string;
   postgresSsl: boolean;
   postgresPoolMax: number;
@@ -66,11 +69,11 @@ export function loadConfig(): ServerConfig {
       process.env.AUTH_SECURE_COOKIE === undefined
         ? process.env.NODE_ENV === 'production'
         : process.env.AUTH_SECURE_COOKIE === 'true',
-    authLoginRateLimitWindowMs: Number.parseInt(
-      process.env.AUTH_LOGIN_RATE_LIMIT_WINDOW_MS ?? '300000',
-      10,
-    ),
-    authLoginRateLimitMax: Number.parseInt(process.env.AUTH_LOGIN_RATE_LIMIT_MAX ?? '10', 10),
+    authMicrosoftTenantId: optionalString(process.env.AUTH_MICROSOFT_TENANT_ID),
+    authMicrosoftClientId: optionalString(process.env.AUTH_MICROSOFT_CLIENT_ID),
+    authMicrosoftClientSecret: optionalString(process.env.AUTH_MICROSOFT_CLIENT_SECRET),
+    authMicrosoftRedirectUri: optionalString(process.env.AUTH_MICROSOFT_REDIRECT_URI),
+    authMicrosoftAutoProvision: process.env.AUTH_MICROSOFT_AUTO_PROVISION !== 'false',
     databaseUrl: optionalString(process.env.DATABASE_URL),
     postgresSsl: process.env.POSTGRES_SSL === 'true',
     postgresPoolMax: Number.parseInt(process.env.POSTGRES_POOL_MAX ?? '10', 10),
@@ -127,22 +130,26 @@ function validateConfig(config: ServerConfig): void {
   }
 
   if (!config.authDisabled && !config.databaseUrl) {
-    throw new Error('Password authentication requires DATABASE_URL');
+    throw new Error('Microsoft authentication requires DATABASE_URL');
+  }
+
+  if (!config.authDisabled) {
+    const missingMicrosoftSettings = [
+      ['AUTH_MICROSOFT_TENANT_ID', config.authMicrosoftTenantId],
+      ['AUTH_MICROSOFT_CLIENT_ID', config.authMicrosoftClientId],
+      ['AUTH_MICROSOFT_CLIENT_SECRET', config.authMicrosoftClientSecret],
+      ['AUTH_MICROSOFT_REDIRECT_URI', config.authMicrosoftRedirectUri],
+    ]
+      .filter(([, value]) => !value)
+      .map(([name]) => name);
+
+    if (missingMicrosoftSettings.length > 0) {
+      throw new Error(`Microsoft authentication requires ${missingMicrosoftSettings.join(', ')}`);
+    }
   }
 
   if (!Number.isFinite(config.authSessionDurationMs) || config.authSessionDurationMs <= 0) {
     throw new Error('AUTH_SESSION_DURATION_MS must be a positive integer');
-  }
-
-  if (
-    !Number.isFinite(config.authLoginRateLimitWindowMs) ||
-    config.authLoginRateLimitWindowMs <= 0
-  ) {
-    throw new Error('AUTH_LOGIN_RATE_LIMIT_WINDOW_MS must be a positive integer');
-  }
-
-  if (!Number.isFinite(config.authLoginRateLimitMax) || config.authLoginRateLimitMax <= 0) {
-    throw new Error('AUTH_LOGIN_RATE_LIMIT_MAX must be a positive integer');
   }
 
   if (config.sessionStore === 'postgres' && !config.databaseUrl) {

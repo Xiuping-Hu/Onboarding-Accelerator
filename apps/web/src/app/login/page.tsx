@@ -6,7 +6,11 @@ import { getServerServices } from '../../server/services';
 
 export const dynamic = 'force-dynamic';
 
-export default async function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
   const services = getServerServices();
   let hasCurrentUser = false;
 
@@ -21,5 +25,14 @@ export default async function LoginPage() {
     redirect('/workspace');
   }
 
-  return <App />;
+  const error = (await searchParams).error;
+  return (
+    <App
+      initialLoginError={
+        error === 'microsoft_sign_in_failed'
+          ? 'Microsoft sign-in could not be completed. Please try again.'
+          : undefined
+      }
+    />
+  );
 }

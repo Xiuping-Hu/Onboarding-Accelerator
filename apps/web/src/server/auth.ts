@@ -108,6 +108,7 @@ export function toAuthenticatedUser(user: UserRecord): AuthenticatedUser {
     email: user.email,
     displayName: user.displayName,
     role: user.role,
+    ...(user.microsoftTenantId ? { tenantId: user.microsoftTenantId } : {}),
   };
 }
 
