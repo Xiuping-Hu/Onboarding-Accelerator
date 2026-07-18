@@ -1,38 +1,7 @@
-import type { NextRequest } from 'next/server';
-import { z } from 'zod';
-import { handleAdminApiRoute } from '../../../../../server/adminApi';
+import { createRouteHandler } from '@/server/core/http/createRouteHandler';
 
-const rateSchema = z.object({
-  provider: z.string().trim().min(1).max(80).optional(),
-  model: z.string().trim().min(1).max(120),
-  currency: z.string().trim().min(3).max(3).optional(),
-  inputCostPer1MTokens: z.number().min(0),
-  outputCostPer1MTokens: z.number().min(0),
-  effectiveFrom: z.string().datetime().optional(),
-  effectiveTo: z.string().datetime().optional(),
-  isActive: z.boolean().optional(),
-});
-
-export async function GET(request: NextRequest): Promise<Response> {
-  return handleAdminApiRoute(request, async ({ services }) => services.aiRates.list());
-}
-
-export async function POST(request: NextRequest): Promise<Response> {
-  return handleAdminApiRoute(request, async ({ request: apiRequest, services, user }) => {
-    const payload = rateSchema.parse(await apiRequest.json());
-    const rateCard = await services.aiRates.create(payload, user);
-    await services.adminAudit.record({
-      actorUserId: user.id,
-      action: 'ai_rate_card.create',
-      targetType: 'ai_rate_card',
-      targetId: rateCard.id,
-      metadata: {
-        model: rateCard.model,
-        currency: rateCard.currency,
-      },
-      ipAddress: apiRequest.headers.get('x-forwarded-for')?.split(',')[0]?.trim(),
-      userAgent: apiRequest.headers.get('user-agent') ?? undefined,
-    });
-    return { rateCard };
-  });
-}
+export const GET = createRouteHandler('admin', (controllers) => controllers.adminAiFees.listRates);
+export const POST = createRouteHandler(
+  'admin',
+  (controllers) => controllers.adminAiFees.createRate,
+);

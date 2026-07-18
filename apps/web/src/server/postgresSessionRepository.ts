@@ -1,5 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import type {
+  Prisma,
+  OnboardingSession as PrismaOnboardingSession,
+} from '@/generated/prisma/client';
+import type {
   CreateSessionRequest,
   GuideGraphState,
   OnboardingSession,
@@ -7,34 +11,18 @@ import type {
   UpdateSessionRequest,
   UserSettings,
 } from '@onboarding/shared';
-import type { DatabaseClient } from './database';
+import type { PrismaDatabase } from './infrastructure/prisma/prismaTypes';
 import { SessionNotFoundError, type SessionRepository, touchSession } from './sessionRepository';
 
-interface SessionRow {
-  id: string;
-  revision?: number | string;
-  owner_id: string;
-  title: string;
-  created_at: Date | string;
-  updated_at: Date | string;
-  settings: UserSettings | string;
-  chat_history: OnboardingSession['chatHistory'] | string;
-  guide: GuideGraphState | string;
-}
-
-export class PostgresSessionRepository implements SessionRepository {
-  constructor(private readonly db: DatabaseClient) {}
+export class PrismaSessionRepository implements SessionRepository {
+  constructor(private readonly db: PrismaDatabase) {}
 
   async list(ownerId: string): Promise<SessionSummary[]> {
-    const result = await this.db.query<SessionRow>(
-      `select id, revision, owner_id, title, created_at, updated_at, settings, chat_history, guide
-       from onboarding_sessions
-       where owner_id = $1
-       order by updated_at desc`,
-      [ownerId],
-    );
-
-    return result.rows.map((row) => {
+    const rows = await this.db.onboardingSession.findMany({
+      where: { ownerId },
+      orderBy: { updatedAt: 'desc' },
+    });
+    return rows.map((row) => {
       const session = toPublicSession(row);
       return {
         ...session,
@@ -59,24 +47,20 @@ export class PostgresSessionRepository implements SessionRepository {
       guide: createEmptyGuide(),
     };
 
-    const result = await this.db.query<SessionRow>(
-      `insert into onboarding_sessions
-        (id, owner_id, title, created_at, updated_at, settings, chat_history, guide)
-       values ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb)
-       returning id, revision, owner_id, title, created_at, updated_at, settings, chat_history, guide`,
-      [
-        session.id,
-        ownerId,
-        session.title,
-        session.createdAt,
-        session.updatedAt,
-        JSON.stringify(session.settings),
-        JSON.stringify(session.chatHistory),
-        JSON.stringify(session.guide),
-      ],
+    return toPublicSession(
+      await this.db.onboardingSession.create({
+        data: {
+          id: session.id,
+          ownerId,
+          title: session.title,
+          createdAt: new Date(session.createdAt),
+          updatedAt: new Date(session.updatedAt),
+          settings: toJson(session.settings),
+          chatHistory: toJson(session.chatHistory),
+          guide: toJson(session.guide),
+        },
+      }),
     );
-
-    return toPublicSession(requireRow(result.rows[0], session.id));
   }
 
   async get(sessionId: string, ownerId: string): Promise<OnboardingSession> {
@@ -114,55 +98,40 @@ export class PostgresSessionRepository implements SessionRepository {
   }
 
   async save(session: OnboardingSession, ownerId: string): Promise<OnboardingSession> {
-    const result = await this.db.query<SessionRow>(
-      `update onboarding_sessions
-       set title = $2,
-           updated_at = $3,
-           settings = $4::jsonb,
-           chat_history = $5::jsonb,
-           guide = $6::jsonb,
-           revision = revision + 1
-       where id = $1 and owner_id = $7 and revision = $8
-       returning id, revision, owner_id, title, created_at, updated_at, settings, chat_history, guide`,
-      [
-        session.id,
-        session.title,
-        session.updatedAt,
-        JSON.stringify(session.settings),
-        JSON.stringify(session.chatHistory),
-        JSON.stringify(session.guide),
-        ownerId,
-        session.revision ?? 0,
-      ],
-    );
-
-    return toPublicSession(requireRow(result.rows[0], session.id));
+    const updated = await this.db.onboardingSession.updateMany({
+      where: { id: session.id, ownerId, revision: BigInt(session.revision ?? 0) },
+      data: {
+        title: session.title,
+        updatedAt: new Date(session.updatedAt),
+        settings: toJson(session.settings),
+        chatHistory: toJson(session.chatHistory),
+        guide: toJson(session.guide),
+        revision: { increment: 1 },
+      },
+    });
+    if (updated.count !== 1) throw new SessionNotFoundError(session.id);
+    return this.get(session.id, ownerId);
   }
 
   async delete(sessionId: string, ownerId: string): Promise<void> {
-    const result = await this.db.query(
-      'delete from onboarding_sessions where id = $1 and owner_id = $2',
-      [sessionId, ownerId],
-    );
-
-    if (result.rowCount === 0) {
+    const result = await this.db.onboardingSession.deleteMany({
+      where: { id: sessionId, ownerId },
+    });
+    if (result.count === 0) {
       throw new SessionNotFoundError(sessionId);
     }
   }
 
-  private async getRow(sessionId: string, ownerId: string): Promise<SessionRow> {
-    const result = await this.db.query<SessionRow>(
-      `select id, revision, owner_id, title, created_at, updated_at, settings, chat_history, guide
-       from onboarding_sessions
-       where id = $1 and owner_id = $2`,
-      [sessionId, ownerId],
-    );
-
-    return requireRow(result.rows[0], sessionId);
+  private async getRow(sessionId: string, ownerId: string): Promise<PrismaOnboardingSession> {
+    const row = await this.db.onboardingSession.findFirst({ where: { id: sessionId, ownerId } });
+    return requireRow(row, sessionId);
   }
 }
 
-function requireRow(row: SessionRow | undefined, sessionId: string): SessionRow {
+function requireRow(
+  row: PrismaOnboardingSession | null | undefined,
+  sessionId: string,
+): PrismaOnboardingSession {
   if (!row) {
     throw new SessionNotFoundError(sessionId);
   }
@@ -170,25 +139,25 @@ function requireRow(row: SessionRow | undefined, sessionId: string): SessionRow 
   return row;
 }
 
-function toPublicSession(row: SessionRow): OnboardingSession {
+function toPublicSession(row: PrismaOnboardingSession): OnboardingSession {
   return {
     id: row.id,
-    revision: Number(row.revision ?? 0),
+    revision: Number(row.revision),
     title: row.title,
-    createdAt: toIsoString(row.created_at),
-    updatedAt: toIsoString(row.updated_at),
-    settings: parseJson(row.settings),
-    chatHistory: parseJson(row.chat_history),
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    settings: parseJson<UserSettings>(row.settings),
+    chatHistory: parseJson<OnboardingSession['chatHistory']>(row.chatHistory),
     guide: parseJson(row.guide),
   };
 }
 
-function parseJson<T>(value: T | string): T {
-  return typeof value === 'string' ? (JSON.parse(value) as T) : value;
+function parseJson<T>(value: Prisma.JsonValue): T {
+  return structuredClone(value) as T;
 }
 
-function toIsoString(value: Date | string): string {
-  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+function toJson(value: unknown): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }
 
 function createEmptyGuide(): GuideGraphState {

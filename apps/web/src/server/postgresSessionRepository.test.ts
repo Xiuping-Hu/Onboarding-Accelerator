@@ -1,65 +1,45 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { DatabaseClient } from './database';
-import { PostgresSessionRepository } from './postgresSessionRepository';
+import type { OnboardingSession as PrismaOnboardingSession } from '@/generated/prisma/client';
+import type { PrismaDatabase } from './infrastructure/prisma/prismaTypes';
+import { PrismaSessionRepository } from './postgresSessionRepository';
 import { SessionNotFoundError } from './sessionRepository';
 
-void test('PostgresSessionRepository creates, lists, updates, and deletes scoped sessions', async () => {
-  const rows = new Map<string, Record<string, unknown>>();
-  const db: DatabaseClient = {
-    query: async (text, values = []) => {
-      if (text.includes('insert into onboarding_sessions')) {
-        const row = {
-          id: values[0],
-          owner_id: values[1],
-          title: values[2],
-          created_at: values[3],
-          updated_at: values[4],
-          settings: JSON.parse(String(values[5])),
-          chat_history: JSON.parse(String(values[6])),
-          guide: JSON.parse(String(values[7])),
-        };
-        rows.set(String(row.id), row);
-        return result([row]);
-      }
-
-      if (text.includes('where owner_id = $1') && text.includes('order by updated_at desc')) {
-        return result([...rows.values()].filter((row) => row.owner_id === values[0]));
-      }
-
-      if (text.includes('update onboarding_sessions')) {
-        const row = rows.get(String(values[0]));
-        if (!row || row.owner_id !== values[6]) {
-          return result([]);
-        }
+void test('PrismaSessionRepository creates, lists, updates, and deletes scoped sessions', async () => {
+  const rows = new Map<string, PrismaOnboardingSession>();
+  const db = {
+    onboardingSession: {
+      create: async ({ data }: { data: PrismaOnboardingSession }) => {
+        const row = { ...data, revision: 0n };
+        rows.set(row.id, row);
+        return row;
+      },
+      findMany: async ({ where }: { where: { ownerId: string } }) =>
+        [...rows.values()].filter((row) => row.ownerId === where.ownerId),
+      findFirst: async ({ where }: { where: { id: string; ownerId: string } }) => {
+        const row = rows.get(where.id);
+        return row?.ownerId === where.ownerId ? row : null;
+      },
+      updateMany: async ({ where, data }: UpdateArguments) => {
+        const row = rows.get(where.id);
+        if (!row || row.ownerId !== where.ownerId || row.revision !== where.revision)
+          return { count: 0 };
         Object.assign(row, {
-          title: values[1],
-          updated_at: values[2],
-          settings: JSON.parse(String(values[3])),
-          chat_history: JSON.parse(String(values[4])),
-          guide: JSON.parse(String(values[5])),
+          ...data,
+          revision: row.revision + 1n,
         });
-        return result([row]);
-      }
-
-      if (text.includes('delete from onboarding_sessions')) {
-        const row = rows.get(String(values[0]));
-        if (row?.owner_id !== values[1]) {
-          return result([], 0);
-        }
-        rows.delete(String(values[0]));
-        return result([], 1);
-      }
-
-      if (text.includes('where id = $1 and owner_id = $2')) {
-        const row = rows.get(String(values[0]));
-        return result(row && row.owner_id === values[1] ? [row] : []);
-      }
-
-      throw new Error(`Unexpected query: ${text}`);
+        rows.set(row.id, row);
+        return { count: 1 };
+      },
+      deleteMany: async ({ where }: { where: { id: string; ownerId: string } }) => {
+        const row = rows.get(where.id);
+        if (row?.ownerId !== where.ownerId) return { count: 0 };
+        rows.delete(where.id);
+        return { count: 1 };
+      },
     },
-  };
-  const sessions = new PostgresSessionRepository(db);
+  } as unknown as PrismaDatabase;
+  const sessions = new PrismaSessionRepository(db);
   const created = await sessions.create({ title: 'Database session' }, 'owner-a');
 
   assert.equal((await sessions.list('owner-a')).length, 1);
@@ -70,7 +50,6 @@ void test('PostgresSessionRepository creates, lists, updates, and deletes scoped
     { title: 'Updated', settings: { webSearchEnabled: true } },
     'owner-a',
   );
-
   assert.equal(updated.title, 'Updated');
   assert.equal(updated.settings.webSearchEnabled, true);
 
@@ -83,12 +62,9 @@ void test('PostgresSessionRepository creates, lists, updates, and deletes scoped
   await assert.rejects(() => sessions.get(created.id, 'owner-a'), SessionNotFoundError);
 });
 
-function result(rows: Record<string, unknown>[], rowCount = rows.length) {
-  return {
-    command: 'MOCK',
-    rowCount,
-    oid: 0,
-    fields: [],
-    rows,
+interface UpdateArguments {
+  where: { id: string; ownerId: string; revision: bigint };
+  data: Omit<Partial<PrismaOnboardingSession>, 'revision'> & {
+    revision: { increment: number };
   };
 }

@@ -13,7 +13,7 @@ import type { AnswerProvider } from './openAiService';
 import { NoopLogService, type LogService } from './logService';
 import type { SessionRepository } from './sessionRepository';
 import { touchSession } from './sessionRepository';
-import type { KnowledgeMapService } from './knowledgeMapService';
+import type { KnowledgeMapService } from './modules/knowledge-maps/knowledgeMap.application.service';
 
 export class ChatOrchestrationService {
   constructor(

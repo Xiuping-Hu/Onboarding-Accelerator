@@ -1,28 +1,26 @@
-import type { DatabaseClient } from '../database';
+import { Prisma } from '@/generated/prisma/client';
 import type { EmbeddingProvider } from '../embeddingService';
+import type { PrismaDatabase } from '../infrastructure/prisma/prismaTypes';
 import { formatVector } from '../pgvectorKnowledgeBase';
 import type { IngestionChunk } from './types';
 
 export async function writeKnowledgeChunks(
-  db: DatabaseClient,
-  embeddings: EmbeddingProvider,
+  db: PrismaDatabase,
   embeddingProfile: string,
   rootSourceId: string,
-  chunks: IngestionChunk[],
+  chunks: EmbeddedKnowledgeChunk[],
   sourceVersionId?: string,
 ): Promise<void> {
-  for (const chunk of chunks) {
-    const embedding = await embeddings.embed(chunk.text);
-    if (!embedding?.length) {
-      throw new Error('Embedding generation returned no vector; check the embedding provider.');
-    }
-
+  for (const { chunk, embedding } of chunks) {
+    const metadata = JSON.stringify({ ...chunk.metadata, embeddingProfile });
+    const vector = formatVector(embedding);
     if (sourceVersionId) {
-      await db.query(
-        `insert into knowledge_chunks (
+      await db.$executeRaw(Prisma.sql`insert into knowledge_chunks (
          id, embedding_profile, title, excerpt, uri, source_type, metadata, embedding,
          source_id, source_version_id, section_key, updated_at
-       ) values ($1, $2, $3, $4, $5, 'knowledge_base', $6::jsonb, $7::vector, $8, $9, $10, now())
+       ) values (${chunk.id}, ${embeddingProfile}, ${chunk.title}, ${chunk.text}, ${chunk.uri},
+         'knowledge_base', ${metadata}::jsonb, ${vector}::vector, ${rootSourceId},
+         ${sourceVersionId}, ${String(chunk.metadata.section ?? chunk.metadata.chunkIndex ?? '')}, now())
        on conflict (id, embedding_profile) do update set
          title = excluded.title,
          excerpt = excluded.excerpt,
@@ -33,25 +31,12 @@ export async function writeKnowledgeChunks(
          source_id = excluded.source_id,
          source_version_id = excluded.source_version_id,
          section_key = excluded.section_key,
-         updated_at = excluded.updated_at`,
-        [
-          chunk.id,
-          embeddingProfile,
-          chunk.title,
-          chunk.text,
-          chunk.uri,
-          JSON.stringify({ ...chunk.metadata, embeddingProfile }),
-          formatVector(embedding),
-          rootSourceId,
-          sourceVersionId,
-          String(chunk.metadata.section ?? chunk.metadata.chunkIndex ?? ''),
-        ],
-      );
+         updated_at = excluded.updated_at`);
     } else {
-      await db.query(
-        `insert into knowledge_chunks (
+      await db.$executeRaw(Prisma.sql`insert into knowledge_chunks (
            id, embedding_profile, title, excerpt, uri, source_type, metadata, embedding, updated_at
-         ) values ($1, $2, $3, $4, $5, 'knowledge_base', $6::jsonb, $7::vector, now())
+         ) values (${chunk.id}, ${embeddingProfile}, ${chunk.title}, ${chunk.text}, ${chunk.uri},
+           'knowledge_base', ${metadata}::jsonb, ${vector}::vector, now())
          on conflict (id, embedding_profile) do update set
            title = excluded.title,
            excerpt = excluded.excerpt,
@@ -59,25 +44,32 @@ export async function writeKnowledgeChunks(
            source_type = excluded.source_type,
            metadata = excluded.metadata,
            embedding = excluded.embedding,
-           updated_at = excluded.updated_at`,
-        [
-          chunk.id,
-          embeddingProfile,
-          chunk.title,
-          chunk.text,
-          chunk.uri,
-          JSON.stringify({ ...chunk.metadata, embeddingProfile }),
-          formatVector(embedding),
-        ],
-      );
+           updated_at = excluded.updated_at`);
     }
   }
 
-  await db.query(
-    `delete from knowledge_chunks
-     where metadata->>'rootSourceId' = $1
-       and embedding_profile = $2
-       and id <> all($3::text[])`,
-    [rootSourceId, embeddingProfile, chunks.map((chunk) => chunk.id)],
+  await db.$executeRaw(Prisma.sql`delete from knowledge_chunks
+     where metadata->>'rootSourceId' = ${rootSourceId}
+       and embedding_profile = ${embeddingProfile}
+       and id not in (${Prisma.join(chunks.map(({ chunk }) => chunk.id))})`);
+}
+
+export interface EmbeddedKnowledgeChunk {
+  chunk: IngestionChunk;
+  embedding: number[];
+}
+
+export async function embedKnowledgeChunks(
+  embeddings: EmbeddingProvider,
+  chunks: IngestionChunk[],
+): Promise<EmbeddedKnowledgeChunk[]> {
+  return Promise.all(
+    chunks.map(async (chunk) => {
+      const embedding = await embeddings.embed(chunk.text);
+      if (!embedding?.length) {
+        throw new Error('Embedding generation returned no vector; check the embedding provider.');
+      }
+      return { chunk, embedding };
+    }),
   );
 }

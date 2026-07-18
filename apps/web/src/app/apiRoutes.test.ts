@@ -13,7 +13,7 @@ import type {
   GenerateGuideRootResponse,
 } from '@onboarding/shared';
 import { FileLogService } from '../server/logService';
-import { resetServerServicesForTests } from '../server/services';
+import { resetAppContainerForTests } from '../server/bootstrap/appContainer';
 
 void test('Next API handlers create sessions, generate guides, chat, and expose logs', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'onboarding-next-api-'));
@@ -22,7 +22,7 @@ void test('Next API handlers create sessions, generate guides, chat, and expose 
   process.env.SESSION_STORE_PATH = join(directory, 'sessions.json');
   process.env.LOG_STORE_PATH = join(directory, 'events.jsonl');
   process.env.OPENAI_API_KEY = '';
-  resetServerServicesForTests();
+  resetAppContainerForTests();
 
   const sessionsRoute = await import('./api/sessions/route');
   const guideRootRoute = await import('./api/sessions/[sessionId]/guide/root/route');
@@ -83,7 +83,7 @@ void test('protected API handlers reject unauthenticated requests when account a
   process.env.AUTH_MICROSOFT_CLIENT_ID = '00000000-0000-0000-0000-000000000001';
   process.env.AUTH_MICROSOFT_CLIENT_SECRET = 'test-client-secret';
   process.env.AUTH_MICROSOFT_REDIRECT_URI = 'http://localhost:3000/api/auth/microsoft/callback';
-  resetServerServicesForTests();
+  resetAppContainerForTests();
 
   const meRoute = await import('./api/auth/me/route');
   const response = await meRoute.GET(new NextRequest('http://localhost/api/auth/me'));
@@ -116,7 +116,7 @@ void test('admin APIs require admin role and manage activity logs and AI fees', 
   process.env.AI_RATE_CARDS_STORE_PATH = join(directory, 'ai-rate-cards.json');
   process.env.AI_FEE_ADJUSTMENTS_STORE_PATH = join(directory, 'ai-fee-adjustments.jsonl');
   process.env.OPENAI_API_KEY = '';
-  resetServerServicesForTests();
+  resetAppContainerForTests();
 
   const logs = new FileLogService(process.env.LOG_STORE_PATH);
   await logs.recordRequest({

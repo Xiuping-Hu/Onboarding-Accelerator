@@ -1,12 +1,3 @@
-import type { CurrentUserResponse } from '@onboarding/shared';
-import { handleApiRoute } from '../../../../server/routeHandler';
-import type { NextRequest } from 'next/server';
+import { createRouteHandler } from '@/server/core/http/createRouteHandler';
 
-export async function GET(request: NextRequest): Promise<Response> {
-  return handleApiRoute(
-    request,
-    async ({ user }): Promise<CurrentUserResponse> => ({
-      user,
-    }),
-  );
-}
+export const GET = createRouteHandler('authenticated', (controllers) => controllers.auth.me);

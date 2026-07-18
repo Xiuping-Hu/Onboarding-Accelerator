@@ -6,7 +6,8 @@ The product now runs as a single Next.js App Router application in `apps/web`.
 
 - UI rendering lives in `apps/web/src/app`.
 - Backend behavior lives in Next.js route handlers under `apps/web/src/app/api`.
-- Reusable server services live in `apps/web/src/server`.
+- Controllers, application services, DTOs, and persistence adapters live in
+  `apps/web/src/server`.
 - Shared request/response contracts remain in `packages/shared`.
 
 ## API Contracts
@@ -63,27 +64,39 @@ Set these before running with `NODE_ENV=production`:
   Vercel. They refer to the developer machine locally but to the serverless function in production;
   Vercel runtime calls ignore loopback proxy values as a defensive fallback.
 - `RAG_SHARED_DIRECTORY` for shared files and `RAG_WEBSITE_ALLOWLIST` for allowed website ingestion.
-- pgvector RAG: apply `db/migrations/001_postgres_pgvector.sql`, populate `knowledge_chunks`, then set `RAG_VECTOR_ENABLED=true`, `DATABASE_URL`, and optionally `OPENAI_EMBEDDING_MODEL` and `RAG_VECTOR_LIMIT`.
-- governed knowledge maps: apply migrations through `006_rag_grounded_knowledge_maps.sql`, set
+- pgvector RAG: run `npm run db:migrate:deploy`, populate `knowledge_chunks`, then set
+  `RAG_VECTOR_ENABLED=true`, `DATABASE_URL`, and optionally `OPENAI_EMBEDDING_MODEL` and
+  `RAG_VECTOR_LIMIT`.
+- governed knowledge maps: deploy all Prisma migrations, set
   `SESSION_STORE=postgres`, and enable `RAG_KNOWLEDGE_MAP_ENABLED=true`. Readiness must treat missing
   Postgres map/session persistence as a configuration failure.
 
-Apply migrations through `db/migrations/007_microsoft_entra_auth.sql` before enabling Microsoft auth. Use `npm run users:create -- --email admin@example.com --name "Admin" --role admin` to pre-provision the first administrator; the verified Microsoft identity binds on first sign-in. The app intentionally has no password login, `/register` page, or registration API.
+Run `npm run db:migrate:deploy` before enabling Microsoft auth. Use
+`npm run users:create -- --email admin@example.com --name "Admin" --role admin` to pre-provision the
+first administrator; the verified Microsoft identity binds on first sign-in. The app intentionally
+has no password login, `/register` page, or registration API.
 
 Do not set `AUTH_DISABLED=true` in production. Startup validation rejects that combination. CORS is not configured by default because the Next app serves UI and API from the same origin; add a hosting/provider policy only if a future cross-origin client is introduced.
 
 ## Local Development
 
-Use `AUTH_DISABLED=true` locally only when deliberately skipping authentication. To exercise real login locally, apply the migrations, set `AUTH_DISABLED=false`, configure `DATABASE_URL` and the Entra app credentials, and register `http://localhost:3000/api/auth/microsoft/callback` as a Web redirect URI.
+Use `AUTH_DISABLED=true` locally only when deliberately skipping authentication. To exercise real
+login locally, configure `DATABASE_URL`, run `npm run db:migrate:deploy`, set `AUTH_DISABLED=false`,
+configure the Entra app credentials, and register
+`http://localhost:3000/api/auth/microsoft/callback` as a Web redirect URI.
 
 ## Deployment
 
 1. Run `npm install`.
 2. Run `npm run lint`, `npm test`, and `npm run build`.
-3. Apply database migrations when using Postgres or pgvector.
+3. Run `npm run db:migrate:status`, then `npm run db:migrate:deploy` when using Postgres or pgvector.
 4. Deploy the Next.js app from `apps/web` to a Node-compatible Next host.
 5. Provide the production environment variables above.
 6. Ensure the configured session and log paths are backed by durable storage.
+
+Existing databases created from the historical SQL files must be baselined before the first Prisma
+deployment. Follow [Prisma migration adoption](prisma-migration-adoption.md); do not run deploy first
+against such a database.
 
 ## Deferred Production Choices
 

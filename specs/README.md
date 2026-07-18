@@ -19,6 +19,7 @@ superseded, and future-planning documents can be referenced without competing wi
 | 012    | `archive/012-rag-ingestion-sop.md`                       | Proposed    | Production RAG ingestion SOP for files, media, websites, and SharePoint.  |
 | 013    | `archive/013-workspace-ui-follow-up-fixes.md`            | Proposed    | Follow-up fixes for chat layout, session states, confirmation, and hover. |
 | 014    | `archive/014-rag-grounded-knowledge-map.md`              | Proposed    | Versioned, reviewed knowledge maps with RAG navigation and source truth.  |
+| 015    | `archive/015-server-controller-service-dto-prisma.md`    | Complete    | Layered server refactor with DTOs, controllers, services, and Prisma.     |
 | 016    | `archive/016-frontend-two-layer-component-extraction.md` | Implemented | Two-layer business and common frontend component extraction architecture. |
 
 Current runtime documentation lives in `README.md`, `docs/production-readiness.md`, and the generated

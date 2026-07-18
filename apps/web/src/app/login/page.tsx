@@ -2,7 +2,7 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { WorkspaceExperience } from '@/components/business/workspace/WorkspaceExperience';
 import { getCurrentUserFromCookies } from '../../server/auth';
-import { getServerServices } from '../../server/services';
+import { getAppContainer } from '../../server/bootstrap/appContainer';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,7 +11,7 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  const services = getServerServices();
+  const services = getAppContainer();
   let hasCurrentUser = false;
 
   try {

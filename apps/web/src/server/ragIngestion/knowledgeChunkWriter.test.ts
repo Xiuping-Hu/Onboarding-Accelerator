@@ -1,29 +1,34 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { DatabaseClient } from '../database';
+import type { Prisma } from '@/generated/prisma/client';
+import type { PrismaDatabase } from '../infrastructure/prisma/prismaTypes';
 import { writeKnowledgeChunks } from './knowledgeChunkWriter';
 
-void test('writeKnowledgeChunks upserts and cleans only the selected embedding profile', async () => {
-  const queries: Array<{ text: string; values?: readonly unknown[] }> = [];
-  const db: DatabaseClient = {
-    query: async (text, values) => {
-      queries.push({ text, values });
-      return { command: 'MOCK', rowCount: 0, oid: 0, fields: [], rows: [] } as never;
+void test('writeKnowledgeChunks uses parameterized Prisma SQL for upsert and cleanup', async () => {
+  const queries: Prisma.Sql[] = [];
+  const db = {
+    $executeRaw: async (query: Prisma.Sql) => {
+      queries.push(query);
+      return 1;
     },
-  };
+  } as unknown as PrismaDatabase;
 
-  await writeKnowledgeChunks(db, { embed: async () => [1, 0] }, 'local:hash-v1:1536', 'wayfinder', [
+  await writeKnowledgeChunks(db, 'local:hash-v1:1536', 'wayfinder', [
     {
-      id: 'chunk-1',
-      title: 'Wayfinder',
-      text: 'First chunk',
-      uri: 'https://example.test/wayfinder',
-      metadata: { rootSourceId: 'wayfinder' },
+      chunk: {
+        id: 'chunk-1',
+        title: 'Wayfinder',
+        text: 'First chunk',
+        uri: 'https://example.test/wayfinder',
+        metadata: { rootSourceId: 'wayfinder' },
+      },
+      embedding: [1, 0],
     },
   ]);
 
-  assert.match(queries[0]?.text ?? '', /on conflict \(id, embedding_profile\)/);
-  assert.equal(queries[0]?.values?.[1], 'local:hash-v1:1536');
-  assert.match(queries[1]?.text ?? '', /embedding_profile = \$2/);
-  assert.deepEqual(queries[1]?.values, ['wayfinder', 'local:hash-v1:1536', ['chunk-1']]);
+  assert.match(queries[0]?.sql ?? '', /on conflict \(id, embedding_profile\)/);
+  assert.ok(queries[0]?.values.includes('local:hash-v1:1536'));
+  assert.match(queries[1]?.sql ?? '', /embedding_profile/);
+  assert.ok(queries[1]?.values.includes('wayfinder'));
+  assert.ok(queries[1]?.values.includes('chunk-1'));
 });

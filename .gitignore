@@ -12,3 +12,4 @@ data/
 .next/
 *.local
 *.tsbuildinfo
+apps/web/src/generated/prisma/
