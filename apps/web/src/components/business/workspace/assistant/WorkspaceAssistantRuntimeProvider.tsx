@@ -2,8 +2,11 @@ import { AssistantRuntimeProvider, useExternalStoreRuntime } from '@assistant-ui
 import type { AppendMessage, ExternalStoreThreadListAdapter } from '@assistant-ui/react';
 import type { ChatMessage, OnboardingSession } from '@onboarding/shared';
 import type { ReactNode } from 'react';
-import { getAppendMessageText, toAssistantMessage } from './assistantMessageMapping';
-import { toPlanThreads } from '../workspaceThreadModel';
+import {
+  getAppendMessageText,
+  toAssistantMessage,
+} from '@/features/workspace/assistantMessageMapping';
+import { toPlanThreads } from '@/features/workspace/workspaceThreadModel';
 
 export function WorkspaceAssistantRuntimeProvider({
   activeSessionId,

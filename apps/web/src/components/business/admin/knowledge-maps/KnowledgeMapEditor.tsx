@@ -2,19 +2,9 @@
 
 import { useState } from 'react';
 import type { RagKnowledgeMapDraft } from '@onboarding/shared';
+import { requestAdminJson } from '@/features/admin/api';
 
-async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
-    credentials: 'same-origin',
-    ...init,
-    headers: { 'content-type': 'application/json', ...init?.headers },
-  });
-  if (!response.ok)
-    throw new Error((await response.text()) || `Request failed (${response.status})`);
-  return (await response.json()) as T;
-}
-
-export function KnowledgeMapAdminClient() {
+export function KnowledgeMapEditor() {
   const [slug, setSlug] = useState('onboarding-pilot');
   const [title, setTitle] = useState('Onboarding pilot');
   const [objective, setObjective] = useState('Orient new starters to their first-week knowledge.');
@@ -27,7 +17,7 @@ export function KnowledgeMapAdminClient() {
   async function generateDraft() {
     setBusy(true);
     try {
-      const response = await requestJson<{ draft: RagKnowledgeMapDraft }>(
+      const response = await requestAdminJson<{ draft: RagKnowledgeMapDraft }>(
         '/api/admin/knowledge-maps/proposals',
         {
           method: 'POST',
@@ -56,7 +46,7 @@ export function KnowledgeMapAdminClient() {
     setBusy(true);
     try {
       const draft = JSON.parse(draftText) as RagKnowledgeMapDraft;
-      const result = await requestJson<{ mapId: string; versionId: string }>(
+      const result = await requestAdminJson<{ mapId: string; versionId: string }>(
         '/api/admin/knowledge-maps',
         {
           method: 'POST',
@@ -76,7 +66,7 @@ export function KnowledgeMapAdminClient() {
     if (!saved) return;
     setBusy(true);
     try {
-      await requestJson(
+      await requestAdminJson(
         `/api/admin/knowledge-maps/${encodeURIComponent(saved.mapId)}/versions/${encodeURIComponent(saved.versionId)}/publish`,
         {
           method: 'POST',

@@ -1,5 +1,5 @@
-import AdminClient from '../../AdminClient';
+import { AdminDashboard } from '@/components/business/admin/AdminDashboard';
 
 export default function AdminAiRatesPage() {
-  return <AdminClient initialView="rates" />;
+  return <AdminDashboard initialView="rates" />;
 }
