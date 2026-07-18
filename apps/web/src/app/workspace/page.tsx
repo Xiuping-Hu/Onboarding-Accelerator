@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import App from './App';
+import { WorkspaceExperience } from '@/components/business/workspace/WorkspaceExperience';
 import { getCurrentUserFromCookies } from '../../server/auth';
 import { getServerServices } from '../../server/services';
 
@@ -12,7 +12,7 @@ export default async function WorkspacePage() {
   try {
     const user = await getCurrentUserFromCookies(await cookies(), services);
     return (
-      <App
+      <WorkspaceExperience
         initialAccount={{
           userId: user.id,
           ...(user.email ? { email: user.email } : {}),

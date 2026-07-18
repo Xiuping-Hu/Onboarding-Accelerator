@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import App from '../workspace/App';
+import { WorkspaceExperience } from '@/components/business/workspace/WorkspaceExperience';
 import { getCurrentUserFromCookies } from '../../server/auth';
 import { getServerServices } from '../../server/services';
 
@@ -27,7 +27,7 @@ export default async function LoginPage({
 
   const error = (await searchParams).error;
   return (
-    <App
+    <WorkspaceExperience
       initialLoginError={
         error === 'microsoft_sign_in_failed'
           ? 'Microsoft sign-in could not be completed. Please try again.'
