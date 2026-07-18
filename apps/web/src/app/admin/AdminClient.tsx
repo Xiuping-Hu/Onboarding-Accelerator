@@ -8,14 +8,8 @@ import type {
   AiRateCard,
   CreateAiRateCardRequest,
   LogEventRecord,
-  LoginRequest,
 } from '@onboarding/shared';
-import {
-  getCurrentAccount,
-  loginAccount,
-  logoutAccount,
-  type AccountSession,
-} from '../workspace/api';
+import { getCurrentAccount, logoutAccount, type AccountSession } from '../workspace/api';
 
 type AdminView = 'activity' | 'fees' | 'rates' | 'audit';
 
@@ -117,19 +111,6 @@ export default function AdminClient({ initialView = 'activity' }: { initialView?
     }
   }, [isAdmin, refresh]);
 
-  async function handleLogin(payload: LoginRequest) {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const nextAccount = await loginAccount(payload);
-      setAccount(nextAccount);
-    } catch (loginError) {
-      setError(loginError instanceof Error ? loginError.message : 'Login failed');
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
   async function handleCreateRate(input: CreateAiRateCardRequest) {
     await adminJson('/api/admin/ai-fees/rates', {
       method: 'POST',
@@ -194,7 +175,15 @@ export default function AdminClient({ initialView = 'activity' }: { initialView?
         <section className="admin-login">
           <p className="eyebrow">Admin operations</p>
           <h1>Managed activity and AI fees</h1>
-          <AdminLoginForm error={error} isLoading={isLoading} onLogin={handleLogin} />
+          {!account ? (
+            <a
+              className="primary-button microsoft-login-button"
+              href="/api/auth/microsoft/start?returnTo=/admin"
+            >
+              Continue with Microsoft
+            </a>
+          ) : null}
+          {error ? <p className="admin-error">{error}</p> : null}
           {account && !isAdmin ? (
             <p className="admin-error">
               This account is authenticated but does not have admin access.
@@ -260,57 +249,6 @@ export default function AdminClient({ initialView = 'activity' }: { initialView?
       {view === 'rates' ? <RatesPanel onCreate={handleCreateRate} rates={rates} /> : null}
       {view === 'audit' ? <AuditPanel events={audit} /> : null}
     </main>
-  );
-}
-
-function AdminLoginForm({
-  error,
-  isLoading,
-  onLogin,
-}: {
-  error: string | null;
-  isLoading: boolean;
-  onLogin: (payload: LoginRequest) => Promise<void>;
-}) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-
-  return (
-    <form
-      className="admin-login-form"
-      onSubmit={(event) => {
-        event.preventDefault();
-        void onLogin({
-          email,
-          password,
-        });
-      }}
-    >
-      <label>
-        Email
-        <input
-          autoComplete="username"
-          onChange={(event) => setEmail(event.target.value)}
-          required
-          type="email"
-          value={email}
-        />
-      </label>
-      <label>
-        Password
-        <input
-          autoComplete="current-password"
-          onChange={(event) => setPassword(event.target.value)}
-          required
-          type="password"
-          value={password}
-        />
-      </label>
-      <button disabled={isLoading} type="submit">
-        {isLoading ? 'Signing in...' : 'Open admin console'}
-      </button>
-      {error ? <p className="admin-error">{error}</p> : null}
-    </form>
   );
 }
 

@@ -13,8 +13,6 @@ import type {
   GuideStep,
   KnowledgeSource,
   ListSessionsResponse,
-  LoginRequest,
-  LoginResponse,
   LogEventsResponse,
   LogSummaryResponse,
 } from '@onboarding/shared';
@@ -46,15 +44,6 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   return (await response.json()) as T;
-}
-
-export async function loginAccount(payload: LoginRequest): Promise<AccountSession> {
-  const response = await requestJson<LoginResponse>('/api/auth/login', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-    headers: {},
-  });
-  return toAccountSession(response.user);
 }
 
 export async function getCurrentAccount(): Promise<AccountSession> {

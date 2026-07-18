@@ -79,6 +79,10 @@ void test('Next API handlers create sessions, generate guides, chat, and expose 
 void test('protected API handlers reject unauthenticated requests when account auth is enabled', async () => {
   process.env.AUTH_DISABLED = 'false';
   process.env.DATABASE_URL = 'postgres://user:password@localhost:5432/onboarding';
+  process.env.AUTH_MICROSOFT_TENANT_ID = 'e0bc1e92-f544-4358-8d5f-5aabe36f1df6';
+  process.env.AUTH_MICROSOFT_CLIENT_ID = '00000000-0000-0000-0000-000000000001';
+  process.env.AUTH_MICROSOFT_CLIENT_SECRET = 'test-client-secret';
+  process.env.AUTH_MICROSOFT_REDIRECT_URI = 'http://localhost:3000/api/auth/microsoft/callback';
   resetServerServicesForTests();
 
   const meRoute = await import('./api/auth/me/route');

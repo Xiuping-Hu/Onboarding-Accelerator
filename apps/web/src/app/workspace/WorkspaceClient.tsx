@@ -15,7 +15,6 @@ import {
   getCurrentAccount,
   getRootGuide,
   listSessions,
-  loginAccount,
   logoutAccount,
   sendChat,
 } from './api';
@@ -87,61 +86,27 @@ function mergeSources(existing: KnowledgeSource[], incoming: KnowledgeSource[]) 
   return [...byId.values()];
 }
 
-function LoginScreen({
-  error,
-  isSubmitting,
-  onLogin,
-}: {
-  error: string | null;
-  isSubmitting: boolean;
-  onLogin: (payload: { email: string; password: string }) => Promise<void>;
-}) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    void onLogin({
-      email: email.trim(),
-      password,
-    });
-  }
-
+function LoginScreen({ error }: { error: string | null }) {
   return (
     <main className="login-shell">
       <section className="login-panel" aria-label="Account login">
         <p className="eyebrow">Onboarding</p>
         <h1>Sign in to your workspace</h1>
-        <form className="login-form" onSubmit={handleSubmit}>
-          <label>
-            Email
-            <input
-              autoFocus
-              autoComplete="username"
-              onChange={(event) => setEmail(event.target.value)}
-              placeholder="name@company.com"
-              type="email"
-              value={email}
-            />
-          </label>
-          <label>
-            Password
-            <input
-              autoComplete="current-password"
-              onChange={(event) => setPassword(event.target.value)}
-              type="password"
-              value={password}
-            />
-          </label>
-          {error ? (
-            <div className="app-error login-error" role="alert">
-              {error}
-            </div>
-          ) : null}
-          <button className="primary-button" disabled={isSubmitting}>
-            {isSubmitting ? 'Signing in...' : 'Sign in'}
-          </button>
-        </form>
+        <p className="login-description">Use your Tax Consulting SA Microsoft work account.</p>
+        {error ? (
+          <div className="app-error login-error" role="alert">
+            {error}
+          </div>
+        ) : null}
+        <a className="primary-button microsoft-login-button" href="/api/auth/microsoft/start">
+          <span aria-hidden="true" className="microsoft-mark">
+            <span />
+            <span />
+            <span />
+            <span />
+          </span>
+          Continue with Microsoft
+        </a>
       </section>
     </main>
   );
@@ -978,10 +943,16 @@ function WorkspaceShell({ account, onLogout }: { account: AccountSession; onLogo
   );
 }
 
-function AppContent({ initialAccount }: { initialAccount?: AccountSession }) {
+function AppContent({
+  initialAccount,
+  initialLoginError,
+}: {
+  initialAccount?: AccountSession;
+  initialLoginError?: string;
+}) {
   const [account, setAccount] = useState<AccountSession | null>(initialAccount ?? null);
   const [isAuthLoading, setIsAuthLoading] = useState(() => Boolean(initialAccount));
-  const [loginError, setLoginError] = useState<string | null>(null);
+  const [loginError, setLoginError] = useState<string | null>(initialLoginError ?? null);
   const accountToRestoreRef = useRef(initialAccount);
 
   useEffect(() => {
@@ -1016,22 +987,6 @@ function AppContent({ initialAccount }: { initialAccount?: AccountSession }) {
     };
   }, []);
 
-  async function handleLogin(payload: { email: string; password: string }) {
-    setIsAuthLoading(true);
-    try {
-      setLoginError(null);
-      const nextAccount = await loginAccount(payload);
-      setAccount(nextAccount);
-      if (typeof window !== 'undefined' && window.location.pathname === '/login') {
-        window.location.assign('/workspace');
-      }
-    } catch (error) {
-      setLoginError(formatError(error, 'Sign in failed.'));
-    } finally {
-      setIsAuthLoading(false);
-    }
-  }
-
   function handleLogout() {
     setIsAuthLoading(true);
     void logoutAccount()
@@ -1047,7 +1002,7 @@ function AppContent({ initialAccount }: { initialAccount?: AccountSession }) {
   }
 
   if (!account) {
-    return <LoginScreen error={loginError} isSubmitting={isAuthLoading} onLogin={handleLogin} />;
+    return <LoginScreen error={loginError} />;
   }
 
   if (isAuthLoading) {
@@ -1057,10 +1012,16 @@ function AppContent({ initialAccount }: { initialAccount?: AccountSession }) {
   return <WorkspaceShell account={account} onLogout={handleLogout} />;
 }
 
-export default function App({ initialAccount }: { initialAccount?: AccountSession }) {
+export default function App({
+  initialAccount,
+  initialLoginError,
+}: {
+  initialAccount?: AccountSession;
+  initialLoginError?: string;
+}) {
   return (
     <AppErrorBoundary>
-      <AppContent initialAccount={initialAccount} />
+      <AppContent initialAccount={initialAccount} initialLoginError={initialLoginError} />
     </AppErrorBoundary>
   );
 }

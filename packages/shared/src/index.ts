@@ -43,16 +43,6 @@ export interface AccountUser {
 
 export type AccountRole = 'user' | 'admin';
 
-export interface LoginRequest {
-  email: string;
-  password: string;
-}
-
-export interface LoginResponse {
-  user: AccountUser;
-  expiresAt: string;
-}
-
 export interface CurrentUserResponse {
   user: AccountUser;
 }

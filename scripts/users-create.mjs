@@ -1,6 +1,4 @@
 import 'dotenv/config';
-import { createInterface } from 'node:readline/promises';
-import bcrypt from 'bcryptjs';
 import pg from 'pg';
 
 const { Pool } = pg;
@@ -25,53 +23,33 @@ const email = normalizeEmail(options.email);
 const displayName = options.name.trim();
 
 async function main() {
-  const readline = createInterface({
-    input: process.stdin,
-    output: process.stdout,
+  const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.POSTGRES_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
+    max: Number.parseInt(process.env.POSTGRES_POOL_MAX ?? '10', 10),
   });
-
   try {
-    const password = await readline.question('Enter password for the new user: ');
-    const confirmation = await readline.question('Confirm password: ');
+    const result = await pool.query(
+      `insert into users (email, display_name, password_hash, role, is_active)
+       values ($1, $2, null, $3, true)
+       returning id, email, display_name, role`,
+      [email, displayName, role],
+    );
+    const user = result.rows[0];
 
-    if (password !== confirmation) {
-      throw new Error('Passwords do not match');
+    console.info('\nMicrosoft user created successfully:');
+    console.info(`ID: ${user.id}`);
+    console.info(`Email: ${user.email}`);
+    console.info(`Name: ${user.display_name}`);
+    console.info(`Role: ${user.role}`);
+    console.info('The Microsoft tenant/object identity will bind on first sign-in.');
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      throw new Error('A user with this email already exists');
     }
-    if (password.length < 8) {
-      throw new Error('Password must be at least 8 characters');
-    }
-
-    const passwordHash = await bcrypt.hash(password, 12);
-    const pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      ssl: process.env.POSTGRES_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
-      max: Number.parseInt(process.env.POSTGRES_POOL_MAX ?? '10', 10),
-    });
-
-    try {
-      const result = await pool.query(
-        `insert into users (email, display_name, password_hash, role, is_active)
-         values ($1, $2, $3, $4, true)
-         returning id, email, display_name, role`,
-        [email, displayName, passwordHash, role],
-      );
-      const user = result.rows[0];
-
-      console.info('\nUser created successfully:');
-      console.info(`ID: ${user.id}`);
-      console.info(`Email: ${user.email}`);
-      console.info(`Name: ${user.display_name}`);
-      console.info(`Role: ${user.role}`);
-    } catch (error) {
-      if (isUniqueViolation(error)) {
-        throw new Error('A user with this email already exists');
-      }
-      throw error;
-    } finally {
-      await pool.end();
-    }
+    throw error;
   } finally {
-    readline.close();
+    await pool.end();
   }
 }
 
