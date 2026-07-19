@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { AnswerProvider } from './openAiService';
-import type { RagRetriever } from './ragService';
-import { ChatOrchestrationService } from './chatService';
-import { InMemorySessionRepository } from './sessionRepository';
+import type { AnswerProvider } from '../../core/ports/answerProvider';
+import type { RagRetriever } from '../rag/rag.service';
+import { InMemorySessionRepository } from '../../sessionRepository';
+import { ChatService } from './chat.service';
 
 void test('chat persists an explicit roadmap node reference and uses its evidence', async () => {
   const ownerId = 'reference-user';
@@ -49,7 +49,7 @@ void test('chat persists an explicit roadmap node reference and uses its evidenc
     },
   };
 
-  const response = await new ChatOrchestrationService(sessions, rag, answers).chat(
+  const response = await new ChatService(sessions, rag, answers).chat(
     session.id,
     {
       sessionId: session.id,

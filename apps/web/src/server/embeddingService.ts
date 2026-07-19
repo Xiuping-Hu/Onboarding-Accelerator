@@ -1,4 +1,4 @@
-import { openAiFetch } from './openAiFetch';
+import { openAiFetch } from './infrastructure/ai/providerFetch';
 
 export interface EmbeddingProvider {
   embed(text: string): Promise<number[] | undefined>;

@@ -2,8 +2,8 @@ import type {
   GenerateGuideRootResponse,
   GuideNode,
   KnowledgeMapNodeDetail,
+  SourceProvenance,
 } from '@onboarding/shared';
-import type { GuideOrchestrationService } from '../../guideService';
 import { KnowledgeMapNotFoundError } from '../../knowledgeMapService';
 import type { KnowledgeMapService } from '../knowledge-maps/knowledgeMap.application.service';
 import { projectKnowledgeMapToGuide } from '../../knowledgeMapProjection';
@@ -17,18 +17,26 @@ export type GuideFeatureResult<T> =
 export class GuideService {
   constructor(
     private readonly sessions: SessionRepository,
-    private readonly legacyGuide: GuideOrchestrationService,
     private readonly knowledgeMaps?: KnowledgeMapService,
   ) {}
 
   async generateRoot(
     sessionId: string,
-    input: GenerateGuideRootBody,
+    _input: GenerateGuideRootBody,
     ownerId: string,
   ): Promise<GenerateGuideRootResponse> {
     if (!this.knowledgeMaps) {
-      const response = await this.legacyGuide.generateRoot(sessionId, input, ownerId);
-      return { ...response, knowledgeMapEnabled: false };
+      const session = await this.sessions.get(sessionId, ownerId);
+      const nodes = session.guide.rootNodeIds
+        .map((nodeId) => session.guide.nodes[nodeId])
+        .filter((node): node is GuideNode => Boolean(node));
+      return {
+        rootNodeIds: session.guide.rootNodeIds,
+        nodes,
+        session,
+        sources: collectSources(Object.values(session.guide.nodes)),
+        knowledgeMapEnabled: false,
+      };
     }
 
     const session = await this.sessions.get(sessionId, ownerId);
@@ -108,4 +116,12 @@ function disabled<T>(): GuideFeatureResult<T> {
 
 function noPublishedMap<T>(): GuideFeatureResult<T> {
   return { enabled: false, message: 'Session does not use a published knowledge map' };
+}
+
+function collectSources(nodes: GuideNode[]): SourceProvenance[] {
+  const sourceById = new Map<string, SourceProvenance>();
+  for (const node of nodes) {
+    for (const source of node.sources) sourceById.set(source.id, source);
+  }
+  return [...sourceById.values()];
 }

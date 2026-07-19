@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { SourceProvenance } from '@onboarding/shared';
-import { RagService } from './ragService';
-import type { RagInputAdapter } from './ragAdapters/types';
-import type { WebSearchProvider } from './webSearchProvider';
+import type { RagInputAdapter } from '../../ragAdapters/types';
+import type { WebSearchProvider } from '../../webSearchProvider';
+import { RagService } from './rag.service';
 
 void test('RagService merges seed knowledge, adaptor results, and web search results', async () => {
   const adapterSource: SourceProvenance = {

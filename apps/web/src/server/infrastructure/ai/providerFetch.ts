@@ -62,7 +62,7 @@ async function providerFetch(
   return (await undiciFetch(url, proxyInit)) as unknown as Response;
 }
 
-export async function closeOpenAiFetch(): Promise<void> {
+export async function closeProviderFetch(): Promise<void> {
   if (proxyDispatcher) {
     await proxyDispatcher.close();
     proxyDispatcher = undefined;

@@ -1,41 +1,24 @@
-import type { AiUsageStats, ChatMessage, SourceProvenance } from '@onboarding/shared';
+import type { AiUsageStats } from '@onboarding/shared';
+import type { AnswerProvider, AnswerRequest, AnswerResult } from '../../core/ports/answerProvider';
 import {
   buildGroundedPrompt,
   formatGroundedHistory,
   onboardingSystemPrompt,
 } from './groundedPrompt';
-import { openAiFetch } from './openAiFetch';
+import { openAiFetch } from './providerFetch';
 
-export interface OpenAiServiceConfig {
+export interface OpenAiAnswerProviderConfig {
   apiKey?: string;
   model: string;
   timeoutMs: number;
   maxRetries: number;
+  fetch?: typeof openAiFetch;
 }
 
-export interface OpenAiAnswer {
-  content: string;
-  usage?: AiUsageStats;
-}
+export class OpenAiAnswerProvider implements AnswerProvider {
+  constructor(private readonly config: OpenAiAnswerProviderConfig) {}
 
-export interface AnswerProvider {
-  answer(input: {
-    prompt: string;
-    sources: SourceProvenance[];
-    chatHistory?: ChatMessage[];
-    guideNodeIds?: string[];
-  }): Promise<OpenAiAnswer | undefined>;
-}
-
-export class OpenAiService implements AnswerProvider {
-  constructor(private readonly config: OpenAiServiceConfig) {}
-
-  async answer(input: {
-    prompt: string;
-    sources: SourceProvenance[];
-    chatHistory?: ChatMessage[];
-    guideNodeIds?: string[];
-  }): Promise<OpenAiAnswer | undefined> {
+  async answer(input: AnswerRequest): Promise<AnswerResult | undefined> {
     if (!this.config.apiKey) {
       return undefined;
     }
@@ -67,6 +50,7 @@ export class OpenAiService implements AnswerProvider {
         timeoutMs: this.config.timeoutMs,
         maxRetries: this.config.maxRetries,
       },
+      this.config.fetch ?? openAiFetch,
     );
 
     if (!response.ok) {
@@ -105,6 +89,7 @@ async function fetchWithRetries(
   url: string,
   init: RequestInit,
   options: { timeoutMs: number; maxRetries: number },
+  fetchImpl: typeof openAiFetch,
 ): Promise<Response> {
   let lastError: unknown;
 
@@ -113,7 +98,7 @@ async function fetchWithRetries(
     const timeout = setTimeout(() => controller.abort(), options.timeoutMs);
 
     try {
-      const response = await openAiFetch(url, { ...init, signal: controller.signal });
+      const response = await fetchImpl(url, { ...init, signal: controller.signal });
       if (response.ok || !isRetryableStatus(response.status) || attempt === options.maxRetries) {
         return response;
       }
@@ -156,7 +141,7 @@ function extractOutputText(payload: OpenAiResponse): string | undefined {
 
 function extractUsageStats(
   payload: OpenAiResponse,
-  config: OpenAiServiceConfig,
+  config: OpenAiAnswerProviderConfig,
 ): AiUsageStats | undefined {
   if (!payload.usage) {
     return undefined;

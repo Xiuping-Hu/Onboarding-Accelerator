@@ -1,13 +1,13 @@
-import type { AiUsageStats, ChatMessage, SourceProvenance } from '@onboarding/shared';
+import type { AiUsageStats } from '@onboarding/shared';
+import type { AnswerProvider, AnswerRequest, AnswerResult } from '../../core/ports/answerProvider';
 import {
   buildGroundedPrompt,
   formatGroundedHistory,
   onboardingSystemPrompt,
 } from './groundedPrompt';
-import { deepSeekFetch } from './openAiFetch';
-import type { AnswerProvider, OpenAiAnswer } from './openAiService';
+import { deepSeekFetch } from './providerFetch';
 
-export interface DeepSeekServiceConfig {
+export interface DeepSeekAnswerProviderConfig {
   apiKey?: string;
   baseUrl: string;
   model: string;
@@ -16,15 +16,10 @@ export interface DeepSeekServiceConfig {
   fetch?: typeof deepSeekFetch;
 }
 
-export class DeepSeekService implements AnswerProvider {
-  constructor(private readonly config: DeepSeekServiceConfig) {}
+export class DeepSeekAnswerProvider implements AnswerProvider {
+  constructor(private readonly config: DeepSeekAnswerProviderConfig) {}
 
-  async answer(input: {
-    prompt: string;
-    sources: SourceProvenance[];
-    chatHistory?: ChatMessage[];
-    guideNodeIds?: string[];
-  }): Promise<OpenAiAnswer | undefined> {
+  async answer(input: AnswerRequest): Promise<AnswerResult | undefined> {
     if (!this.config.apiKey) return undefined;
 
     const response = await fetchWithRetries(
