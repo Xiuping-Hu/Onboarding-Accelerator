@@ -1,8 +1,8 @@
 import type { SourceProvenance } from '@onboarding/shared';
-import { retrieveKnowledge } from './knowledgeBase';
-import type { RagInputAdapter } from './ragAdapters/types';
-import { mergeAndRerankSources } from './sourceMerger';
-import type { WebSearchProvider } from './webSearchProvider';
+import { retrieveKnowledge } from '../../knowledgeBase';
+import type { RagInputAdapter } from '../../ragAdapters/types';
+import { mergeAndRerankSources } from '../../sourceMerger';
+import type { WebSearchProvider } from '../../webSearchProvider';
 
 export interface RetrievalOptions {
   webSearchEnabled: boolean;

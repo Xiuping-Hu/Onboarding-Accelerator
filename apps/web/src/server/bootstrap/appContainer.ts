@@ -6,11 +6,9 @@ import {
   FileAiRateCardService,
 } from '../adminOpsService';
 import { PrismaAuthSessionRepository } from '../authSessionRepository';
-import { ChatOrchestrationService } from '../chatService';
 import { loadConfig } from '../config';
-import { DeepSeekService } from '../deepSeekService';
 import { LocalHashEmbeddingService, OpenAiEmbeddingService } from '../embeddingService';
-import { GuideOrchestrationService } from '../guideService';
+import { createAnswerProvider } from '../infrastructure/ai/answerProviderFactory';
 import { getPrismaClient } from '../infrastructure/prisma/prismaClient';
 import { PrismaReadinessProbe } from '../infrastructure/prisma/prismaReadiness';
 import { PrismaKnowledgeMapRepository } from '../knowledgeMapService';
@@ -31,6 +29,7 @@ import { AskService } from '../modules/ask/ask.service';
 import { createAuthController } from '../modules/auth/auth.controller';
 import { AuthService } from '../modules/auth/auth.service';
 import { createChatController } from '../modules/chat/chat.controller';
+import { ChatService } from '../modules/chat/chat.service';
 import { createGuideController } from '../modules/guide/guide.controller';
 import { GuideService } from '../modules/guide/guide.service';
 import { createAdminKnowledgeMapController } from '../modules/knowledge-maps/knowledgeMap.controller';
@@ -42,11 +41,10 @@ import { createSessionController } from '../modules/sessions/session.controller'
 import { SessionService } from '../modules/sessions/session.service';
 import { createSystemController } from '../modules/system/system.controller';
 import { SystemService } from '../modules/system/system.service';
-import { OpenAiService } from '../openAiService';
 import { PgvectorKnowledgeBase } from '../pgvectorKnowledgeBase';
 import { PrismaSessionRepository } from '../postgresSessionRepository';
 import { createConfiguredRagInputAdapters } from '../ragAdapters/index';
-import { RagService } from '../ragService';
+import { RagService } from '../modules/rag/rag.service';
 import { FileSessionRepository } from '../sessionRepository';
 import { PrismaUserRepository } from '../userRepository';
 import { DisabledWebSearchProvider } from '../webSearchProvider';
@@ -80,21 +78,7 @@ export function createAppContainer() {
   const aiRates = new FileAiRateCardService(config.aiRateCardsStorePath);
   const aiAdjustments = new FileAiFeeAdjustmentService(config.aiFeeAdjustmentsStorePath);
   const aiFees = new AiFeeService(adminActivity, aiRates);
-  const openAi =
-    config.aiProvider === 'deepseek'
-      ? new DeepSeekService({
-          apiKey: config.deepSeekApiKey,
-          baseUrl: config.deepSeekBaseUrl,
-          model: config.deepSeekModel,
-          timeoutMs: config.openAiTimeoutMs,
-          maxRetries: config.openAiMaxRetries,
-        })
-      : new OpenAiService({
-          apiKey: config.openAiApiKey,
-          model: config.openAiModel,
-          timeoutMs: config.openAiTimeoutMs,
-          maxRetries: config.openAiMaxRetries,
-        });
+  const answers = createAnswerProvider(config);
   const embeddings =
     config.embeddingProvider === 'local'
       ? new LocalHashEmbeddingService()
@@ -120,8 +104,7 @@ export function createAppContainer() {
     vectorKnowledgeBase,
     config.ragSeedKnowledgeEnabled,
   );
-  const chat = new ChatOrchestrationService(sessions, rag, openAi, logs, knowledgeMaps);
-  const legacyGuide = new GuideOrchestrationService(sessions);
+  const chat = new ChatService(sessions, rag, answers, logs, knowledgeMaps);
   const metrics = {
     startedAt: new Date().toISOString(),
     requestsTotal: 0,
@@ -133,10 +116,10 @@ export function createAppContainer() {
     adminAiFees: new AdminAiFeeService(aiFees, aiRates, aiAdjustments, adminAudit),
     adminAudit: new AdminAuditService(adminAudit),
     adminKnowledgeMaps: new AdminKnowledgeMapService(knowledgeMaps),
-    ask: new AskService(rag, openAi, logs),
+    ask: new AskService(rag, answers, logs),
     auth: new AuthService(config, authSessions, users, loginAudit),
     chat,
-    guide: new GuideService(sessions, legacyGuide, knowledgeMaps),
+    guide: new GuideService(sessions, knowledgeMaps),
     logs: new LogQueryService(logs),
     sessions: new SessionService(sessions),
     system: new SystemService(

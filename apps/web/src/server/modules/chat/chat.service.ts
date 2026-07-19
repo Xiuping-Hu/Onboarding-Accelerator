@@ -8,18 +8,18 @@ import type {
   RoadmapNodeReference,
   SourceProvenance,
 } from '@onboarding/shared';
-import type { RagRetriever } from './ragService';
-import type { AnswerProvider } from './openAiService';
-import { NoopLogService, type LogService } from './logService';
-import type { SessionRepository } from './sessionRepository';
-import { touchSession } from './sessionRepository';
-import type { KnowledgeMapService } from './modules/knowledge-maps/knowledgeMap.application.service';
+import type { RagRetriever } from '../rag/rag.service';
+import type { AnswerProvider } from '../../core/ports/answerProvider';
+import { NoopLogService, type LogService } from '../../logService';
+import type { SessionRepository } from '../../sessionRepository';
+import { touchSession } from '../../sessionRepository';
+import type { KnowledgeMapService } from '../knowledge-maps/knowledgeMap.application.service';
 
-export class ChatOrchestrationService {
+export class ChatService {
   constructor(
     private readonly sessions: SessionRepository,
     private readonly rag: RagRetriever,
-    private readonly openAi: AnswerProvider,
+    private readonly answers: AnswerProvider,
     private readonly logs: LogService = new NoopLogService(),
     private readonly knowledgeMaps?: KnowledgeMapService,
   ) {}
@@ -131,7 +131,7 @@ export class ChatOrchestrationService {
     guideNodeIds: string[],
   ): Promise<{ content: string; usage?: ChatMessage['usage'] }> {
     try {
-      const modelAnswer = await this.openAi.answer({
+      const modelAnswer = await this.answers.answer({
         prompt,
         sources,
         chatHistory: session.chatHistory,

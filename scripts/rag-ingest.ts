@@ -5,7 +5,7 @@ import {
   LocalHashEmbeddingService,
   OpenAiEmbeddingService,
 } from '../apps/web/src/server/embeddingService';
-import { closeOpenAiFetch } from '../apps/web/src/server/openAiFetch';
+import { closeProviderFetch } from '../apps/web/src/server/infrastructure/ai/providerFetch';
 import { RagIngestionService } from '../apps/web/src/server/ragIngestion/ingestionService';
 import { loadSourceRegistry } from '../apps/web/src/server/ragIngestion/sourceRegistry';
 
@@ -60,7 +60,7 @@ const service = new RagIngestionService(
 const reports = await Promise.all(sources.map((source) => service.ingest(source, dryRun)));
 for (const report of reports) console.info(JSON.stringify(report));
 if (reports.some((report) => report.status === 'failed')) process.exitCode = 1;
-await closeOpenAiFetch();
+await closeProviderFetch();
 await database?.$disconnect();
 
 function argumentValue(name: string): string | undefined {

@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { stripHtml, extractTitleFromHtml } from '../ragAdapters/textRetrieval';
-import { openAiFetch } from '../openAiFetch';
+import { openAiFetch } from '../infrastructure/ai/providerFetch';
 import type { IngestionDocument, IngestionSource } from './types';
 
 export interface SharePointCredentials {

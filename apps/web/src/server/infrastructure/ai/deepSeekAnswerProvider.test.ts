@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { DeepSeekService } from './deepSeekService';
+import { DeepSeekAnswerProvider } from './deepSeekAnswerProvider';
 
-void test('DeepSeekService maps grounded chat requests and usage', async () => {
+void test('DeepSeekAnswerProvider maps grounded chat requests and usage', async () => {
   let requestBody: Record<string, unknown> | undefined;
-  const service = new DeepSeekService({
+  const service = new DeepSeekAnswerProvider({
     apiKey: 'test-key',
     baseUrl: 'https://api.deepseek.com',
     model: 'deepseek-v4-flash',
@@ -38,8 +38,8 @@ void test('DeepSeekService maps grounded chat requests and usage', async () => {
   });
 });
 
-void test('DeepSeekService is disabled without an API key', async () => {
-  const service = new DeepSeekService({
+void test('DeepSeekAnswerProvider is disabled without an API key', async () => {
+  const service = new DeepSeekAnswerProvider({
     baseUrl: 'https://api.deepseek.com',
     model: 'deepseek-v4-flash',
     timeoutMs: 1000,

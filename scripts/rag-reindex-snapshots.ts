@@ -5,7 +5,7 @@ import {
   OpenAiEmbeddingService,
   type EmbeddingProvider,
 } from '../apps/web/src/server/embeddingService';
-import { closeOpenAiFetch } from '../apps/web/src/server/openAiFetch';
+import { closeProviderFetch } from '../apps/web/src/server/infrastructure/ai/providerFetch';
 import { chunkDocument } from '../apps/web/src/server/ragIngestion/chunker';
 import {
   embedKnowledgeChunks,
@@ -80,7 +80,7 @@ for (const [rootSourceId, rows] of groups) {
   );
 }
 
-await closeOpenAiFetch();
+await closeProviderFetch();
 await db.$disconnect();
 
 function snapshotDocument(row: SnapshotRow, rootSourceId: string): IngestionDocument {
