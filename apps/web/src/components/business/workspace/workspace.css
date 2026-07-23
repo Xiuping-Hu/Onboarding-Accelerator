@@ -195,6 +195,32 @@
   background: #ffe4e6;
 }
 
+.plan-thread-delete[data-confirming='true'] {
+  background: #ffe4e6;
+  box-shadow: inset 0 0 0 1px #fda4af;
+}
+
+.delete-plan-tooltip {
+  display: grid;
+  gap: 4px;
+}
+
+.delete-plan-tooltip strong {
+  color: #881337;
+  font-size: 13px;
+}
+
+.delete-plan-tooltip span,
+.delete-plan-tooltip small {
+  color: #4b5563;
+}
+
+.delete-plan-tooltip .delete-plan-tooltip-error {
+  margin-top: 2px;
+  color: #b42318;
+  font-weight: 650;
+}
+
 .workspace {
   position: fixed;
   inset: 0;

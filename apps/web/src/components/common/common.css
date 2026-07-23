@@ -124,3 +124,40 @@
   outline: 2px solid #0f6cbd;
   outline-offset: 2px;
 }
+
+.common-tooltip-content {
+  z-index: 30;
+  max-width: min(280px, calc(100vw - 24px));
+  border: 1px solid #c8cee5;
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #ffffff;
+  color: var(--panel-text);
+  box-shadow: 0 12px 32px rgb(15 23 42 / 20%);
+  font-size: 12px;
+  line-height: 1.4;
+  transform-origin: var(--radix-tooltip-content-transform-origin);
+  animation: common-tooltip-in 120ms ease-out;
+}
+
+.common-tooltip-arrow {
+  fill: #ffffff;
+}
+
+@keyframes common-tooltip-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .common-tooltip-content {
+    animation: none;
+  }
+}

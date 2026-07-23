@@ -26,7 +26,6 @@ import {
 } from '@/features/workspace/workspaceThreadModel';
 import { GuideCanvas } from './guide/GuideCanvas';
 import { AgentChatDrawer } from './assistant/AgentChatDrawer';
-import { DeletePlanDialog } from './assistant/DeletePlanDialog';
 import { PlanThreadList } from './assistant/PlanThreadList';
 import { WorkspaceAssistantRuntimeProvider } from './assistant/WorkspaceAssistantRuntimeProvider';
 
@@ -88,12 +87,13 @@ export function WorkspaceShell({
   const [isLoading, setIsLoading] = useState(true);
   const [runningSessionIds, setRunningSessionIds] = useState<string[]>([]);
   const [apiError, setApiError] = useState<string | null>(null);
-  const [deleteDialogSessionId, setDeleteDialogSessionId] = useState<string | null>(null);
-  const [deleteDialogError, setDeleteDialogError] = useState<string | null>(null);
-  const [isDeletingSession, setIsDeletingSession] = useState(false);
+  const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<{
+    message: string;
+    sessionId: string;
+  } | null>(null);
   const activeSessionIdRef = useRef<string | null>(null);
   const guideLoadRequestRef = useRef(0);
-  const deleteTriggerRef = useRef<HTMLElement | null>(null);
 
   const breadcrumbs = useMemo(() => getBreadcrumbs(graph, selectedStepId), [graph, selectedStepId]);
   const visibleGraph = useMemo(
@@ -113,9 +113,6 @@ export function WorkspaceShell({
   );
   const isChatLoading = activeSessionId ? runningSessionIds.includes(activeSessionId) : false;
   const accountLabel = account.displayName ?? account.email ?? account.userId;
-  const deleteDialogSession = deleteDialogSessionId
-    ? (sessions.find((session) => session.id === deleteDialogSessionId) ?? null)
-    : null;
 
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId;
@@ -204,36 +201,14 @@ export function WorkspaceShell({
     }
   }
 
-  async function requestDeleteSession(sessionId: string) {
-    if (sessions.length <= 1 || isDeletingSession) {
-      return;
-    }
-
-    deleteTriggerRef.current =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    setDeleteDialogError(null);
-    setDeleteDialogSessionId(sessionId);
-  }
-
-  function closeDeleteDialog() {
-    if (isDeletingSession) {
-      return;
-    }
-
-    setDeleteDialogError(null);
-    setDeleteDialogSessionId(null);
-    requestAnimationFrame(() => deleteTriggerRef.current?.focus());
-  }
-
-  async function handleDeleteSession() {
-    const sessionId = deleteDialogSessionId;
-    if (!sessionId || isDeletingSession) {
+  async function handleDeleteSession(sessionId: string) {
+    if (sessions.length <= 1 || deletingSessionId !== null) {
       return;
     }
 
     try {
-      setIsDeletingSession(true);
-      setDeleteDialogError(null);
+      setDeletingSessionId(sessionId);
+      setDeleteError(null);
       await deleteSession(sessionId);
       const remaining = sessions.filter((session) => session.id !== sessionId);
       setSessions(remaining);
@@ -246,13 +221,13 @@ export function WorkspaceShell({
         setGraph(null);
         setSelectedStepId(null);
       }
-
-      deleteTriggerRef.current = null;
-      setDeleteDialogSessionId(null);
     } catch (error) {
-      setDeleteDialogError(formatError(error, 'Could not delete the session.'));
+      setDeleteError({
+        message: formatError(error, 'Could not delete the session.'),
+        sessionId,
+      });
     } finally {
-      setIsDeletingSession(false);
+      setDeletingSessionId(null);
     }
   }
 
@@ -355,7 +330,7 @@ export function WorkspaceShell({
         isRunning={isChatLoading}
         messages={activeMessages}
         onCreatePlan={handleCreateSession}
-        onDeletePlan={requestDeleteSession}
+        onDeletePlan={handleDeleteSession}
         onSelectPlan={async (sessionId) => setActiveSessionId(sessionId)}
         onSendMessage={handleSendMessage}
         sessions={sessions}
@@ -374,7 +349,11 @@ export function WorkspaceShell({
               <p>Onboarding Accelerator</p>
               <h1>Your plans</h1>
             </div>
-            <PlanThreadList canDelete={sessions.length > 1} />
+            <PlanThreadList
+              canDelete={sessions.length > 1}
+              deleteError={deleteError}
+              deletingSessionId={deletingSessionId}
+            />
             <div className="account-summary">
               <span>{accountLabel}</span>
               <small>{formatAccountRole(account.role)}</small>
@@ -450,14 +429,6 @@ export function WorkspaceShell({
             userLabel={accountLabel}
           />
         </aside>
-        <DeletePlanDialog
-          error={deleteDialogError}
-          isDeleting={isDeletingSession}
-          onCancel={closeDeleteDialog}
-          onConfirm={handleDeleteSession}
-          open={deleteDialogSession !== null}
-          planTitle={deleteDialogSession?.title ?? 'this onboarding plan'}
-        />
       </WorkspaceAssistantRuntimeProvider>
     </main>
   );
