@@ -24,6 +24,52 @@ model OnboardingSession {
   @@map("onboarding_sessions")
 }
 
+model RagWorkflowRun {
+  id               String                  @id @db.Uuid
+  workflowVersion  String                  @map("workflow_version")
+  sessionId        String                  @map("session_id") @db.Uuid
+  ownerId          String                  @map("owner_id")
+  clientRequestId  String                  @map("client_request_id")
+  status           String
+  currentPartition String                  @map("current_partition")
+  planRevision     Int                     @default(0) @map("plan_revision")
+  requestInput     Json                    @map("request_input")
+  refinement       Json?
+  plan             Json?
+  result           Json?
+  lastFailure      Json?                   @map("last_failure")
+  safeErrorCode    String?                 @map("safe_error_code")
+  createdAt        DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime                @default(now()) @map("updated_at") @db.Timestamptz(6)
+  completedAt      DateTime?               @map("completed_at") @db.Timestamptz(6)
+  auditEvents      RagWorkflowAuditEvent[]
+
+  @@unique([ownerId, sessionId, clientRequestId], map: "rag_workflow_runs_request_key")
+  @@index([ownerId, sessionId, updatedAt(sort: Desc)], map: "rag_workflow_runs_owner_session_idx")
+  @@map("rag_workflow_runs")
+}
+
+model RagWorkflowAuditEvent {
+  id           String         @id @db.Uuid
+  runId        String         @map("run_id") @db.Uuid
+  actorUserId  String         @map("actor_user_id")
+  eventType    String         @map("event_type")
+  partition    String?
+  stepId       String?        @map("step_id")
+  phaseId      String?        @map("phase_id")
+  planRevision Int?           @map("plan_revision")
+  eventAt      DateTime       @default(now()) @map("event_at") @db.Timestamptz(6)
+  reasonCode   String?        @map("reason_code")
+  evidenceRefs Json           @default("[]") @map("evidence_refs")
+  inputHash    String?        @map("input_hash")
+  outputHash   String?        @map("output_hash")
+  metadata     Json           @default("{}")
+  run          RagWorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([runId, eventAt], map: "rag_workflow_audit_events_run_event_idx")
+  @@map("rag_workflow_audit_events")
+}
+
 model KnowledgeChunk {
   id               String
   title            String

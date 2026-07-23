@@ -20,6 +20,7 @@
     "docs:harness:update": "node scripts/update-harness-docs.mjs",
     "rag:ingest": "tsx scripts/rag-ingest.ts",
     "rag:reindex-snapshots": "tsx scripts/rag-reindex-snapshots.ts",
+    "mastra:storage:init": "tsx scripts/mastra-storage-init.ts",
     "users:create": "tsx scripts/users-create.ts",
     "format": "prettier . --write",
     "format:check": "prettier . --check",

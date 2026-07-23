@@ -21,6 +21,7 @@ superseded, and future-planning documents can be referenced without competing wi
 | 014    | `archive/014-rag-grounded-knowledge-map.md`              | Proposed    | Versioned, reviewed knowledge maps with RAG navigation and source truth.  |
 | 015    | `archive/015-server-controller-service-dto-prisma.md`    | Complete    | Layered server refactor with DTOs, controllers, services, and Prisma.     |
 | 016    | `archive/016-frontend-two-layer-component-extraction.md` | Implemented | Two-layer business and common frontend component extraction architecture. |
+| 017    | `archive/017-mastra-snapshot-rag-workflow.md`            | Proposed    | Three-part Mastra RAG workflow with snapshots and targeted recovery.      |
 
 Current runtime documentation lives in `README.md`, `docs/production-readiness.md`, and the generated
 harness docs under `docs/harness/generated`.

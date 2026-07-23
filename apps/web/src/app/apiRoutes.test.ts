@@ -27,6 +27,7 @@ void test('Next API handlers create sessions, generate guides, chat, and expose 
   const sessionsRoute = await import('./api/sessions/route');
   const guideRootRoute = await import('./api/sessions/[sessionId]/guide/root/route');
   const chatRoute = await import('./api/sessions/[sessionId]/chat/route');
+  const ragWorkflowRoute = await import('./api/sessions/[sessionId]/rag-workflows/route');
   const logsRoute = await import('./api/logs/recent/route');
   const meRoute = await import('./api/auth/me/route');
 
@@ -66,6 +67,19 @@ void test('Next API handlers create sessions, generate guides, chat, and expose 
   const chat = (await chatResponse.json()) as ChatResponse;
   assert.equal(chat.message.role, 'assistant');
   assert.match(chat.message.content, /onboarding/i);
+
+  const disabledWorkflowResponse = await ragWorkflowRoute.POST(
+    jsonRequest(`http://localhost/api/sessions/${created.session.id}/rag-workflows`, {
+      message: 'What is the onboarding process?',
+      clientRequestId: 'api-workflow-disabled',
+    }),
+    { params: Promise.resolve({ sessionId: created.session.id }) },
+  );
+  assert.equal(disabledWorkflowResponse.status, 404);
+  assert.equal(
+    ((await disabledWorkflowResponse.json()) as { error: string }).error,
+    'Mastra RAG workflows are not enabled.',
+  );
 
   const logsResponse = await logsRoute.GET(
     new NextRequest('http://localhost/api/logs/recent?limit=10', {

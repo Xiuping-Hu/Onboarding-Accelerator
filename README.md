@@ -108,6 +108,38 @@ Guide maps are created from the workspace agent flow. A new session starts with 
 the agent for domain knowledge, then use Create map when the response includes a draft map proposal.
 The created map is saved with the session guide state.
 
+## Mastra RAG workflows
+
+The snapshot-based three-part RAG workflow from spec 017 is feature-gated. It refines the input,
+builds and checkpoints an evidence-backed plan, and executes the plan through a server-owned tool
+registry. The initial registry enables read-only grounded answers and knowledge-map searches.
+Administrative script adapters remain disabled.
+
+Provision both the Prisma application tables and Mastra's isolated PostgreSQL schema before
+enabling the runtime:
+
+```powershell
+npm run db:migrate:deploy
+npm run mastra:storage:init
+```
+
+Then set:
+
+```text
+MASTRA_RAG_WORKFLOW_ENABLED=true
+MASTRA_STORAGE_SCHEMA=mastra_workflow
+MASTRA_STORAGE_DISABLE_INIT=true
+```
+
+`MASTRA_STORAGE_DISABLE_INIT=true` prevents runtime schema mutation after the explicit provisioning
+step. Development can set it to `false`. Workflow execution snapshots live in the Mastra schema;
+they are separate from the application `rag_source_snapshots` content table.
+
+Authenticated workflow endpoints are rooted at
+`/api/sessions/:sessionId/rag-workflows`. They support starting a run, reading its safe projection
+and audit events, resuming refinement or plan checkpoints, and correcting a failed phase. The
+existing chat endpoint is unchanged while the feature is disabled.
+
 Admin operations are available at `/admin`. The admin console uses the same browser account session
 as the workspace and requires the authenticated user role to be `admin`; all `/api/admin/*` routes
 enforce that role server-side. In local `AUTH_DISABLED=true` development, the admin login form can

@@ -51,6 +51,11 @@ export interface ServerConfig {
   ragInputAdaptersEnabled: boolean;
   ragAllowedAccessScopes: string[];
   openAiEmbeddingModel: string;
+  mastraRagWorkflowEnabled: boolean;
+  mastraStorageSchema: string;
+  mastraStorageDisableInit: boolean;
+  mastraPostgresPoolMax: number;
+  mastraSnapshotRetentionDays: number;
 }
 
 export function loadConfig(): ServerConfig {
@@ -112,6 +117,17 @@ export function loadConfig(): ServerConfig {
         : process.env.RAG_INPUT_ADAPTERS_ENABLED === 'true',
     ragAllowedAccessScopes: parseList(process.env.RAG_ALLOWED_ACCESS_SCOPES || 'all_users'),
     openAiEmbeddingModel: process.env.OPENAI_EMBEDDING_MODEL ?? 'text-embedding-3-small',
+    mastraRagWorkflowEnabled: process.env.MASTRA_RAG_WORKFLOW_ENABLED === 'true',
+    mastraStorageSchema: process.env.MASTRA_STORAGE_SCHEMA?.trim() || 'mastra_workflow',
+    mastraStorageDisableInit:
+      process.env.MASTRA_STORAGE_DISABLE_INIT === undefined
+        ? process.env.NODE_ENV === 'production'
+        : process.env.MASTRA_STORAGE_DISABLE_INIT === 'true',
+    mastraPostgresPoolMax: Number.parseInt(process.env.MASTRA_POSTGRES_POOL_MAX ?? '5', 10),
+    mastraSnapshotRetentionDays: Number.parseInt(
+      process.env.MASTRA_SNAPSHOT_RETENTION_DAYS ?? '90',
+      10,
+    ),
   };
 
   config.embeddingProfile = embeddingProfileFor(
@@ -170,12 +186,31 @@ function validateConfig(config: ServerConfig): void {
     }
   }
 
+  if (config.mastraRagWorkflowEnabled && !config.databaseUrl) {
+    throw new Error('MASTRA_RAG_WORKFLOW_ENABLED=true requires DATABASE_URL');
+  }
+
+  if (!/^[a-z_][a-z0-9_]*$/.test(config.mastraStorageSchema)) {
+    throw new Error('MASTRA_STORAGE_SCHEMA must be a lowercase PostgreSQL identifier');
+  }
+
   if (!Number.isFinite(config.postgresPoolMax) || config.postgresPoolMax <= 0) {
     throw new Error('POSTGRES_POOL_MAX must be a positive integer');
   }
 
   if (!Number.isFinite(config.ragVectorLimit) || config.ragVectorLimit <= 0) {
     throw new Error('RAG_VECTOR_LIMIT must be a positive integer');
+  }
+
+  if (!Number.isFinite(config.mastraPostgresPoolMax) || config.mastraPostgresPoolMax <= 0) {
+    throw new Error('MASTRA_POSTGRES_POOL_MAX must be a positive integer');
+  }
+
+  if (
+    !Number.isFinite(config.mastraSnapshotRetentionDays) ||
+    config.mastraSnapshotRetentionDays <= 0
+  ) {
+    throw new Error('MASTRA_SNAPSHOT_RETENTION_DAYS must be a positive integer');
   }
 
   // Next serves the UI and API from the same origin; CORS is only needed if a future client is

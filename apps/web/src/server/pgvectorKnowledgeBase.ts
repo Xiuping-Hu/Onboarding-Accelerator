@@ -22,7 +22,10 @@ export class PgvectorKnowledgeBase {
     private readonly embeddingProfile = 'openai:text-embedding-3-small',
   ) {}
 
-  async retrieve(query: string): Promise<SourceProvenance[]> {
+  async retrieve(
+    query: string,
+    allowedAccessScopes = this.allowedAccessScopes,
+  ): Promise<SourceProvenance[]> {
     const embedding = await this.embeddings.embed(query);
     if (!embedding?.length) {
       return [];
@@ -52,7 +55,7 @@ export class PgvectorKnowledgeBase {
               ) as score
        from knowledge_chunks
        where embedding_profile = ${this.embeddingProfile}
-         and coalesce(metadata->>'accessScope', 'all_users') in (${Prisma.join(this.allowedAccessScopes)})
+         and coalesce(metadata->>'accessScope', 'all_users') in (${Prisma.join(allowedAccessScopes)})
        order by score desc
        limit ${this.limit}`);
 
