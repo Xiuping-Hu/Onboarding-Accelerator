@@ -9,8 +9,8 @@ export const metadata: Metadata = {
   title: 'Onboarding Accelerator',
   description: 'Guidance workspace for onboarding sessions.',
   icons: {
-    icon: '/favicon.ico?v=2',
-    shortcut: '/favicon.ico?v=2',
+    icon: '/favicon.ico?v=3',
+    shortcut: '/favicon.ico?v=3',
   },
 };
 
