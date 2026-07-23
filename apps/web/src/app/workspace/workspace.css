@@ -221,6 +221,17 @@
   font-weight: 650;
 }
 
+.delete-plan-tooltip-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.delete-plan-tooltip-actions .ui-button {
+  min-width: 64px;
+}
+
 .workspace {
   position: fixed;
   inset: 0;
