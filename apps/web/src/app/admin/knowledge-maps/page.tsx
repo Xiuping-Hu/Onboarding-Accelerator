@@ -1,4 +1,4 @@
-import { KnowledgeMapEditor } from '@/components/business/admin/knowledge-maps/KnowledgeMapEditor';
+import { KnowledgeMapEditor } from './KnowledgeMapEditor';
 
 export default function KnowledgeMapsPage() {
   return <KnowledgeMapEditor />;

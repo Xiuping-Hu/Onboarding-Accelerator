@@ -3,11 +3,11 @@ import test from 'node:test';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { AdminActivityResponse, AiFeeSummaryResponse } from '@onboarding/shared';
-import { LoginScreen } from '../auth/LoginScreen';
+import { LoginScreen } from '../login/LoginScreen';
 import { ActivityPanel } from './activity/ActivityPanel';
+import { FeesPanel } from './ai-fees/FeesPanel';
+import { RatesPanel } from './ai-fees/rates/RatesPanel';
 import { AuditPanel } from './audit/AuditPanel';
-import { FeesPanel } from './fees/FeesPanel';
-import { RatesPanel } from './fees/RatesPanel';
 
 const activity: AdminActivityResponse = {
   events: [],
@@ -34,14 +34,14 @@ const fees: AiFeeSummaryResponse = {
 
 async function noOperation() {}
 
-void test('business auth presentation owns Microsoft sign-in routing and errors', () => {
+void test('login presentation owns Microsoft sign-in routing and errors', () => {
   const markup = renderToStaticMarkup(<LoginScreen error="Sign-in failed" />);
 
   assert.match(markup, /Sign-in failed/);
   assert.match(markup, /href="\/api\/auth\/microsoft\/start"/);
 });
 
-void test('admin business panels adapt empty domain data to common presentation', () => {
+void test('admin panels adapt empty domain data to common presentation', () => {
   const activityMarkup = renderToStaticMarkup(
     <ActivityPanel
       activity={activity}
