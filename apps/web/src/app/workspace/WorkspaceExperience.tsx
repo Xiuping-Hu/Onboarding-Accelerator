@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { LoginScreen } from '@/components/business/auth/LoginScreen';
+import { LoginScreen } from '../login/LoginScreen';
 import { ErrorBoundary } from '@/components/common/feedback/ErrorBoundary';
 import { getCurrentAccount, logoutAccount, type AccountSession } from '@/features/workspace/api';
 import { WorkspaceShell } from './WorkspaceShell';

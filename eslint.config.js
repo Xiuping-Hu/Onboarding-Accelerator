@@ -78,11 +78,9 @@ export default tseslint.config(
             {
               group: [
                 '@/app/**',
-                '@/components/business/**',
                 '@/features/**',
                 '@/server/**',
                 '**/app/**',
-                '**/business/**',
                 '**/features/**',
                 '**/server/**',
               ],
@@ -94,15 +92,20 @@ export default tseslint.config(
     },
   },
   {
-    files: ['apps/web/src/components/business/**/*.{ts,tsx}'],
+    files: [
+      'apps/web/src/app/login/**/*.tsx',
+      'apps/web/src/app/workspace/**/*.tsx',
+      'apps/web/src/app/admin/**/*.tsx',
+    ],
+    ignores: ['apps/web/src/app/**/page.tsx'],
     rules: {
       'no-restricted-imports': [
         'error',
         {
           patterns: [
             {
-              group: ['@/app/**', '@/server/**', '**/app/**', '**/server/**'],
-              message: 'Business components must not depend on route or server modules.',
+              group: ['@/server/**', '**/server/**'],
+              message: 'Page components must not depend on server modules.',
             },
           ],
         },
@@ -110,23 +113,16 @@ export default tseslint.config(
     },
   },
   {
-    files: ['apps/web/src/components/business/admin/**/*.{ts,tsx}'],
+    files: ['apps/web/src/app/admin/**/*.tsx'],
+    ignores: ['apps/web/src/app/**/page.tsx'],
     rules: {
       'no-restricted-imports': [
         'error',
         {
           patterns: [
             {
-              group: [
-                '@/app/**',
-                '@/components/business/workspace/**',
-                '@/server/**',
-                '**/app/**',
-                '**/business/workspace/**',
-                '**/server/**',
-              ],
-              message:
-                'Admin business components must not depend on routes, server modules, or workspace UI.',
+              group: ['@/app/workspace/**', '@/server/**', '**/app/workspace/**', '**/server/**'],
+              message: 'Admin page components must not depend on server modules or workspace UI.',
             },
           ],
         },

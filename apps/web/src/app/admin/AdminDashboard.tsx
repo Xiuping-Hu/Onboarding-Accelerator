@@ -9,13 +9,13 @@ import type {
   CreateAiRateCardRequest,
 } from '@onboarding/shared';
 import { getCurrentAccount, logoutAccount, type AccountSession } from '@/features/workspace/api';
-import { MicrosoftSignInLink } from '@/components/business/auth/MicrosoftSignInLink';
+import { MicrosoftSignInLink } from '../login/MicrosoftSignInLink';
 
 import { requestAdminJson } from '@/features/admin/api';
 import { ActivityPanel } from './activity/ActivityPanel';
+import { FeesPanel } from './ai-fees/FeesPanel';
+import { RatesPanel } from './ai-fees/rates/RatesPanel';
 import { AuditPanel } from './audit/AuditPanel';
-import { FeesPanel } from './fees/FeesPanel';
-import { RatesPanel } from './fees/RatesPanel';
 
 type AdminView = 'activity' | 'fees' | 'rates' | 'audit';
 

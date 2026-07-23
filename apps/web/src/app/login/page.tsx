@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { WorkspaceExperience } from '@/components/business/workspace/WorkspaceExperience';
+import { WorkspaceExperience } from '../workspace/WorkspaceExperience';
 import { getCurrentUserFromCookies } from '../../server/auth';
 import { getAppContainer } from '../../server/bootstrap/appContainer';
 
