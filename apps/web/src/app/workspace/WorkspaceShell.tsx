@@ -353,6 +353,7 @@ export function WorkspaceShell({
               canDelete={sessions.length > 1}
               deleteError={deleteError}
               deletingSessionId={deletingSessionId}
+              onDelete={handleDeleteSession}
             />
             <div className="account-summary">
               <span>{accountLabel}</span>

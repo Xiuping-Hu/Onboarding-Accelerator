@@ -1,11 +1,6 @@
 import { useState } from 'react';
 import { ThreadListItemPrimitive, ThreadListPrimitive, useAuiState } from '@assistant-ui/react';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/common/overlays/Tooltip';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/common/overlays/Popover';
 import { Button } from '@/components/ui/button';
 
 type DeleteError = {
@@ -17,10 +12,12 @@ function PlanThreadListItem({
   canDelete,
   deleteError,
   deletingSessionId,
+  onDelete,
 }: {
   canDelete: boolean;
   deleteError: DeleteError;
   deletingSessionId: string | null;
+  onDelete: (sessionId: string) => Promise<void>;
 }) {
   const sessionId = useAuiState((state) => state.threadListItem.id);
   const planTitle = useAuiState(
@@ -40,7 +37,7 @@ function PlanThreadListItem({
         {typeof updatedAt === 'string' ? <small>Updated {formatPlanTime(updatedAt)}</small> : null}
       </ThreadListItemPrimitive.Trigger>
       {canDelete ? (
-        <Tooltip
+        <Popover
           open={isConfirmingDelete}
           onOpenChange={(open) => {
             if (!open && !isDeleting) {
@@ -48,7 +45,7 @@ function PlanThreadListItem({
             }
           }}
         >
-          <TooltipTrigger asChild>
+          <PopoverTrigger asChild>
             <Button
               aria-label={isDeleting ? `Deleting ${planTitle}` : `Delete ${planTitle}`}
               className="plan-thread-delete"
@@ -61,8 +58,8 @@ function PlanThreadListItem({
             >
               ×
             </Button>
-          </TooltipTrigger>
-          <TooltipContent
+          </PopoverTrigger>
+          <PopoverContent
             align="end"
             aria-label={`Delete ${planTitle}? This cannot be undone.`}
             className="delete-plan-tooltip"
@@ -85,17 +82,23 @@ function PlanThreadListItem({
               >
                 Cancel
               </Button>
-              <Button asChild disabled={isDeleting} size="sm" variant="destructive">
-                <ThreadListItemPrimitive.Delete
-                  aria-label={`Confirm delete ${planTitle}`}
-                  type="button"
-                >
-                  {isDeleting ? 'Deleting…' : 'Confirm'}
-                </ThreadListItemPrimitive.Delete>
+              <Button
+                aria-label={`Confirm delete ${planTitle}`}
+                disabled={isDeleting}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setIsConfirmingDelete(false);
+                  void onDelete(sessionId);
+                }}
+                size="sm"
+                type="button"
+                variant="destructive"
+              >
+                {isDeleting ? 'Deleting…' : 'Confirm'}
               </Button>
             </div>
-          </TooltipContent>
-        </Tooltip>
+          </PopoverContent>
+        </Popover>
       ) : null}
     </ThreadListItemPrimitive.Root>
   );
@@ -105,30 +108,31 @@ export function PlanThreadList({
   canDelete,
   deleteError,
   deletingSessionId,
+  onDelete,
 }: {
   canDelete: boolean;
   deleteError: DeleteError;
   deletingSessionId: string | null;
+  onDelete: (sessionId: string) => Promise<void>;
 }) {
   return (
-    <TooltipProvider delayDuration={0}>
-      <ThreadListPrimitive.Root className="plan-thread-list">
-        <ThreadListPrimitive.New className="primary-button plan-new-button" type="button">
-          New plan
-        </ThreadListPrimitive.New>
-        <div className="plan-thread-items" aria-label="Onboarding plans">
-          <ThreadListPrimitive.Items>
-            {() => (
-              <PlanThreadListItem
-                canDelete={canDelete}
-                deleteError={deleteError}
-                deletingSessionId={deletingSessionId}
-              />
-            )}
-          </ThreadListPrimitive.Items>
-        </div>
-      </ThreadListPrimitive.Root>
-    </TooltipProvider>
+    <ThreadListPrimitive.Root className="plan-thread-list">
+      <ThreadListPrimitive.New className="primary-button plan-new-button" type="button">
+        New plan
+      </ThreadListPrimitive.New>
+      <div className="plan-thread-items" aria-label="Onboarding plans">
+        <ThreadListPrimitive.Items>
+          {() => (
+            <PlanThreadListItem
+              canDelete={canDelete}
+              deleteError={deleteError}
+              deletingSessionId={deletingSessionId}
+              onDelete={onDelete}
+            />
+          )}
+        </ThreadListPrimitive.Items>
+      </div>
+    </ThreadListPrimitive.Root>
   );
 }
 
