@@ -1,4 +1,4 @@
-import { useState, type MouseEvent } from 'react';
+import { useState } from 'react';
 import { ThreadListItemPrimitive, ThreadListPrimitive, useAuiState } from '@assistant-ui/react';
 import {
   Tooltip,
@@ -6,6 +6,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/common/overlays/Tooltip';
+import { Button } from '@/components/ui/button';
 
 type DeleteError = {
   message: string;
@@ -30,13 +31,6 @@ function PlanThreadListItem({
   const isDeleting = deletingSessionId === sessionId;
   const error = deleteError?.sessionId === sessionId ? deleteError.message : null;
 
-  function handleDeleteClick(event: MouseEvent<HTMLButtonElement>) {
-    if (!isConfirmingDelete) {
-      event.preventDefault();
-      setIsConfirmingDelete(true);
-    }
-  }
-
   return (
     <ThreadListItemPrimitive.Root className="plan-thread-item">
       <ThreadListItemPrimitive.Trigger className="plan-thread-trigger">
@@ -55,36 +49,51 @@ function PlanThreadListItem({
           }}
         >
           <TooltipTrigger asChild>
-            <ThreadListItemPrimitive.Delete
-              aria-label={
-                isDeleting
-                  ? `Deleting ${planTitle}`
-                  : isConfirmingDelete
-                    ? `Confirm delete ${planTitle}`
-                    : `Delete ${planTitle}`
-              }
+            <Button
+              aria-label={isDeleting ? `Deleting ${planTitle}` : `Delete ${planTitle}`}
               className="plan-thread-delete"
               data-confirming={isConfirmingDelete ? 'true' : undefined}
               disabled={isDeleting}
-              onClick={handleDeleteClick}
+              onClick={() => setIsConfirmingDelete(true)}
+              size="icon"
               type="button"
+              variant="ghost"
             >
               ×
-            </ThreadListItemPrimitive.Delete>
+            </Button>
           </TooltipTrigger>
-          <TooltipContent align="end" className="delete-plan-tooltip" side="right">
+          <TooltipContent
+            align="end"
+            aria-label={`Delete ${planTitle}? This cannot be undone.`}
+            className="delete-plan-tooltip"
+            side="right"
+          >
             <strong>Delete “{planTitle}”?</strong>
-            <span>
-              {isDeleting
-                ? 'Deleting plan…'
-                : 'This cannot be undone. Select Delete again to confirm.'}
-            </span>
+            <span>{isDeleting ? 'Deleting plan…' : 'This cannot be undone.'}</span>
             {error ? (
               <span className="delete-plan-tooltip-error" role="alert">
                 {error}
               </span>
             ) : null}
-            {!isDeleting ? <small>Press Esc to cancel.</small> : null}
+            <div className="delete-plan-tooltip-actions">
+              <Button
+                disabled={isDeleting}
+                onClick={() => setIsConfirmingDelete(false)}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                Cancel
+              </Button>
+              <Button asChild disabled={isDeleting} size="sm" variant="destructive">
+                <ThreadListItemPrimitive.Delete
+                  aria-label={`Confirm delete ${planTitle}`}
+                  type="button"
+                >
+                  {isDeleting ? 'Deleting…' : 'Confirm'}
+                </ThreadListItemPrimitive.Delete>
+              </Button>
+            </div>
           </TooltipContent>
         </Tooltip>
       ) : null}
