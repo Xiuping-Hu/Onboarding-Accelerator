@@ -442,6 +442,77 @@ export interface RagKnowledgeMapDraft {
   edges: KnowledgeMapDraftEdge[];
 }
 
+export type RagWorkflowStatus = 'running' | 'suspended' | 'failed' | 'completed';
+export type RagWorkflowPartition = 'refinement' | 'plan' | 'run' | 'complete';
+
+export interface StartRagWorkflowRequest {
+  message: string;
+  referencedNodeId?: string;
+  webSearchEnabled?: boolean;
+  clientRequestId: string;
+}
+
+export interface ResumeRagWorkflowRequest {
+  step: 'refinement-checkpoint' | 'plan-checkpoint';
+  clarification?: string;
+  approved?: boolean;
+}
+
+export interface CorrectRagWorkflowRequest {
+  phaseId: string;
+  reason: string;
+}
+
+export interface RagWorkflowPlanSummary {
+  revision: number;
+  goal: string;
+  approach: string;
+  how: string;
+  why: string;
+  phases: Array<{
+    phaseId: string;
+    title: string;
+    status: 'pending' | 'completed' | 'failed';
+  }>;
+}
+
+export interface RagWorkflowAuditEventDto {
+  id: string;
+  eventType: string;
+  partition?: string;
+  stepId?: string;
+  phaseId?: string;
+  planRevision?: number;
+  reasonCode?: string;
+  eventAt: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface RagWorkflowResponse {
+  runId: string;
+  status: RagWorkflowStatus;
+  currentPartition: RagWorkflowPartition;
+  plan?: RagWorkflowPlanSummary;
+  result?: {
+    summary: string;
+    completedPhaseIds: string[];
+    evidenceRefs: string[];
+    corrections: number;
+  };
+  suspension?: {
+    step: string;
+    reasonCode: string;
+    questions: string[];
+  };
+  safeErrorCode?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RagWorkflowEventsResponse {
+  events: RagWorkflowAuditEventDto[];
+}
+
 export interface KnowledgeMapNodeDetail {
   id: string;
   stableKey: string;

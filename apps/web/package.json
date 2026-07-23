@@ -12,6 +12,8 @@
   },
   "dependencies": {
     "@assistant-ui/react": "^0.14.26",
+    "@mastra/core": "1.52.1",
+    "@mastra/pg": "1.17.0",
     "@onboarding/shared": "file:../../packages/shared",
     "@radix-ui/react-alert-dialog": "^1.1.18",
     "@radix-ui/react-tooltip": "^1.2.11",

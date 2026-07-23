@@ -6,6 +6,7 @@ import type { WebSearchProvider } from '../../webSearchProvider';
 
 export interface RetrievalOptions {
   webSearchEnabled: boolean;
+  allowedAccessScopes?: string[];
 }
 
 export type RetrievalAgentTool =
@@ -48,7 +49,7 @@ export interface RagRetriever {
 }
 
 export interface KnowledgeRetriever {
-  retrieve(query: string): Promise<SourceProvenance[]>;
+  retrieve(query: string, allowedAccessScopes?: string[]): Promise<SourceProvenance[]>;
 }
 
 export class RagService implements RagRetriever {
@@ -83,7 +84,9 @@ export class RagService implements RagRetriever {
           label: 'Pgvector knowledge chunks',
           query: subquery,
           skipReason: this.vectorKnowledgeBase ? undefined : 'Vector retrieval is not configured.',
-          run: () => this.vectorKnowledgeBase?.retrieve(subquery) ?? Promise.resolve([]),
+          run: () =>
+            this.vectorKnowledgeBase?.retrieve(subquery, options.allowedAccessScopes) ??
+            Promise.resolve([]),
         }),
         knowledgeBaseSources,
         webSources,
