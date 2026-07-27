@@ -715,6 +715,32 @@
   background: #f3f6fa;
 }
 
+.typed-response {
+  min-width: 0;
+}
+
+.typing-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  background: currentColor;
+  vertical-align: -0.12em;
+  animation: typing-cursor-blink 0.8s steps(1, end) infinite;
+}
+
+@keyframes typing-cursor-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .typing-cursor {
+    animation: none;
+  }
+}
+
 .message-evidence {
   display: grid;
   gap: 8px;

@@ -1,5 +1,6 @@
 import { ThreadPrimitive } from '@assistant-ui/react';
 import type { ChatMessage } from '@onboarding/shared';
+import { useMemo } from 'react';
 import { AgentMessage } from './AgentMessage';
 import { UserMessage } from './UserMessage';
 
@@ -7,23 +8,32 @@ export function AgentThread({
   evidenceExpanded,
   messageById,
   onToggleEvidence,
+  onTypingComplete,
+  typingMessageId,
   userLabel,
 }: {
   evidenceExpanded: string[];
   messageById: Map<string, ChatMessage>;
   onToggleEvidence: (messageId: string) => void;
+  onTypingComplete: (messageId: string) => void;
+  typingMessageId: string | null;
   userLabel: string;
 }) {
-  const components = {
-    AssistantMessage: () => (
-      <AgentMessage
-        evidenceExpanded={evidenceExpanded}
-        messageById={messageById}
-        onToggleEvidence={onToggleEvidence}
-      />
-    ),
-    UserMessage: () => <UserMessage messageById={messageById} userLabel={userLabel} />,
-  };
+  const components = useMemo(
+    () => ({
+      AssistantMessage: () => (
+        <AgentMessage
+          evidenceExpanded={evidenceExpanded}
+          messageById={messageById}
+          onToggleEvidence={onToggleEvidence}
+          onTypingComplete={onTypingComplete}
+          typingMessageId={typingMessageId}
+        />
+      ),
+      UserMessage: () => <UserMessage messageById={messageById} userLabel={userLabel} />,
+    }),
+    [evidenceExpanded, messageById, onToggleEvidence, onTypingComplete, typingMessageId, userLabel],
+  );
 
   return (
     <ThreadPrimitive.Root className="agent-thread">
