@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { LoginScreen } from '../login/LoginScreen';
+import { BrandLoader } from '@/components/common/feedback/BrandLoader';
 import { ErrorBoundary } from '@/components/common/feedback/ErrorBoundary';
 import { getCurrentAccount, logoutAccount, type AccountSession } from '@/features/workspace/api';
 import { WorkspaceShell } from './WorkspaceShell';
@@ -67,7 +68,7 @@ function WorkspaceContent({
   }
 
   if (isAuthLoading) {
-    return <main className="loading-state auth-loading">Restoring account session...</main>;
+    return <BrandLoader fullScreen message="Preparing your workspace" />;
   }
 
   return <WorkspaceShell account={account} onLogout={handleLogout} />;

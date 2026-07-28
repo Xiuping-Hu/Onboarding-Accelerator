@@ -72,13 +72,6 @@
   display: none;
 }
 
-.auth-loading {
-  display: grid;
-  place-items: center;
-  min-height: 100vh;
-  margin: 0;
-}
-
 .account-summary {
   display: grid;
   gap: 2px;
