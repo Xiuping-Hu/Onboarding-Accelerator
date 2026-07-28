@@ -41,6 +41,7 @@ import { createSessionController } from '../modules/sessions/session.controller'
 import { SessionService } from '../modules/sessions/session.service';
 import { createSystemController } from '../modules/system/system.controller';
 import { SystemService } from '../modules/system/system.service';
+import { createSourceController } from '../modules/sources/source.controller';
 import { PgvectorKnowledgeBase } from '../pgvectorKnowledgeBase';
 import { PrismaSessionRepository } from '../postgresSessionRepository';
 import { createConfiguredRagInputAdapters } from '../ragAdapters/index';
@@ -56,6 +57,7 @@ import { createWorkflowToolRegistry } from '../modules/rag-workflows/ragWorkflow
 import { FileSessionRepository } from '../sessionRepository';
 import { PrismaUserRepository } from '../userRepository';
 import { DisabledWebSearchProvider } from '../webSearchProvider';
+import { SourceLinkService } from '../sourceLinkService';
 
 export function createAppContainer() {
   const config = loadConfig();
@@ -166,7 +168,8 @@ export function createAppContainer() {
     runtime: ragWorkflowRuntime,
     resolveAccessScopes: resolveRagAccessScopes,
   });
-  const chat = new ChatService(sessions, rag, answers, logs, knowledgeMaps);
+  const sourceLinks = new SourceLinkService(rag, resolveRagAccessScopes, knowledgeMaps);
+  const chat = new ChatService(sessions, rag, answers, logs, knowledgeMaps, sourceLinks);
   const metrics = {
     startedAt: new Date().toISOString(),
     requestsTotal: 0,
@@ -184,7 +187,8 @@ export function createAppContainer() {
     guide: new GuideService(sessions, knowledgeMaps),
     logs: new LogQueryService(logs),
     ragWorkflows,
-    sessions: new SessionService(sessions),
+    sessions: new SessionService(sessions, sourceLinks),
+    sources: sourceLinks,
     system: new SystemService(
       metrics,
       prisma
@@ -211,6 +215,7 @@ export function createAppContainer() {
     logs: createLogController(services.logs),
     ragWorkflows: createRagWorkflowController(services.ragWorkflows),
     sessions: createSessionController(services.sessions),
+    sources: createSourceController(services.sources),
     system: createSystemController(services.system),
   };
 

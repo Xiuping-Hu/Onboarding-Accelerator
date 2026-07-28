@@ -20,7 +20,6 @@ export function AgentChatDrawer({
   referencedStep: GuideStep | null;
   userLabel: string;
 }) {
-  const [expandedEvidenceIds, setExpandedEvidenceIds] = useState<string[]>([]);
   const [typingMessageId, setTypingMessageId] = useState<string | null>(null);
   const seenMessageIds = useRef<Set<string> | null>(null);
   const wasRunning = useRef(isRunning);
@@ -51,14 +50,6 @@ export function AgentChatDrawer({
     }
   }, [isRunning, messages, typingMessageId]);
 
-  const toggleEvidence = useCallback(function toggleEvidence(messageId: string) {
-    setExpandedEvidenceIds((current) =>
-      current.includes(messageId)
-        ? current.filter((id) => id !== messageId)
-        : [...current, messageId],
-    );
-  }, []);
-
   const finishTyping = useCallback((messageId: string) => {
     setTypingMessageId((current) => (current === messageId ? null : current));
   }, []);
@@ -70,9 +61,7 @@ export function AgentChatDrawer({
         <p>Ask questions and build your onboarding plan.</p>
       </div>
       <AgentThread
-        evidenceExpanded={expandedEvidenceIds}
         messageById={messageById}
-        onToggleEvidence={toggleEvidence}
         onTypingComplete={finishTyping}
         typingMessageId={typingMessageId}
         userLabel={userLabel}

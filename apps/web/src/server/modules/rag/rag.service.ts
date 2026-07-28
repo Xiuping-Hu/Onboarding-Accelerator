@@ -1,5 +1,5 @@
 import type { SourceProvenance } from '@onboarding/shared';
-import { retrieveKnowledge } from '../../knowledgeBase';
+import { findSeedKnowledgeSource, retrieveKnowledge } from '../../knowledgeBase';
 import type { RagInputAdapter } from '../../ragAdapters/types';
 import { mergeAndRerankSources } from '../../sourceMerger';
 import type { WebSearchProvider } from '../../webSearchProvider';
@@ -50,9 +50,15 @@ export interface RagRetriever {
 
 export interface KnowledgeRetriever {
   retrieve(query: string, allowedAccessScopes?: string[]): Promise<SourceProvenance[]>;
+  resolveSource?(
+    sourceId: string,
+    allowedAccessScopes?: string[],
+  ): Promise<SourceProvenance | null>;
 }
 
 export class RagService implements RagRetriever {
+  private readonly sourceRegistry = new Map<string, SourceProvenance>();
+
   constructor(
     private readonly webSearchProvider: WebSearchProvider,
     private readonly inputAdapters: RagInputAdapter[] = [],
@@ -123,6 +129,7 @@ export class RagService implements RagRetriever {
     const dedupedKnowledgeBaseSources = dedupeByBestScore(knowledgeBaseSources);
     const dedupedWebSources = dedupeByBestScore(webSources);
     const sources = mergeAndRerankSources(knowledgeBaseSources, webSources);
+    this.rememberSources(sources);
 
     return {
       query,
@@ -131,6 +138,53 @@ export class RagService implements RagRetriever {
       webSources: dedupedWebSources,
       agent,
     };
+  }
+
+  async resolveSource(
+    sourceId: string,
+    options: RetrievalOptions,
+  ): Promise<SourceProvenance | null> {
+    const seed = findSeedKnowledgeSource(sourceId);
+    if (seed && this.seedKnowledgeEnabled) {
+      return seed;
+    }
+
+    const cached = this.sourceRegistry.get(sourceId);
+    if (cached && sourceMatchesAccess(cached, options.allowedAccessScopes)) {
+      return cached;
+    }
+
+    const vectorSource = await this.vectorKnowledgeBase?.resolveSource?.(
+      sourceId,
+      options.allowedAccessScopes,
+    );
+    if (vectorSource) {
+      this.rememberSources([vectorSource]);
+      return vectorSource;
+    }
+
+    for (const adapter of this.inputAdapters) {
+      const sources = await adapter.retrieve('');
+      this.rememberSources(sources);
+      const resolved = sources.find(
+        (source) => source.id === sourceId || source.metadata?.rootSourceId === sourceId,
+      );
+      if (resolved && sourceMatchesAccess(resolved, options.allowedAccessScopes)) {
+        return resolved;
+      }
+    }
+
+    return null;
+  }
+
+  private rememberSources(sources: SourceProvenance[]): void {
+    for (const source of sources) {
+      this.sourceRegistry.set(source.id, source);
+      const rootSourceId = source.metadata?.rootSourceId;
+      if (typeof rootSourceId === 'string' && rootSourceId) {
+        this.sourceRegistry.set(rootSourceId, source);
+      }
+    }
   }
 
   private async executeStep(
@@ -308,4 +362,21 @@ function dedupeByBestScore(sources: SourceProvenance[]): SourceProvenance[] {
 
 function sourceScore(source: SourceProvenance): number {
   return source.score ?? source.confidence ?? 0;
+}
+
+function sourceMatchesAccess(
+  source: SourceProvenance,
+  allowedAccessScopes: string[] | undefined,
+): boolean {
+  const accessScope = source.metadata?.accessScope;
+  const scopes = allowedAccessScopes ?? ['all_users'];
+  if (typeof accessScope === 'string') return scopes.includes(accessScope);
+  if (source.sourceType === 'web' || source.kind === 'web') return true;
+
+  const sourceKind = source.metadata?.sourceKind;
+  return (
+    scopes.includes('all_users') &&
+    typeof sourceKind === 'string' &&
+    sourceKind.startsWith('shared_directory_')
+  );
 }

@@ -11,6 +11,7 @@ import type {
   ChatResponse,
   CreateSessionResponse,
   GenerateGuideRootResponse,
+  GetSessionResponse,
 } from '@onboarding/shared';
 import { FileLogService } from '../server/logService';
 import { resetAppContainerForTests } from '../server/bootstrap/appContainer';
@@ -27,6 +28,8 @@ void test('Next API handlers create sessions, generate guides, chat, and expose 
   const sessionsRoute = await import('./api/sessions/route');
   const guideRootRoute = await import('./api/sessions/[sessionId]/guide/root/route');
   const chatRoute = await import('./api/sessions/[sessionId]/chat/route');
+  const sessionRoute = await import('./api/sessions/[sessionId]/route');
+  const sourceRoute = await import('./api/sources/[sourceId]/route');
   const ragWorkflowRoute = await import('./api/sessions/[sessionId]/rag-workflows/route');
   const logsRoute = await import('./api/logs/recent/route');
   const meRoute = await import('./api/auth/me/route');
@@ -67,6 +70,30 @@ void test('Next API handlers create sessions, generate guides, chat, and expose 
   const chat = (await chatResponse.json()) as ChatResponse;
   assert.equal(chat.message.role, 'assistant');
   assert.match(chat.message.content, /onboarding/i);
+  const source = chat.message.sources?.[0];
+  assert.ok(source?.href);
+
+  const reloadedResponse = await sessionRoute.GET(
+    new NextRequest(`http://localhost/api/sessions/${created.session.id}`, {
+      headers: { 'x-user-id': 'api-test-user' },
+    }),
+    { params: Promise.resolve({ sessionId: created.session.id }) },
+  );
+  assert.equal(reloadedResponse.status, 200);
+  const reloaded = (await reloadedResponse.json()) as GetSessionResponse;
+  assert.equal(reloaded.chatHistory.at(-1)?.sources?.[0]?.href, source?.href);
+
+  if (source?.href?.startsWith('/api/sources/')) {
+    const sourceResponse = await sourceRoute.GET(
+      new NextRequest(`http://localhost${source.href}`, {
+        headers: { 'x-user-id': 'api-test-user' },
+      }),
+      { params: Promise.resolve({ sourceId: source.id }) },
+    );
+    assert.equal(sourceResponse.status, 200);
+    assert.match(sourceResponse.headers.get('content-type') ?? '', /text\/html/);
+    assert.doesNotMatch(await sourceResponse.text(), /kb:\/\//);
+  }
 
   const disabledWorkflowResponse = await ragWorkflowRoute.POST(
     jsonRequest(`http://localhost/api/sessions/${created.session.id}/rag-workflows`, {

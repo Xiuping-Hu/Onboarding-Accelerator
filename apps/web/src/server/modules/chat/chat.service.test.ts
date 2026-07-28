@@ -68,10 +68,12 @@ void test('chat persists an explicit roadmap node reference and uses its evidenc
     response.session?.chatHistory[1]?.sources?.[0]?.excerpt,
     'Use the approved access request process.',
   );
+  assert.equal(response.session?.chatHistory[1]?.sources?.[0]?.href, '/api/sources/source-access');
 
   const persistedSession = await sessions.get(session.id, ownerId);
   assert.equal(
     persistedSession.chatHistory[1]?.sources?.[0]?.excerpt,
     'Evidence is resolved after the current access policy is checked.',
   );
+  assert.equal(persistedSession.chatHistory[1]?.sources?.[0]?.href, undefined);
 });

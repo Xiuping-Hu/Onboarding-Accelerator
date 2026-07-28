@@ -5,16 +5,12 @@ import { AgentMessage } from './AgentMessage';
 import { UserMessage } from './UserMessage';
 
 export function AgentThread({
-  evidenceExpanded,
   messageById,
-  onToggleEvidence,
   onTypingComplete,
   typingMessageId,
   userLabel,
 }: {
-  evidenceExpanded: string[];
   messageById: Map<string, ChatMessage>;
-  onToggleEvidence: (messageId: string) => void;
   onTypingComplete: (messageId: string) => void;
   typingMessageId: string | null;
   userLabel: string;
@@ -23,16 +19,14 @@ export function AgentThread({
     () => ({
       AssistantMessage: () => (
         <AgentMessage
-          evidenceExpanded={evidenceExpanded}
           messageById={messageById}
-          onToggleEvidence={onToggleEvidence}
           onTypingComplete={onTypingComplete}
           typingMessageId={typingMessageId}
         />
       ),
       UserMessage: () => <UserMessage messageById={messageById} userLabel={userLabel} />,
     }),
-    [evidenceExpanded, messageById, onToggleEvidence, onTypingComplete, typingMessageId, userLabel],
+    [messageById, onTypingComplete, typingMessageId, userLabel],
   );
 
   return (

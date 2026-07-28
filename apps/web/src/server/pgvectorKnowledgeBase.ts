@@ -74,6 +74,36 @@ export class PgvectorKnowledgeBase {
       };
     });
   }
+
+  async resolveSource(
+    sourceId: string,
+    allowedAccessScopes = this.allowedAccessScopes,
+  ): Promise<SourceProvenance | null> {
+    const result = await this.db.$queryRaw<KnowledgeChunkRow[]>(Prisma.sql`
+       select id,
+              title,
+              excerpt,
+              uri,
+              source_type,
+              metadata,
+              1 as score
+       from knowledge_chunks
+       where id = ${sourceId}
+         and embedding_profile = ${this.embeddingProfile}
+         and coalesce(metadata->>'accessScope', 'all_users') in (${Prisma.join(allowedAccessScopes)})
+       limit 1`);
+    const row = result[0];
+    if (!row) return null;
+
+    return {
+      id: row.id,
+      title: row.title,
+      excerpt: row.excerpt,
+      uri: row.uri ?? undefined,
+      sourceType: row.source_type ?? 'knowledge_base',
+      metadata: row.metadata ? parseMetadata(row.metadata) : undefined,
+    };
+  }
 }
 
 function keywordTerms(query: string): string[] {

@@ -83,7 +83,7 @@ export function rankChunks(query: string, chunks: TextChunk[], limit = 5): Sourc
         sourceType: chunk.sourceType,
         score,
         confidence: score,
-        metadata: chunk.metadata,
+        metadata: { ...chunk.metadata, rootSourceId: chunk.sourceId },
       };
     })
     .filter((source) => terms.length === 0 || (source.score ?? 0) > 0.12)

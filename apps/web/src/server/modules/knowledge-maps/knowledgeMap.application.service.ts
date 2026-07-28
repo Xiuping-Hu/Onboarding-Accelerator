@@ -46,4 +46,8 @@ export class KnowledgeMapService {
   accessScopesFor(accountId: string) {
     return this.repository.accessScopesFor(accountId);
   }
+
+  resolveSource(sourceId: string, accessScopes: string[]) {
+    return this.repository.resolveSource(sourceId, accessScopes);
+  }
 }

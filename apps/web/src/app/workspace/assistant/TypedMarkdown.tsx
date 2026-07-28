@@ -1,9 +1,26 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import type { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { isSafeMarkdownHref } from '@/features/workspace/sourceLinks';
 
 const MAX_TYPING_DURATION_MS = 7_000;
 const DEFAULT_MS_PER_CHARACTER = 20;
+
+const markdownComponents: Components = {
+  a: ({ children, href, node: _node, ...props }) => {
+    if (!isSafeMarkdownHref(href)) {
+      return <>{children}</>;
+    }
+
+    return (
+      <a href={href} rel="noopener noreferrer" target="_blank" {...props}>
+        {children}
+        <span className="sr-only"> (opens in a new tab)</span>
+      </a>
+    );
+  },
+};
 
 export function TypedMarkdown({
   animate,
@@ -59,7 +76,13 @@ export function TypedMarkdown({
 
   return (
     <div className="typed-response" data-typing={isTyping || undefined}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{content.slice(0, visibleLength)}</ReactMarkdown>
+      <ReactMarkdown
+        components={markdownComponents}
+        remarkPlugins={[remarkGfm]}
+        urlTransform={(url) => (isSafeMarkdownHref(url) ? url : '')}
+      >
+        {content.slice(0, visibleLength)}
+      </ReactMarkdown>
       {isTyping ? <span aria-hidden="true" className="typing-cursor" /> : null}
     </div>
   );
