@@ -1,27 +1,22 @@
 import { MessagePrimitive, useAuiState } from '@assistant-ui/react';
 import type { ChatMessage } from '@onboarding/shared';
 import { useCallback } from 'react';
-import { AssistantEvidence } from './AssistantEvidence';
+import { AssistantSourcesPopover } from './AssistantSourcesPopover';
 import { MessageRoleCircle } from './MessageRoleCircle';
 import { TypedMarkdown } from './TypedMarkdown';
 
 export function AgentMessage({
-  evidenceExpanded,
   messageById,
-  onToggleEvidence,
   onTypingComplete,
   typingMessageId,
 }: {
-  evidenceExpanded: string[];
   messageById: Map<string, ChatMessage>;
-  onToggleEvidence: (messageId: string) => void;
   onTypingComplete: (messageId: string) => void;
   typingMessageId: string | null;
 }) {
   const messageId = useAuiState((state) => state.message.id);
   const sourceMessage = messageById.get(messageId);
   const messageSources = sourceMessage?.sources ?? [];
-  const isExpanded = evidenceExpanded.includes(messageId);
   const isTyping = typingMessageId === messageId;
   const finishTyping = useCallback(
     () => onTypingComplete(messageId),
@@ -48,11 +43,9 @@ export function AgentMessage({
           <MessagePrimitive.Parts />
         )}
         {!isTyping ? (
-          <AssistantEvidence
-            expanded={isExpanded}
-            messageId={messageId}
-            onToggle={onToggleEvidence}
+          <AssistantSourcesPopover
             sources={messageSources}
+            unavailable={sourceMessage?.sourceLinkStatus === 'unavailable'}
           />
         ) : null}
       </div>

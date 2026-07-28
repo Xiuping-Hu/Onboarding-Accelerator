@@ -46,6 +46,10 @@ const seedKnowledge: SourceProvenance[] = [
   },
 ];
 
+export function findSeedKnowledgeSource(sourceId: string): SourceProvenance | undefined {
+  return seedKnowledge.find((source) => source.id === sourceId);
+}
+
 export async function retrieveKnowledge(question: string): Promise<RetrievalResult[]> {
   const normalizedQuestion = question.toLowerCase();
   const terms = normalizedQuestion.split(/[^a-z0-9]+/).filter(Boolean);

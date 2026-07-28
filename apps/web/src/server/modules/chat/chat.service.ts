@@ -14,6 +14,11 @@ import { NoopLogService, type LogService } from '../../logService';
 import type { SessionRepository } from '../../sessionRepository';
 import { touchSession } from '../../sessionRepository';
 import type { KnowledgeMapService } from '../knowledge-maps/knowledgeMap.application.service';
+import {
+  DirectSourceLinkResolver,
+  PERSISTED_SOURCE_EXCERPT,
+  type SourceLinkResolver,
+} from '../../sourceLinkService';
 
 export class ChatService {
   constructor(
@@ -22,6 +27,7 @@ export class ChatService {
     private readonly answers: AnswerProvider,
     private readonly logs: LogService = new NoopLogService(),
     private readonly knowledgeMaps?: KnowledgeMapService,
+    private readonly sourceLinks: SourceLinkResolver = new DirectSourceLinkResolver(),
   ) {}
 
   async chat(sessionId: string, request: ChatRequest, ownerId: string): Promise<ChatResponse> {
@@ -75,6 +81,14 @@ export class ChatService {
     };
     session.chatHistory.push(userMessage, persistedAssistantMessage);
     const savedSession = await this.sessions.save(touchSession(session), ownerId);
+    const resolvedSources = await this.sourceLinks.resolveSources(retrieval.sources, ownerId);
+    const responseAssistantMessage: ChatMessage = {
+      ...assistantMessage,
+      sources: resolvedSources.sources,
+      ...(resolvedSources.status === 'unavailable'
+        ? { sourceLinkStatus: 'unavailable' as const }
+        : {}),
+    };
 
     if (answer.usage) {
       await this.logs.recordAiUsage({
@@ -86,9 +100,9 @@ export class ChatService {
     }
 
     return {
-      message: assistantMessage,
-      session: withAuthorizedResponseMessage(savedSession, assistantMessage),
-      sources: retrieval.sources,
+      message: responseAssistantMessage,
+      session: withAuthorizedResponseMessage(savedSession, responseAssistantMessage),
+      sources: resolvedSources.sources,
       guideNodeIds,
       focusStepIds: assistantMessage.focusStepIds,
       usage: answer.usage,
@@ -178,7 +192,7 @@ function toPersistedSourceReferences(sources: SourceProvenance[]): SourceProvena
   return sources.map((source) => ({
     id: source.id,
     title: source.title,
-    excerpt: 'Evidence is resolved after the current access policy is checked.',
+    excerpt: PERSISTED_SOURCE_EXCERPT,
     sourceType: source.sourceType,
     kind: source.kind,
     metadata: Object.fromEntries(

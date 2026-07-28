@@ -68,6 +68,7 @@ export interface KnowledgeMapRepositoryPort {
     actorUserId: string,
   ): Promise<void>;
   accessScopesFor(accountId: string): Promise<string[]>;
+  resolveSource(sourceId: string, accessScopes: string[]): Promise<SourceProvenance | null>;
 }
 
 type VersionRow = {
@@ -348,6 +349,29 @@ export class PrismaKnowledgeMapRepository implements KnowledgeMapRepositoryPort 
       select: { accessScope: true },
     });
     return memberships.length ? memberships.map((row) => row.accessScope) : ['all_users'];
+  }
+
+  async resolveSource(sourceId: string, accessScopes: string[]): Promise<SourceProvenance | null> {
+    const source = await this.db.knowledgeSource.findFirst({
+      where: { id: sourceId, accessScope: { in: accessScopes } },
+      select: { id: true, title: true, uri: true, accessScope: true },
+    });
+    if (!source) return null;
+
+    const chunk = await this.db.knowledgeChunk.findFirst({
+      where: { sourceId: source.id },
+      orderBy: { updatedAt: 'desc' },
+      select: { excerpt: true },
+    });
+
+    return {
+      id: source.id,
+      title: source.title,
+      excerpt: chunk?.excerpt ?? 'Approved company knowledge source.',
+      uri: source.uri,
+      sourceType: 'knowledge_base',
+      metadata: { rootSourceId: source.id, accessScope: source.accessScope },
+    };
   }
 
   private async findPublishedVersion(accessScopes: string[], mapId?: string): Promise<VersionRow> {

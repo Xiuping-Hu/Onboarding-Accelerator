@@ -13,6 +13,7 @@ export interface SourceProvenance {
   title: string;
   excerpt: string;
   uri?: string;
+  href?: string;
   sourceType?: SourceType;
   kind?: LegacySourceKind;
   score?: number;
@@ -61,6 +62,7 @@ export interface ChatMessage {
   content: string;
   createdAt: string;
   sources?: SourceProvenance[];
+  sourceLinkStatus?: 'unavailable';
   guideNodeIds?: string[];
   focusStepIds?: string[];
   roadmapReferences?: RoadmapNodeReference[];
