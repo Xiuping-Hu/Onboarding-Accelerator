@@ -23,6 +23,7 @@ superseded, and future-planning documents can be referenced without competing wi
 | 016    | `archive/016-frontend-two-layer-component-extraction.md`    | Implemented | Two-layer business and common frontend component extraction architecture. |
 | 017    | `archive/017-mastra-snapshot-rag-workflow.md`               | Proposed    | Three-part Mastra RAG workflow with snapshots and targeted recovery.      |
 | 018    | `archive/018-clickable-ai-response-links-source-popover.md` | Implemented | Clickable AI links and an icon/count source popover.                      |
+| 019    | `archive/019-login-page-visual-refactor.md`                 | Implemented | Pixel-matched `/login` refactor based on the supplied reference image.    |
 
 Current runtime documentation lives in `README.md`, `docs/production-readiness.md`, and the generated
 harness docs under `docs/harness/generated`.
