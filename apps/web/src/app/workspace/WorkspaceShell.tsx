@@ -65,6 +65,7 @@ export function WorkspaceShell({
   const pathname = usePathname();
   const [sessions, setSessions] = useState<OnboardingSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [guideSessionId, setGuideSessionId] = useState<string | null>(null);
   const [graph, setGraph] = useState<GuideGraph | null>(null);
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [knowledgeMapEnabled, setKnowledgeMapEnabled] = useState(false);
@@ -81,6 +82,7 @@ export function WorkspaceShell({
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<DeleteError>(null);
   const activeSessionIdRef = useRef<string | null>(null);
+  const guideSessionIdRef = useRef<string | null>(null);
   const guideLoadRequestRef = useRef(0);
   const mobileNavigationToggleRef = useRef<HTMLButtonElement | null>(null);
   const navigationPreferenceTouchedRef = useRef(false);
@@ -146,6 +148,10 @@ export function WorkspaceShell({
   }, [activeSessionId]);
 
   useEffect(() => {
+    guideSessionIdRef.current = guideSessionId;
+  }, [guideSessionId]);
+
+  useEffect(() => {
     if (!isMobileNavigationOpen) return;
 
     const navigation = document.getElementById('workspace-primary-navigation-content');
@@ -196,7 +202,7 @@ export function WorkspaceShell({
     try {
       setApiError(null);
       const response = await getRootGuide({ sessionId, webSearchEnabled: false });
-      if (requestId !== guideLoadRequestRef.current || activeSessionIdRef.current !== sessionId) {
+      if (requestId !== guideLoadRequestRef.current || guideSessionIdRef.current !== sessionId) {
         return;
       }
       setKnowledgeMapEnabled(response.knowledgeMapEnabled === true);
@@ -205,7 +211,7 @@ export function WorkspaceShell({
       const focusId = response.focusStepId ?? response.graph.rootId;
       setSelectedStepId(response.graph.emptyReason === 'not_created' ? null : focusId);
     } catch (error) {
-      if (requestId !== guideLoadRequestRef.current || activeSessionIdRef.current !== sessionId) {
+      if (requestId !== guideLoadRequestRef.current || guideSessionIdRef.current !== sessionId) {
         return;
       }
       setApiError(formatError(error, 'Could not load the onboarding roadmap.'));
@@ -222,14 +228,16 @@ export function WorkspaceShell({
         const response = await listSessions();
         let nextSessions = response.sessions;
         if (nextSessions.length === 0) {
-          const created = await createSession({ title: 'First-week plan' });
+          const created = await createSession({ title: 'Chat 1' });
           nextSessions = [created.session];
         }
         setSessions(nextSessions);
         setMessagesBySessionId(indexSessionMessages(nextSessions));
-        setActiveSessionId(nextSessions[0]?.id ?? null);
+        const initialSessionId = nextSessions[0]?.id ?? null;
+        setActiveSessionId(initialSessionId);
+        setGuideSessionId(initialSessionId);
       } catch (error) {
-        setApiError(formatError(error, 'Could not load onboarding plans.'));
+        setApiError(formatError(error, 'Could not load chat sessions.'));
       } finally {
         setIsLoading(false);
       }
@@ -237,23 +245,23 @@ export function WorkspaceShell({
   }, []);
 
   useEffect(() => {
-    if (!activeSessionId) return;
+    if (!guideSessionId) return;
     setGraph(null);
     setSelectedStepId(null);
     setReferencedStepId(null);
     setSources([]);
-    void loadGuide(activeSessionId);
-  }, [activeSessionId, loadGuide]);
+    void loadGuide(guideSessionId);
+  }, [guideSessionId, loadGuide]);
 
   async function handleCreateSession() {
     try {
       setApiError(null);
-      const created = await createSession({ title: `Onboarding plan ${sessions.length + 1}` });
+      const created = await createSession({ title: `Chat ${sessions.length + 1}` });
       setSessions((current) => [created.session, ...current]);
       setMessagesBySessionId((current) => ({ ...current, [created.session.id]: [] }));
       setActiveSessionId(created.session.id);
     } catch (error) {
-      setApiError(formatError(error, 'Could not create a new onboarding plan.'));
+      setApiError(formatError(error, 'Could not create a new chat session.'));
     }
   }
 
@@ -268,9 +276,10 @@ export function WorkspaceShell({
       setMessagesBySessionId((current) => removeSessionMessages(current, sessionId));
       setRunningSessionIds((current) => current.filter((id) => id !== sessionId));
       if (activeSessionId === sessionId) setActiveSessionId(remaining[0]?.id ?? null);
+      if (guideSessionId === sessionId) setGuideSessionId(remaining[0]?.id ?? null);
     } catch (error) {
       setDeleteError({
-        message: formatError(error, 'Could not delete the onboarding plan.'),
+        message: formatError(error, 'Could not delete the chat session.'),
         sessionId,
       });
     } finally {
@@ -362,8 +371,13 @@ export function WorkspaceShell({
     setIsAssistantMinimized(false);
   }
 
+  function handleSelectSession(sessionId: string) {
+    setActiveSessionId(sessionId);
+    setReferencedStepId(null);
+  }
+
   function handleRetry() {
-    if (activeSessionId) void loadGuide(activeSessionId);
+    if (guideSessionId) void loadGuide(guideSessionId);
     else window.location.reload();
   }
 
@@ -382,7 +396,7 @@ export function WorkspaceShell({
         onCreatePlan={handleCreateSession}
         onDeletePlan={handleDeleteSession}
         onSelectPlan={(sessionId) => {
-          setActiveSessionId(sessionId);
+          handleSelectSession(sessionId);
           return Promise.resolve();
         }}
         onSendMessage={handleSendMessage}
@@ -456,16 +470,6 @@ export function WorkspaceShell({
             </div>
           </header>
 
-          <WorkspaceSessionTabs
-            activeSessionId={activeSessionId}
-            deleteError={deleteError}
-            deletingSessionId={deletingSessionId}
-            onCreate={handleCreateSession}
-            onDelete={handleDeleteSession}
-            onSelect={setActiveSessionId}
-            sessions={sessions}
-          />
-
           {isSigningOut ? (
             <div className="workspace-alert" role="status">
               <span>Signing you out…</span>
@@ -494,12 +498,8 @@ export function WorkspaceShell({
             <div className="workspace-dashboard-grid">
               <main
                 aria-busy={isLoading}
-                aria-labelledby={
-                  activeSessionId ? `workspace-session-tab-${activeSessionId}` : undefined
-                }
                 className="workspace-route-content"
                 id="workspace-content"
-                role="tabpanel"
               >
                 {children}
               </main>
@@ -526,20 +526,40 @@ export function WorkspaceShell({
                   id="onboarding-assistant-content"
                 >
                   {!isAssistantMinimized ? (
-                    <AgentChatDrawer
-                      canSend={Boolean(activeSessionId)}
-                      isRunning={isChatLoading}
-                      messages={activeMessages}
-                      onAddReference={() => {
-                        if (referenceCandidate) setReferencedStepId(referenceCandidate.id);
-                      }}
-                      onMinimize={() => setIsAssistantMinimized(true)}
-                      onRemoveReference={() => setReferencedStepId(null)}
-                      onSendSuggestion={handleSendMessage}
-                      referenceCandidate={referenceCandidate}
-                      referencedStep={referencedStep}
-                      userLabel={accountLabel}
-                    />
+                    <>
+                      <WorkspaceSessionTabs
+                        activeSessionId={activeSessionId}
+                        deleteError={deleteError}
+                        deletingSessionId={deletingSessionId}
+                        onCreate={handleCreateSession}
+                        onDelete={handleDeleteSession}
+                        onSelect={handleSelectSession}
+                        sessions={sessions}
+                      />
+                      <div
+                        aria-labelledby={
+                          activeSessionId ? `workspace-session-tab-${activeSessionId}` : undefined
+                        }
+                        className="assistant-session-content"
+                        id="assistant-session-content"
+                        role="tabpanel"
+                      >
+                        <AgentChatDrawer
+                          canSend={Boolean(activeSessionId)}
+                          isRunning={isChatLoading}
+                          messages={activeMessages}
+                          onAddReference={() => {
+                            if (referenceCandidate) setReferencedStepId(referenceCandidate.id);
+                          }}
+                          onMinimize={() => setIsAssistantMinimized(true)}
+                          onRemoveReference={() => setReferencedStepId(null)}
+                          onSendSuggestion={handleSendMessage}
+                          referenceCandidate={referenceCandidate}
+                          referencedStep={referencedStep}
+                          userLabel={accountLabel}
+                        />
+                      </div>
+                    </>
                   ) : null}
                 </div>
               </aside>
@@ -614,7 +634,7 @@ function WorkspaceSessionTabs({
                 role="presentation"
               >
                 <button
-                  aria-controls="workspace-content"
+                  aria-controls="assistant-session-content"
                   aria-selected={isActive}
                   className="workspace-session-tab__select"
                   id={`workspace-session-tab-${session.id}`}
@@ -656,7 +676,7 @@ function WorkspaceSessionTabs({
       </div>
       <ConfirmDialog
         confirmLabel={`Delete ${sessionPendingDelete?.title ?? 'session'}`}
-        description="This session and its conversation history will be permanently removed."
+        description="This AI chat session and its conversation history will be permanently removed."
         error={deleteDialogError}
         onCancel={() => setSessionPendingDelete(null)}
         onConfirm={() => {
