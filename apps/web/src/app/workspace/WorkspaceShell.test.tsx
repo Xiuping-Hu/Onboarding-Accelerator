@@ -59,24 +59,30 @@ void test('keeps assistant state across routed workspace pages', async () => {
   );
 });
 
-void test('exposes session selection, creation, and deletion in the workspace tab bar', async () => {
+void test('keeps session controls and content inside the assistant without reloading the workspace', async () => {
   const firstPlan = createSessionFixture('plan-1', 'First plan');
   const secondPlan = createSessionFixture('plan-2', 'Second plan');
   const requests = installWorkspaceFetch([firstPlan, secondPlan]);
   const user = userEvent.setup({ document: dom.window.document });
   render(shellAt('/workspace', <p>Overview route body</p>));
 
-  const tabList = await screen.findByRole('tablist', { name: 'Onboarding sessions' });
+  const assistant = screen.getByRole('complementary', { name: 'Onboarding assistant' });
+  const tabList = await within(assistant).findByRole('tablist', { name: 'Onboarding sessions' });
   const firstPlanTab = within(tabList).getByRole('tab', { name: 'First plan' });
   const secondPlanTab = within(tabList).getByRole('tab', { name: 'Second plan' });
   assert.equal(firstPlanTab.getAttribute('aria-selected'), 'true');
+  assert.ok(within(assistant).getByRole('tabpanel', { name: 'First plan' }));
+  assert.equal(screen.getByText('Overview route body').closest('[role="tabpanel"]'), null);
 
   await user.click(secondPlanTab);
   assert.equal(secondPlanTab.getAttribute('aria-selected'), 'true');
+  assert.ok(within(assistant).getByRole('tabpanel', { name: 'Second plan' }));
+  assert.equal(requests.includes('POST /api/sessions/plan-2/guide/root'), false);
 
   await user.click(within(tabList).getByRole('button', { name: 'New session' }));
-  const createdPlanTab = await within(tabList).findByRole('tab', { name: 'Onboarding plan 3' });
+  const createdPlanTab = await within(tabList).findByRole('tab', { name: 'Chat 3' });
   assert.equal(createdPlanTab.getAttribute('aria-selected'), 'true');
+  assert.equal(requests.includes('POST /api/sessions/plan-3/guide/root'), false);
 
   await user.click(within(tabList).getByRole('button', { name: 'Delete Second plan' }));
   const deleteDialog = await screen.findByRole('alertdialog');

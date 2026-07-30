@@ -260,10 +260,12 @@
 }
 
 .workspace-session-tabs {
+  width: 100%;
   min-width: 0;
   flex: 0 0 auto;
-  margin-bottom: 24px;
+  padding: 8px 8px 0;
   border-bottom: 1px solid var(--workspace-border);
+  background: #f8f9ff;
 }
 
 .workspace-session-tabs__scroller {
@@ -319,8 +321,8 @@
 }
 
 .workspace-session-tab__select {
-  max-width: 200px;
-  min-height: 40px;
+  max-width: 132px;
+  min-height: 36px;
   overflow: hidden;
   padding: 0 12px;
   font-size: 13px;
@@ -366,8 +368,8 @@
 }
 
 .workspace-session-tab--new {
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   justify-content: center;
   border: 1px solid transparent;
   color: var(--workspace-assistant);
@@ -1055,10 +1057,19 @@
   width: 100%;
   min-width: 0;
   min-height: 0;
+  flex-direction: column;
 }
 
 .assistant-panel-content[hidden] {
   display: none;
+}
+
+.assistant-session-content {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
 }
 
 .assistant-restore-button {
@@ -1907,10 +1918,6 @@
   .workspace-heading-copy p {
     margin-top: 4px;
     font-size: 12px;
-  }
-
-  .workspace-session-tabs {
-    margin-bottom: 18px;
   }
 
   .workspace-session-tab__select {
