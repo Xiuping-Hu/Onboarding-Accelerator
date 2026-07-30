@@ -201,14 +201,12 @@
 }
 
 .workspace-dashboard-surface {
-  display: flex;
   height: 100vh;
   height: 100dvh;
   min-height: 0;
-  flex-direction: column;
   overflow: hidden;
   border-radius: 0;
-  padding: 34px 34px 38px;
+  padding: 0;
   background:
     radial-gradient(circle at 85% 4%, rgb(238 240 255 / 65%), transparent 24%),
     var(--workspace-surface);
@@ -218,9 +216,8 @@
   display: flex;
   flex: 0 0 auto;
   align-items: center;
-  justify-content: space-between;
   gap: 24px;
-  margin-bottom: 18px;
+  margin-bottom: 28px;
 }
 
 .workspace-heading-copy {
@@ -250,13 +247,6 @@
 .welcome-wave {
   display: inline-block;
   margin-left: 7px;
-}
-
-.workspace-header-actions {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 12px;
 }
 
 .workspace-session-tabs {
@@ -380,21 +370,6 @@
   background: var(--workspace-assistant-soft);
 }
 
-.workspace-avatar {
-  display: grid;
-  width: 44px;
-  height: 44px;
-  flex: 0 0 44px;
-  place-items: center;
-  border: 3px solid #ffffff;
-  border-radius: 999px;
-  background: linear-gradient(145deg, #d9dded, #aeb6d1);
-  box-shadow: 0 3px 12px rgb(37 44 70 / 18%);
-  color: #27304a;
-  font-size: 13px;
-  font-weight: 800;
-}
-
 .mobile-navigation-toggle {
   display: none;
 }
@@ -433,13 +408,22 @@
 .workspace-dashboard-grid {
   display: grid;
   grid-template-columns: minmax(420px, 1fr) clamp(300px, 31%, 360px);
-  flex: 1 1 auto;
+  height: 100%;
   gap: 24px;
   align-items: stretch;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
   transition: grid-template-columns 180ms ease;
+}
+
+.workspace-main-column {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 34px 0 38px 34px;
 }
 
 .app-shell[data-assistant-minimized='true'] .workspace-dashboard-grid {
@@ -449,6 +433,7 @@
 .workspace-route-content {
   min-width: 0;
   min-height: 0;
+  flex: 1 1 auto;
   overflow-y: auto;
   outline: none;
   scrollbar-width: none;
@@ -1037,8 +1022,9 @@
   min-height: 0;
   max-height: none;
   overflow: hidden;
-  border: 1px solid var(--workspace-border);
-  border-radius: var(--workspace-card-radius);
+  border: 0;
+  border-left: 1px solid var(--workspace-border);
+  border-radius: 0;
   background: #ffffff;
   box-shadow: 0 5px 18px rgb(31 38 61 / 7%);
 }
@@ -1737,8 +1723,9 @@
 }
 
 @media (max-width: 1180px) {
-  .workspace-dashboard-surface {
+  .workspace-main-column {
     padding: 28px 24px 32px;
+    padding-right: 0;
   }
 
   .workspace-dashboard-grid {
@@ -1772,6 +1759,12 @@
     overflow: visible;
   }
 
+  .workspace-main-column {
+    min-height: auto;
+    overflow: visible;
+    padding: 28px 24px 0;
+  }
+
   .assistant-panel,
   .assistant-panel[data-minimized='true'] {
     position: relative;
@@ -1779,6 +1772,10 @@
     height: 640px;
     min-height: 0;
     max-height: min(720px, 82vh);
+    border: 1px solid var(--workspace-border);
+    border-radius: var(--workspace-card-radius);
+    margin: 0 24px 32px;
+    width: calc(100% - 48px);
   }
 
   .assistant-panel[data-minimized='true'] {
@@ -1879,12 +1876,16 @@
     min-height: 0;
     overflow: hidden;
     border-radius: 0;
-    padding: 20px 16px 28px;
+    padding: 0;
+  }
+
+  .workspace-main-column {
+    padding: 20px 16px 0;
   }
 
   .workspace-dashboard-header {
     display: grid;
-    grid-template-columns: 44px minmax(0, 1fr) auto;
+    grid-template-columns: 44px minmax(0, 1fr);
     gap: 10px;
     align-items: center;
     margin-bottom: 22px;
@@ -1922,10 +1923,6 @@
 
   .workspace-session-tab__select {
     max-width: min(180px, 46vw);
-  }
-
-  .workspace-avatar {
-    display: none;
   }
 
   .workspace-dashboard-grid {
@@ -1969,6 +1966,8 @@
   .assistant-panel,
   .assistant-panel[data-minimized='true'] {
     max-height: none;
+    width: calc(100% - 32px);
+    margin: 0 16px 28px;
   }
 
   .assistant-panel {
@@ -1999,11 +1998,7 @@
 
 @media (max-width: 420px) {
   .workspace-dashboard-header {
-    grid-template-columns: 44px minmax(0, 1fr) 44px;
-  }
-
-  .workspace-header-actions {
-    gap: 0;
+    grid-template-columns: 44px minmax(0, 1fr);
   }
 
   .progress-card,

@@ -45,10 +45,6 @@ function formatError(error: unknown, fallback: string): string {
   return error instanceof Error ? `${fallback} ${error.message}` : fallback;
 }
 
-function formatAccountRole(role: string | undefined) {
-  return role === 'admin' ? 'Administrator' : 'Member';
-}
-
 export function WorkspaceShell({
   account,
   children,
@@ -435,54 +431,6 @@ export function WorkspaceShell({
           className="workspace-dashboard-surface"
           inert={isMobileNavigationModalOpen || undefined}
         >
-          <header className="workspace-dashboard-header">
-            <button
-              aria-controls="workspace-primary-navigation-content"
-              aria-expanded={isMobileNavigationOpen}
-              aria-label={isMobileNavigationOpen ? 'Close navigation' : 'Open navigation'}
-              className="mobile-navigation-toggle"
-              onClick={() => setIsMobileNavigationOpen((current) => !current)}
-              ref={mobileNavigationToggleRef}
-              type="button"
-            >
-              <MenuIcon open={isMobileNavigationOpen} />
-            </button>
-            <div className="workspace-heading-copy">
-              <h1 ref={pageHeadingRef} tabIndex={-1}>
-                {pageMeta.title}
-                {pageMeta.showWave ? (
-                  <span aria-hidden="true" className="welcome-wave">
-                    {'\u{1F44B}'}
-                  </span>
-                ) : null}
-              </h1>
-              <p>{pageMeta.subtitle}</p>
-            </div>
-            <div className="workspace-header-actions">
-              <span
-                aria-label={`${accountLabel}, ${formatAccountRole(account.role)}`}
-                className="workspace-avatar"
-                role="img"
-                title={`${accountLabel} - ${formatAccountRole(account.role)}`}
-              >
-                {getAccountInitials(accountLabel)}
-              </span>
-            </div>
-          </header>
-
-          {isSigningOut ? (
-            <div className="workspace-alert" role="status">
-              <span>Signing you out…</span>
-            </div>
-          ) : logoutError || apiError ? (
-            <div className="workspace-alert" role="alert">
-              <span>{logoutError ?? apiError}</span>
-              <button onClick={logoutError ? onLogout : handleRetry} type="button">
-                Try again
-              </button>
-            </div>
-          ) : null}
-
           <WorkspaceRouteProvider
             value={{
               apiError,
@@ -496,13 +444,53 @@ export function WorkspaceShell({
             }}
           >
             <div className="workspace-dashboard-grid">
-              <main
-                aria-busy={isLoading}
-                className="workspace-route-content"
-                id="workspace-content"
-              >
-                {children}
-              </main>
+              <div className="workspace-main-column">
+                <header className="workspace-dashboard-header">
+                  <button
+                    aria-controls="workspace-primary-navigation-content"
+                    aria-expanded={isMobileNavigationOpen}
+                    aria-label={isMobileNavigationOpen ? 'Close navigation' : 'Open navigation'}
+                    className="mobile-navigation-toggle"
+                    onClick={() => setIsMobileNavigationOpen((current) => !current)}
+                    ref={mobileNavigationToggleRef}
+                    type="button"
+                  >
+                    <MenuIcon open={isMobileNavigationOpen} />
+                  </button>
+                  <div className="workspace-heading-copy">
+                    <h1 ref={pageHeadingRef} tabIndex={-1}>
+                      {pageMeta.title}
+                      {pageMeta.showWave ? (
+                        <span aria-hidden="true" className="welcome-wave">
+                          {'\u{1F44B}'}
+                        </span>
+                      ) : null}
+                    </h1>
+                    <p>{pageMeta.subtitle}</p>
+                  </div>
+                </header>
+
+                {isSigningOut ? (
+                  <div className="workspace-alert" role="status">
+                    <span>Signing you out…</span>
+                  </div>
+                ) : logoutError || apiError ? (
+                  <div className="workspace-alert" role="alert">
+                    <span>{logoutError ?? apiError}</span>
+                    <button onClick={logoutError ? onLogout : handleRetry} type="button">
+                      Try again
+                    </button>
+                  </div>
+                ) : null}
+
+                <main
+                  aria-busy={isLoading}
+                  className="workspace-route-content"
+                  id="workspace-content"
+                >
+                  {children}
+                </main>
+              </div>
               <aside
                 aria-label="Onboarding assistant"
                 className="assistant-panel"
@@ -712,13 +700,6 @@ function getWorkspacePageMeta(pathname: string, displayName: string | undefined)
     subtitle: "Here's your onboarding overview",
     showWave: Boolean(displayName),
   };
-}
-
-function getAccountInitials(label: string) {
-  const parts = label.trim().split(/\s+/u).filter(Boolean);
-  if (parts.length === 0) return 'U';
-  if (parts.length === 1) return (parts[0]?.[0] ?? 'U').toUpperCase();
-  return `${parts[0]?.[0] ?? ''}${parts.at(-1)?.[0] ?? ''}`.toUpperCase();
 }
 
 function MenuIcon({ open }: { open: boolean }) {
