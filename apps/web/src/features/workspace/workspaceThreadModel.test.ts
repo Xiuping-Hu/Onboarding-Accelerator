@@ -1,13 +1,30 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { ChatMessage, OnboardingSession } from '@onboarding/shared';
+import type { ChatMessage, KnowledgeSource, OnboardingSession } from '@onboarding/shared';
 import {
   appendSessionMessage,
   indexSessionMessages,
+  mergeSourcesForActiveSession,
   removeSessionMessages,
   replaceSessionMessages,
   toPlanThreads,
 } from './workspaceThreadModel';
+
+const firstSource: KnowledgeSource = {
+  id: 'first-source',
+  title: 'First plan source',
+  excerpt: 'First plan material',
+  href: '/api/sources/first-source',
+  sourceType: 'knowledge_base',
+};
+
+const lateSource: KnowledgeSource = {
+  id: 'late-source',
+  title: 'Late source',
+  excerpt: 'Late response material',
+  href: '/api/sources/late-source',
+  sourceType: 'knowledge_base',
+};
 
 const firstMessage: ChatMessage = {
   id: 'first-message',
@@ -50,6 +67,19 @@ void test('keeps chat histories isolated by plan when a response completes after
 
   assert.deepEqual(withPendingAnswer['plan-one'], [firstMessage, secondMessage]);
   assert.deepEqual(withPendingAnswer['plan-two'], []);
+});
+
+void test('does not merge late response sources into the newly active plan', () => {
+  const unchanged = mergeSourcesForActiveSession(
+    [firstSource],
+    [lateSource],
+    'plan-two',
+    'plan-one',
+  );
+  const merged = mergeSourcesForActiveSession([firstSource], [lateSource], 'plan-one', 'plan-one');
+
+  assert.deepEqual(unchanged, [firstSource]);
+  assert.deepEqual(merged, [firstSource, lateSource]);
 });
 
 void test('reconciles one plan from canonical saved history without changing another plan', () => {

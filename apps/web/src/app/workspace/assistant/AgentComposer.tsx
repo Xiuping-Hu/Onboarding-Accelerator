@@ -34,7 +34,7 @@ export function AgentComposer({
             + Reference selected node: {referenceCandidate.title}
           </button>
         ) : (
-          <small>Select a roadmap node to add it as chat context.</small>
+          <small>Choose a roadmap stage to add it as chat context.</small>
         )}
       </div>
       <ComposerPrimitive.Root className="chat-form">
@@ -45,7 +45,18 @@ export function AgentComposer({
           style={{ resize: 'none' }}
           submitMode="enter"
         />
-        <ComposerPrimitive.Send className="primary-button">Send</ComposerPrimitive.Send>
+        <ComposerPrimitive.Send aria-label="Send message" className="chat-send-button">
+          <svg aria-hidden="true" fill="none" viewBox="0 0 20 20">
+            <path
+              d="m3 9.25 13.5-5.5-4.75 12.5-2.2-5-6.55-2Zm6.55 2L16.5 3.75"
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="1.5"
+            />
+          </svg>
+          <span className="sr-only">Send message</span>
+        </ComposerPrimitive.Send>
       </ComposerPrimitive.Root>
     </>
   );

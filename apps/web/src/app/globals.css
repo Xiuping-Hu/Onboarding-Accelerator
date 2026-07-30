@@ -12,6 +12,23 @@
   --user-surface: #e9f3ff;
   --focus-ring: #2458d3;
   --panel-radius: 14px;
+  --workspace-viewport: #f1f3f7;
+  --workspace-surface: #fbfcfe;
+  --workspace-card: #ffffff;
+  --workspace-sidebar: #363a5a;
+  --workspace-sidebar-strong: #2e314d;
+  --workspace-sidebar-text: #f7f8ff;
+  --workspace-border: #e0e4ec;
+  --workspace-heading: #171b2a;
+  --workspace-muted: #687086;
+  --workspace-gold: #dca024;
+  --workspace-gold-soft: #fff7df;
+  --workspace-success: #2d7f5e;
+  --workspace-success-soft: #eaf7f1;
+  --workspace-assistant: #5d63e6;
+  --workspace-assistant-soft: #eff0ff;
+  --workspace-radius: 20px;
+  --workspace-card-radius: 12px;
 }
 
 html,

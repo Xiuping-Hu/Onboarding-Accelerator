@@ -1,86 +1,34 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { LoginScreen } from '../login/LoginScreen';
-import { BrandLoader } from '@/components/common/feedback/BrandLoader';
+import { useState, type ReactNode } from 'react';
 import { ErrorBoundary } from '@/components/common/feedback/ErrorBoundary';
-import { getCurrentAccount, logoutAccount, type AccountSession } from '@/features/workspace/api';
+import { logoutAccount, type AccountSession } from '@/features/workspace/api';
 import { WorkspaceShell } from './WorkspaceShell';
 
-function WorkspaceContent({
+export function WorkspaceExperience({
+  children,
   initialAccount,
-  initialLoginError,
 }: {
-  initialAccount?: AccountSession;
-  initialLoginError?: string;
+  children: ReactNode;
+  initialAccount: AccountSession;
 }) {
-  const [account, setAccount] = useState<AccountSession | null>(initialAccount ?? null);
-  const [isAuthLoading, setIsAuthLoading] = useState(() => Boolean(initialAccount));
-  const [loginError, setLoginError] = useState<string | null>(initialLoginError ?? null);
-  const accountToRestoreRef = useRef(initialAccount);
-
-  useEffect(() => {
-    if (!accountToRestoreRef.current) {
-      return;
-    }
-
-    let ignore = false;
-    setIsAuthLoading(true);
-    void getCurrentAccount()
-      .then((currentAccount) => {
-        if (!ignore) {
-          setAccount(currentAccount);
-          setLoginError(null);
-        }
-      })
-      .catch((error) => {
-        if (!ignore) {
-          void logoutAccount().catch(() => undefined);
-          setAccount(null);
-          setLoginError(formatError(error, 'Could not restore your account session.'));
-        }
-      })
-      .finally(() => {
-        if (!ignore) {
-          setIsAuthLoading(false);
-        }
-      });
-
-    return () => {
-      ignore = true;
-    };
-  }, []);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState<string | null>(null);
 
   function handleLogout() {
-    setIsAuthLoading(true);
+    if (isLoggingOut) return;
+    setLogoutError(null);
+    setIsLoggingOut(true);
     void logoutAccount()
-      .catch(() => undefined)
-      .finally(() => {
-        setAccount(null);
-        setLoginError(null);
-        setIsAuthLoading(false);
+      .then(() => {
         window.location.assign('/login');
+      })
+      .catch(() => {
+        setIsLoggingOut(false);
+        setLogoutError('Could not sign out. Please try again.');
       });
   }
 
-  if (!account) {
-    return <LoginScreen error={loginError} />;
-  }
-
-  if (isAuthLoading) {
-    return <BrandLoader fullScreen message="Preparing your workspace" />;
-  }
-
-  return <WorkspaceShell account={account} onLogout={handleLogout} />;
-}
-
-export function WorkspaceExperience({
-  initialAccount,
-  initialLoginError,
-}: {
-  initialAccount?: AccountSession;
-  initialLoginError?: string;
-}) {
   return (
     <ErrorBoundary
       fallback={
@@ -90,11 +38,14 @@ export function WorkspaceExperience({
         </main>
       }
     >
-      <WorkspaceContent initialAccount={initialAccount} initialLoginError={initialLoginError} />
+      <WorkspaceShell
+        account={initialAccount}
+        isSigningOut={isLoggingOut}
+        logoutError={logoutError}
+        onLogout={handleLogout}
+      >
+        {children}
+      </WorkspaceShell>
     </ErrorBoundary>
   );
-}
-
-function formatError(error: unknown, fallback: string): string {
-  return error instanceof Error ? `${fallback} ${error.message}` : fallback;
 }
