@@ -94,6 +94,24 @@ void test('keeps session controls and content inside the assistant without reloa
   });
 });
 
+void test('keeps the header in the main column and removes the account icon above the assistant', async () => {
+  installWorkspaceFetch([createSessionFixture('plan-1', 'First plan')]);
+  const { container } = render(shellAt('/workspace', <p>Overview route body</p>));
+
+  await screen.findByRole('tab', { name: 'First plan' });
+  const grid = container.querySelector('.workspace-dashboard-grid');
+  const mainColumn = container.querySelector('.workspace-main-column');
+  const assistant = screen.getByRole('complementary', { name: 'Onboarding assistant' });
+
+  assert.deepEqual(
+    [...(grid?.children ?? [])].map((element) => element.className),
+    ['workspace-main-column', 'assistant-panel'],
+  );
+  assert.equal(mainColumn?.contains(screen.getByRole('banner')), true);
+  assert.equal(assistant.parentElement, grid);
+  assert.equal(screen.queryByRole('img', { name: 'Alex Morgan, Member' }), null);
+});
+
 void test('keeps the routed workspace mounted when logout fails', async () => {
   installWorkspaceFetch([createSessionFixture('plan-1', 'First plan')], {
     failLogout: true,
