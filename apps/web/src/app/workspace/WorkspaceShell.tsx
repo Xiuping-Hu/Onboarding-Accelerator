@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+'use client';
+
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { usePathname } from 'next/navigation';
 import type {
   ChatMessage,
   GuideGraph,
-  GuideStep,
   KnowledgeSource,
   OnboardingSession,
 } from '@onboarding/shared';
@@ -14,93 +16,75 @@ import {
   listSessions,
   sendChat,
 } from '@/features/workspace/api';
-import {
-  getAssistantDrawerToggleLabel,
-  getVisibleGraph,
-} from '@/features/workspace/workspaceModel';
+import { getAssistantDrawerToggleLabel } from '@/features/workspace/workspaceModel';
 import {
   appendSessionMessage,
   indexSessionMessages,
+  mergeSources,
+  mergeSourcesForActiveSession,
   removeSessionMessages,
   replaceSessionMessages,
 } from '@/features/workspace/workspaceThreadModel';
-import { GuideCanvas } from './guide/GuideCanvas';
+import { Button } from '@/components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/common/overlays/Popover';
 import { AgentChatDrawer } from './assistant/AgentChatDrawer';
 import { PlanThreadList } from './assistant/PlanThreadList';
 import { WorkspaceAssistantRuntimeProvider } from './assistant/WorkspaceAssistantRuntimeProvider';
+import { WorkspaceNavigation } from './navigation/WorkspaceNavigation';
+import { WorkspaceRouteProvider } from './WorkspaceRouteContext';
 
-function mergeSources(existing: KnowledgeSource[], incoming: KnowledgeSource[]) {
-  const byId = new Map(existing.map((source) => [source.id, source]));
-  for (const source of incoming) {
-    byId.set(source.id, source);
-  }
-  return [...byId.values()];
-}
-
-function getBreadcrumbs(graph: GuideGraph | null, selectedStepId: string | null) {
-  if (!graph || !selectedStepId) {
-    return [];
-  }
-
-  const stepsById = new Map(graph.steps.map((step) => [step.id, step]));
-  const breadcrumbs: GuideStep[] = [];
-  let current = stepsById.get(selectedStepId);
-
-  while (current) {
-    breadcrumbs.unshift(current);
-    current = current.parentId ? stepsById.get(current.parentId) : undefined;
-  }
-
-  return breadcrumbs;
-}
+type DeleteError = { message: string; sessionId: string } | null;
 
 function formatError(error: unknown, fallback: string): string {
   return error instanceof Error ? `${fallback} ${error.message}` : fallback;
 }
 
 function formatAccountRole(role: string | undefined) {
-  if (role === 'admin') {
-    return 'Administrator';
-  }
-
-  return 'Member';
+  return role === 'admin' ? 'Administrator' : 'Member';
 }
 
 export function WorkspaceShell({
   account,
+  children,
+  isSigningOut,
+  logoutError,
   onLogout,
 }: {
   account: AccountSession;
+  children: ReactNode;
+  isSigningOut: boolean;
+  logoutError: string | null;
   onLogout: () => void;
 }) {
+  const pathname = usePathname();
   const [sessions, setSessions] = useState<OnboardingSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [graph, setGraph] = useState<GuideGraph | null>(null);
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
-  const [focusStepIds, setFocusStepIds] = useState<string[]>([]);
   const [knowledgeMapEnabled, setKnowledgeMapEnabled] = useState(false);
   const [referencedStepId, setReferencedStepId] = useState<string | null>(null);
-  const [, setSources] = useState<KnowledgeSource[]>([]);
+  const [sources, setSources] = useState<KnowledgeSource[]>([]);
   const [messagesBySessionId, setMessagesBySessionId] = useState<Record<string, ChatMessage[]>>({});
-  const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false);
-  const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
+  const [isNavigationCollapsed, setIsNavigationCollapsed] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState(true);
+  const [isMobileNavigationOpen, setIsMobileNavigationOpen] = useState(false);
+  const [isAssistantMinimized, setIsAssistantMinimized] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [runningSessionIds, setRunningSessionIds] = useState<string[]>([]);
   const [apiError, setApiError] = useState<string | null>(null);
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
-  const [deleteError, setDeleteError] = useState<{
-    message: string;
-    sessionId: string;
-  } | null>(null);
+  const [deleteError, setDeleteError] = useState<DeleteError>(null);
   const activeSessionIdRef = useRef<string | null>(null);
   const guideLoadRequestRef = useRef(0);
+  const mobileNavigationToggleRef = useRef<HTMLButtonElement | null>(null);
+  const navigationPreferenceTouchedRef = useRef(false);
+  const pageHeadingRef = useRef<HTMLHeadingElement | null>(null);
+  const previousPathnameRef = useRef(pathname);
 
-  const breadcrumbs = useMemo(() => getBreadcrumbs(graph, selectedStepId), [graph, selectedStepId]);
-  const visibleGraph = useMemo(
-    () => getVisibleGraph(graph, selectedStepId),
-    [graph, selectedStepId],
+  const activeSession = useMemo(
+    () => sessions.find((session) => session.id === activeSessionId) ?? null,
+    [activeSessionId, sessions],
   );
-  const isGuideEmpty = graph?.emptyReason === 'not_created';
   const selectedStep = useMemo(
     () => graph?.steps.find((step) => step.id === selectedStepId) ?? null,
     [graph, selectedStepId],
@@ -113,10 +97,96 @@ export function WorkspaceShell({
   );
   const isChatLoading = activeSessionId ? runningSessionIds.includes(activeSessionId) : false;
   const accountLabel = account.displayName ?? account.email ?? account.userId;
+  const pageMeta = getWorkspacePageMeta(pathname, account.displayName);
+  const effectiveNavigationCollapsed = isNavigationCollapsed && !isMobileNavigationOpen;
+  const isMobileNavigationModalOpen = isMobileViewport && isMobileNavigationOpen;
+
+  useEffect(() => {
+    const tabletQuery = window.matchMedia('(min-width: 768px) and (max-width: 1023px)');
+
+    function syncTabletNavigation() {
+      if (!navigationPreferenceTouchedRef.current) {
+        setIsNavigationCollapsed(tabletQuery.matches);
+      }
+    }
+
+    syncTabletNavigation();
+    tabletQuery.addEventListener('change', syncTabletNavigation);
+    return () => tabletQuery.removeEventListener('change', syncTabletNavigation);
+  }, []);
+
+  useEffect(() => {
+    const mobileQuery = window.matchMedia('(max-width: 767px)');
+
+    function syncMobileViewport() {
+      setIsMobileViewport(mobileQuery.matches);
+      if (!mobileQuery.matches) setIsMobileNavigationOpen(false);
+    }
+
+    syncMobileViewport();
+    mobileQuery.addEventListener('change', syncMobileViewport);
+    return () => mobileQuery.removeEventListener('change', syncMobileViewport);
+  }, []);
+
+  useEffect(() => {
+    const previousPathname = previousPathnameRef.current;
+    previousPathnameRef.current = pathname;
+    if (previousPathname === pathname) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      pageHeadingRef.current?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [pathname]);
 
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId;
   }, [activeSessionId]);
+
+  useEffect(() => {
+    if (!isMobileNavigationOpen) return;
+
+    const navigation = document.getElementById('workspace-primary-navigation-content');
+    const navigationToggle = mobileNavigationToggleRef.current;
+    const previousOverflow = document.body.style.overflow;
+    const focusable = navigation
+      ? Array.from(
+          navigation.querySelectorAll<HTMLElement>(
+            'a[href], button:not([disabled]), [tabindex="0"]',
+          ),
+        ).filter((element) => element.getClientRects().length > 0)
+      : [];
+    const frame = window.requestAnimationFrame(() => focusable[0]?.focus());
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setIsMobileNavigationOpen(false);
+        return;
+      }
+      if (event.key !== 'Tab' || focusable.length === 0) return;
+
+      const first = focusable[0];
+      const last = focusable.at(-1);
+      if (!first || !last) return;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', handleKeyDown);
+      navigationToggle?.focus();
+    };
+  }, [isMobileNavigationOpen]);
 
   const loadGuide = useCallback(async (sessionId: string) => {
     const requestId = ++guideLoadRequestRef.current;
@@ -131,22 +201,14 @@ export function WorkspaceShell({
       setGraph(response.graph);
       setSources((current) => mergeSources(current, response.graph.sources));
       const focusId = response.focusStepId ?? response.graph.rootId;
-      if (response.graph.emptyReason === 'not_created') {
-        setSelectedStepId(null);
-        setFocusStepIds([]);
-        return;
-      }
-      setSelectedStepId(focusId);
-      setFocusStepIds([focusId]);
+      setSelectedStepId(response.graph.emptyReason === 'not_created' ? null : focusId);
     } catch (error) {
       if (requestId !== guideLoadRequestRef.current || activeSessionIdRef.current !== sessionId) {
         return;
       }
-      setApiError(formatError(error, 'Could not load the guide from the onboarding service.'));
+      setApiError(formatError(error, 'Could not load the onboarding roadmap.'));
     } finally {
-      if (requestId === guideLoadRequestRef.current) {
-        setIsLoading(false);
-      }
+      if (requestId === guideLoadRequestRef.current) setIsLoading(false);
     }
   }, []);
 
@@ -157,20 +219,15 @@ export function WorkspaceShell({
         setApiError(null);
         const response = await listSessions();
         let nextSessions = response.sessions;
-
         if (nextSessions.length === 0) {
           const created = await createSession({ title: 'First-week plan' });
           nextSessions = [created.session];
         }
-
         setSessions(nextSessions);
         setMessagesBySessionId(indexSessionMessages(nextSessions));
-        const firstSession = nextSessions[0];
-        if (firstSession) {
-          setActiveSessionId(firstSession.id);
-        }
+        setActiveSessionId(nextSessions[0]?.id ?? null);
       } catch (error) {
-        setApiError(formatError(error, 'Could not load onboarding sessions.'));
+        setApiError(formatError(error, 'Could not load onboarding plans.'));
       } finally {
         setIsLoading(false);
       }
@@ -178,14 +235,12 @@ export function WorkspaceShell({
   }, []);
 
   useEffect(() => {
-    if (activeSessionId) {
-      setGraph(null);
-      setSelectedStepId(null);
-      setFocusStepIds([]);
-      setReferencedStepId(null);
-      setSources([]);
-      void loadGuide(activeSessionId);
-    }
+    if (!activeSessionId) return;
+    setGraph(null);
+    setSelectedStepId(null);
+    setReferencedStepId(null);
+    setSources([]);
+    void loadGuide(activeSessionId);
   }, [activeSessionId, loadGuide]);
 
   async function handleCreateSession() {
@@ -193,19 +248,15 @@ export function WorkspaceShell({
       setApiError(null);
       const created = await createSession({ title: `Onboarding plan ${sessions.length + 1}` });
       setSessions((current) => [created.session, ...current]);
-      setActiveSessionId(created.session.id);
       setMessagesBySessionId((current) => ({ ...current, [created.session.id]: [] }));
-      setSources([]);
+      setActiveSessionId(created.session.id);
     } catch (error) {
-      setApiError(formatError(error, 'Could not create a new session.'));
+      setApiError(formatError(error, 'Could not create a new onboarding plan.'));
     }
   }
 
   async function handleDeleteSession(sessionId: string) {
-    if (sessions.length <= 1 || deletingSessionId !== null) {
-      return;
-    }
-
+    if (sessions.length <= 1 || deletingSessionId !== null) return;
     try {
       setDeletingSessionId(sessionId);
       setDeleteError(null);
@@ -214,16 +265,10 @@ export function WorkspaceShell({
       setSessions(remaining);
       setMessagesBySessionId((current) => removeSessionMessages(current, sessionId));
       setRunningSessionIds((current) => current.filter((id) => id !== sessionId));
-
-      if (activeSessionId === sessionId) {
-        const next = remaining[0] ?? null;
-        setActiveSessionId(next?.id ?? null);
-        setGraph(null);
-        setSelectedStepId(null);
-      }
+      if (activeSessionId === sessionId) setActiveSessionId(remaining[0]?.id ?? null);
     } catch (error) {
       setDeleteError({
-        message: formatError(error, 'Could not delete the session.'),
+        message: formatError(error, 'Could not delete the onboarding plan.'),
         sessionId,
       });
     } finally {
@@ -231,21 +276,9 @@ export function WorkspaceShell({
     }
   }
 
-  function handleSelectStep(stepId: string) {
-    setSelectedStepId(stepId);
-    setFocusStepIds([]);
-  }
-
-  function handleLocateStep(stepId: string) {
-    setSelectedStepId(stepId);
-    setFocusStepIds([stepId]);
-  }
-
   async function handleSendMessage(message: string) {
     const sessionId = activeSessionId;
-    if (!sessionId || message.trim().length === 0) {
-      return;
-    }
+    if (!sessionId || message.trim().length === 0) return;
 
     const reference = referencedStepId && referencedStep ? referencedStep : null;
     const userMessage: ChatMessage = {
@@ -291,13 +324,19 @@ export function WorkspaceShell({
           appendSessionMessage(current, sessionId, response.message),
         );
       }
-      setSources((current) => mergeSources(current, response.sources));
+      setSources((current) =>
+        mergeSourcesForActiveSession(
+          current,
+          response.sources,
+          activeSessionIdRef.current,
+          sessionId,
+        ),
+      );
       if (
         activeSessionIdRef.current === sessionId &&
         response.focusStepIds &&
         response.focusStepIds.length > 0
       ) {
-        setFocusStepIds(response.focusStepIds);
         setSelectedStepId(response.focusStepIds[0] ?? selectedStepId);
       }
     } catch (error) {
@@ -314,15 +353,24 @@ export function WorkspaceShell({
     }
   }
 
+  function handleReferenceStep(stepId: string) {
+    if (!graph?.steps.some((step) => step.id === stepId)) return;
+    setSelectedStepId(stepId);
+    setReferencedStepId(stepId);
+    setIsAssistantMinimized(false);
+  }
+
+  function handleRetry() {
+    if (activeSessionId) void loadGuide(activeSessionId);
+    else window.location.reload();
+  }
+
   return (
-    <main
-      className={[
-        'app-shell',
-        isLeftPanelCollapsed ? 'left-collapsed' : '',
-        isRightPanelCollapsed ? 'right-collapsed' : '',
-      ]
-        .filter(Boolean)
-        .join(' ')}
+    <div
+      className="app-shell"
+      data-assistant-minimized={isAssistantMinimized ? 'true' : 'false'}
+      data-mobile-navigation-open={isMobileNavigationOpen ? 'true' : 'false'}
+      data-navigation-collapsed={isNavigationCollapsed ? 'true' : 'false'}
     >
       <WorkspaceAssistantRuntimeProvider
         activeSessionId={activeSessionId}
@@ -331,106 +379,289 @@ export function WorkspaceShell({
         messages={activeMessages}
         onCreatePlan={handleCreateSession}
         onDeletePlan={handleDeleteSession}
-        onSelectPlan={async (sessionId) => setActiveSessionId(sessionId)}
+        onSelectPlan={(sessionId) => {
+          setActiveSessionId(sessionId);
+          return Promise.resolve();
+        }}
         onSendMessage={handleSendMessage}
         sessions={sessions}
       >
-        <aside className="session-rail" aria-label="Onboarding plans">
-          <button
-            aria-label={isLeftPanelCollapsed ? 'Expand plans sidebar' : 'Collapse plans sidebar'}
-            className="panel-toggle"
-            onClick={() => setIsLeftPanelCollapsed((current) => !current)}
-            type="button"
-          >
-            {isLeftPanelCollapsed ? <>&rsaquo;</> : <>&lsaquo;</>}
-          </button>
-          <div className="panel-content">
-            <div className="panel-branding">
-              <p>Onboarding Accelerator</p>
-              <h1>Your plans</h1>
-            </div>
-            <PlanThreadList
-              canDelete={sessions.length > 1}
-              deleteError={deleteError}
-              deletingSessionId={deletingSessionId}
-              onDelete={handleDeleteSession}
+        <div className="workspace-navigation-layer">
+          <WorkspaceNavigation
+            className="workspace-primary-navigation"
+            collapsed={effectiveNavigationCollapsed}
+            inactive={isMobileViewport && !isMobileNavigationOpen}
+            navigationId="workspace-primary-navigation-content"
+            onCollapsedChange={(collapsed) => {
+              navigationPreferenceTouchedRef.current = true;
+              setIsNavigationCollapsed(collapsed);
+            }}
+            onDismiss={isMobileViewport ? () => setIsMobileNavigationOpen(false) : undefined}
+            onNavigate={() => setIsMobileNavigationOpen(false)}
+            onSignOut={onLogout}
+            pathname={pathname}
+            signOutDisabled={isSigningOut}
+          />
+          {isMobileNavigationOpen ? (
+            <button
+              aria-hidden="true"
+              aria-label="Close navigation"
+              className="workspace-navigation-backdrop"
+              onClick={() => setIsMobileNavigationOpen(false)}
+              tabIndex={-1}
+              type="button"
             />
-            <div className="account-summary">
-              <span>{accountLabel}</span>
-              <small>{formatAccountRole(account.role)}</small>
-            </div>
-            <button className="ghost-button" onClick={onLogout} type="button">
-              Sign out
-            </button>
-          </div>
-        </aside>
+          ) : null}
+        </div>
 
-        <section className="workspace" aria-busy={isLoading}>
-          <header className="topbar">
-            <div className="breadcrumbs" aria-label="Selected step breadcrumbs">
-              {isGuideEmpty ? (
-                <span>No map yet</span>
-              ) : breadcrumbs.length === 0 ? (
-                <span>Loading guide</span>
-              ) : (
-                breadcrumbs.map((crumb, index) => (
-                  <button key={crumb.id} onClick={() => handleLocateStep(crumb.id)} type="button">
-                    {index > 0 ? <span aria-hidden="true">/</span> : null}
-                    {crumb.title}
-                  </button>
-                ))
-              )}
+        <div
+          aria-hidden={isMobileNavigationModalOpen || undefined}
+          className="workspace-dashboard-surface"
+          inert={isMobileNavigationModalOpen || undefined}
+        >
+          <header className="workspace-dashboard-header">
+            <button
+              aria-controls="workspace-primary-navigation-content"
+              aria-expanded={isMobileNavigationOpen}
+              aria-label={isMobileNavigationOpen ? 'Close navigation' : 'Open navigation'}
+              className="mobile-navigation-toggle"
+              onClick={() => setIsMobileNavigationOpen((current) => !current)}
+              ref={mobileNavigationToggleRef}
+              type="button"
+            >
+              <MenuIcon open={isMobileNavigationOpen} />
+            </button>
+            <div className="workspace-heading-copy">
+              <h1 ref={pageHeadingRef} tabIndex={-1}>
+                {pageMeta.title}
+                {pageMeta.showWave ? (
+                  <span aria-hidden="true" className="welcome-wave">
+                    {'\u{1F44B}'}
+                  </span>
+                ) : null}
+              </h1>
+              <p>{pageMeta.subtitle}</p>
+            </div>
+            <div className="workspace-header-actions">
+              <WorkspacePlanManager
+                activeSession={activeSession}
+                deleteError={deleteError}
+                deletingSessionId={deletingSessionId}
+                sessions={sessions}
+                onDelete={handleDeleteSession}
+              />
+              <span
+                aria-label={`${accountLabel}, ${formatAccountRole(account.role)}`}
+                className="workspace-avatar"
+                role="img"
+                title={`${accountLabel} - ${formatAccountRole(account.role)}`}
+              >
+                {getAccountInitials(accountLabel)}
+              </span>
             </div>
           </header>
 
-          {apiError ? (
-            <div className="app-error" role="alert">
-              {apiError}
+          {isSigningOut ? (
+            <div className="workspace-alert" role="status">
+              <span>Signing you out…</span>
+            </div>
+          ) : logoutError || apiError ? (
+            <div className="workspace-alert" role="alert">
+              <span>{logoutError ?? apiError}</span>
+              <button onClick={logoutError ? onLogout : handleRetry} type="button">
+                Try again
+              </button>
             </div>
           ) : null}
-          {isLoading ? <div className="loading-state">Loading onboarding workspace...</div> : null}
-          {isGuideEmpty && !isLoading ? (
-            <div className="empty-map-state">
-              <h2>Roadmap unavailable</h2>
-              <p>
-                {knowledgeMapEnabled
-                  ? 'No published roadmap is available for your access scope. Ask an administrator to generate and publish one from reviewed RAG sources.'
-                  : 'The database-backed roadmap is not enabled for this environment.'}
-              </p>
-            </div>
-          ) : null}
-          <GuideCanvas
-            focusStepIds={focusStepIds}
-            graph={visibleGraph}
-            onSelectStep={handleSelectStep}
-            sessionId={activeSessionId}
-            selectedStepId={selectedStepId}
-          />
-        </section>
 
-        <aside className="assistant-panel" aria-label="Onboarding assistant">
-          <button
-            aria-expanded={!isRightPanelCollapsed}
-            aria-label={getAssistantDrawerToggleLabel(isRightPanelCollapsed)}
-            className="panel-toggle"
-            onClick={() => setIsRightPanelCollapsed((current) => !current)}
-            type="button"
-          >
-            {isRightPanelCollapsed ? <>&lsaquo;</> : <>&rsaquo;</>}
-          </button>
-          <AgentChatDrawer
-            isRunning={isChatLoading}
-            messages={activeMessages}
-            onAddReference={() => {
-              if (referenceCandidate) setReferencedStepId(referenceCandidate.id);
+          <WorkspaceRouteProvider
+            value={{
+              apiError,
+              graph,
+              isGuideEmpty: graph?.emptyReason === 'not_created',
+              isLoading,
+              knowledgeMapEnabled,
+              onReferenceStep: handleReferenceStep,
+              onRetry: handleRetry,
+              sources,
             }}
-            onRemoveReference={() => setReferencedStepId(null)}
-            referenceCandidate={referenceCandidate}
-            referencedStep={referencedStep}
-            userLabel={accountLabel}
-          />
-        </aside>
+          >
+            <div className="workspace-dashboard-grid">
+              <main
+                aria-busy={isLoading}
+                className="workspace-route-content"
+                id="workspace-content"
+              >
+                {children}
+              </main>
+              <aside
+                aria-label="Onboarding assistant"
+                className="assistant-panel"
+                data-minimized={isAssistantMinimized ? 'true' : 'false'}
+              >
+                {isAssistantMinimized ? (
+                  <button
+                    aria-controls="onboarding-assistant-content"
+                    aria-expanded="false"
+                    aria-label={getAssistantDrawerToggleLabel(true)}
+                    className="assistant-restore-button"
+                    onClick={() => setIsAssistantMinimized(false)}
+                    type="button"
+                  >
+                    <SparklesIcon />
+                  </button>
+                ) : null}
+                <div
+                  className="assistant-panel-content"
+                  hidden={isAssistantMinimized}
+                  id="onboarding-assistant-content"
+                >
+                  {!isAssistantMinimized ? (
+                    <AgentChatDrawer
+                      canSend={Boolean(activeSessionId)}
+                      isRunning={isChatLoading}
+                      messages={activeMessages}
+                      onAddReference={() => {
+                        if (referenceCandidate) setReferencedStepId(referenceCandidate.id);
+                      }}
+                      onMinimize={() => setIsAssistantMinimized(true)}
+                      onRemoveReference={() => setReferencedStepId(null)}
+                      onSendSuggestion={handleSendMessage}
+                      referenceCandidate={referenceCandidate}
+                      referencedStep={referencedStep}
+                      userLabel={accountLabel}
+                    />
+                  ) : null}
+                </div>
+              </aside>
+            </div>
+          </WorkspaceRouteProvider>
+        </div>
       </WorkspaceAssistantRuntimeProvider>
-    </main>
+    </div>
+  );
+}
+
+function WorkspacePlanManager({
+  activeSession,
+  deleteError,
+  deletingSessionId,
+  onDelete,
+  sessions,
+}: {
+  activeSession: OnboardingSession | null;
+  deleteError: DeleteError;
+  deletingSessionId: string | null;
+  onDelete: (sessionId: string) => Promise<void>;
+  sessions: OnboardingSession[];
+}) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          aria-label={`Manage onboarding plans. Current plan: ${activeSession?.title ?? 'Loading'}`}
+          className="workspace-plan-trigger"
+          type="button"
+          variant="outline"
+        >
+          <PlanIcon />
+          <span>{activeSession?.title ?? 'Loading plan'}</span>
+          <ChevronDownIcon />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        aria-label="Manage onboarding plans"
+        className="workspace-plan-popover"
+        side="bottom"
+      >
+        <div className="workspace-plan-popover-heading">
+          <span>Current journey</span>
+          <strong>Onboarding plans</strong>
+        </div>
+        <PlanThreadList
+          canDelete={sessions.length > 1}
+          deleteError={deleteError}
+          deletingSessionId={deletingSessionId}
+          onDelete={onDelete}
+        />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function getWorkspacePageMeta(pathname: string, displayName: string | undefined) {
+  if (pathname === '/workspace/tasks' || pathname.startsWith('/workspace/tasks/')) {
+    return {
+      title: 'Tasks',
+      subtitle: 'Review the work assigned to your onboarding journey.',
+      showWave: false,
+    };
+  }
+  if (pathname === '/workspace/resources' || pathname.startsWith('/workspace/resources/')) {
+    return {
+      title: 'Resources',
+      subtitle: 'Find authorized guides and references for your role.',
+      showWave: false,
+    };
+  }
+  return {
+    title: displayName ? `Welcome back, ${displayName}` : 'Welcome back',
+    subtitle: "Here's your onboarding overview",
+    showWave: Boolean(displayName),
+  };
+}
+
+function getAccountInitials(label: string) {
+  const parts = label.trim().split(/\s+/u).filter(Boolean);
+  if (parts.length === 0) return 'U';
+  if (parts.length === 1) return (parts[0]?.[0] ?? 'U').toUpperCase();
+  return `${parts[0]?.[0] ?? ''}${parts.at(-1)?.[0] ?? ''}`.toUpperCase();
+}
+
+function MenuIcon({ open }: { open: boolean }) {
+  return (
+    <svg aria-hidden="true" fill="none" viewBox="0 0 24 24">
+      <path
+        d={open ? 'm6 6 12 12M18 6 6 18' : 'M4.5 7h15M4.5 12h15M4.5 17h15'}
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
+function SparklesIcon() {
+  return (
+    <svg aria-hidden="true" fill="none" viewBox="0 0 24 24">
+      <path
+        d="m12 3 1.3 3.7L17 8l-3.7 1.3L12 13l-1.3-3.7L7 8l3.7-1.3L12 3ZM18.5 13l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2ZM6 13l.9 2.6 2.6.9-2.6.9L6 20l-.9-2.6-2.6-.9 2.6-.9L6 13Z"
+        stroke="currentColor"
+        strokeLinejoin="round"
+        strokeWidth="1.5"
+      />
+    </svg>
+  );
+}
+
+function PlanIcon() {
+  return (
+    <svg aria-hidden="true" fill="none" viewBox="0 0 20 20">
+      <path
+        d="M5 3.5h10a1.5 1.5 0 0 1 1.5 1.5v10a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 15V5A1.5 1.5 0 0 1 5 3.5Zm2.25 4h5.5m-5.5 3h5.5m-5.5 3h3"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="1.4"
+      />
+    </svg>
+  );
+}
+
+function ChevronDownIcon() {
+  return (
+    <svg aria-hidden="true" fill="none" viewBox="0 0 16 16">
+      <path d="m4 6 4 4 4-4" stroke="currentColor" strokeLinecap="round" strokeWidth="1.4" />
+    </svg>
   );
 }

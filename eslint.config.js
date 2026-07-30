@@ -97,7 +97,7 @@ export default tseslint.config(
       'apps/web/src/app/workspace/**/*.tsx',
       'apps/web/src/app/admin/**/*.tsx',
     ],
-    ignores: ['apps/web/src/app/**/page.tsx'],
+    ignores: ['apps/web/src/app/**/page.tsx', 'apps/web/src/app/**/layout.tsx'],
     rules: {
       'no-restricted-imports': [
         'error',

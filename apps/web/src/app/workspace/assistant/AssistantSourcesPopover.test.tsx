@@ -112,6 +112,7 @@ void test('supports Space, outside-click close, and message unmount cleanup', as
           id: 'handbook',
           title: 'Employee handbook',
           href: '/api/sources/handbook',
+          excerpt: 'Read the handbook.',
         },
       ]}
     />,
@@ -173,8 +174,18 @@ function installDomGlobals(window: JSDOM['window']): void {
     unobserve() {}
     disconnect() {}
   };
-  window.matchMedia = () =>
-    ({ matches: false, addEventListener() {}, removeEventListener() {} }) as MediaQueryList;
+  window.matchMedia = (query) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener() {},
+    removeListener() {},
+    addEventListener() {},
+    removeEventListener() {},
+    dispatchEvent() {
+      return false;
+    },
+  });
   window.HTMLElement.prototype.scrollIntoView = () => undefined;
   window.HTMLElement.prototype.hasPointerCapture = () => false;
   window.HTMLElement.prototype.setPointerCapture = () => undefined;

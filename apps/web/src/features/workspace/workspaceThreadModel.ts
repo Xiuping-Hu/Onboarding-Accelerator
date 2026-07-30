@@ -1,6 +1,24 @@
-import type { ChatMessage, OnboardingSession } from '@onboarding/shared';
+import type { ChatMessage, KnowledgeSource, OnboardingSession } from '@onboarding/shared';
 
 export type MessagesBySessionId = Record<string, ChatMessage[]>;
+
+export function mergeSources(
+  existing: KnowledgeSource[],
+  incoming: KnowledgeSource[],
+): KnowledgeSource[] {
+  const byId = new Map(existing.map((source) => [source.id, source]));
+  for (const source of incoming) byId.set(source.id, source);
+  return [...byId.values()];
+}
+
+export function mergeSourcesForActiveSession(
+  existing: KnowledgeSource[],
+  incoming: KnowledgeSource[],
+  activeSessionId: string | null,
+  responseSessionId: string,
+): KnowledgeSource[] {
+  return activeSessionId === responseSessionId ? mergeSources(existing, incoming) : existing;
+}
 
 export function indexSessionMessages(sessions: OnboardingSession[]): MessagesBySessionId {
   return Object.fromEntries(sessions.map((session) => [session.id, session.chatHistory]));

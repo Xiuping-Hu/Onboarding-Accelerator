@@ -44,5 +44,5 @@ export function getSelectedGuideStep(
 }
 
 export function getAssistantDrawerToggleLabel(isCollapsed: boolean) {
-  return isCollapsed ? 'Open assistant' : 'Close assistant';
+  return isCollapsed ? 'Open onboarding assistant' : 'Minimize onboarding assistant';
 }
