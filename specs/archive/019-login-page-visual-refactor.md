@@ -10,6 +10,11 @@ was reviewed with both a pixel diff and a semi-transparent overlay. A persistent
 screenshot runner and the extended browser/assistive-mode matrix remain follow-up verification
 because this repository does not currently provide a screenshot-regression harness.
 
+Responsive correction completed on 2026-07-29: the complete desktop foreground now scales as one
+uniform 1536-by-1024 scene, while the decorative artwork scales independently with cover behavior
+and remains anchored to the lower-right edge. Narrow, portrait, and short viewports retain the
+readable document-flow layout instead of shrinking the desktop scene below usable text sizes.
+
 ## Goal
 
 Refactor the signed-out `/login` experience so its default desktop rendering is visually

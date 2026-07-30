@@ -8,62 +8,69 @@ export function LoginScreen({ error }: { error: string | null }) {
     <main className="login-shell" aria-labelledby="login-title">
       <LoginBackground />
 
-      <div className="login-brand" role="img" aria-label="Onboarding Accelerator">
-        <span className="login-brand-mark" aria-hidden="true">
-          {/* Kept as a direct asset so server-rendered component tests and the browser use the same markup. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            className="login-brand-image"
-            src="/favicon.ico?v=3"
-            alt=""
-            width={144}
-            height={128}
-          />
-        </span>
-        <span className="login-brand-copy" aria-hidden="true">
-          <span>Onboarding</span>
-          <span>Accelerator</span>
-        </span>
+      <div className="login-stage">
+        <div className="login-layout">
+          <div className="login-brand" role="img" aria-label="Onboarding Accelerator">
+            <span className="login-brand-mark" aria-hidden="true">
+              {/* Kept as a direct asset so server-rendered component tests and the browser use the same markup. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                className="login-brand-image"
+                src="/favicon.ico?v=3"
+                alt=""
+                width={144}
+                height={128}
+              />
+            </span>
+            <span className="login-brand-copy" aria-hidden="true">
+              <span>Onboarding</span>
+              <span>Accelerator</span>
+            </span>
+          </div>
+
+          <section className={panelClassName} aria-labelledby="login-title">
+            <span className="login-icon-medallion login-icon-medallion--people" aria-hidden="true">
+              <PeopleIcon />
+            </span>
+
+            <h1 id="login-title">Welcome back.</h1>
+
+            <p className="login-description">
+              <span className="login-description-line">
+                Sign in with your company Microsoft account
+              </span>
+              <span className="login-description-line">to access Onboarding Accelerator.</span>
+            </p>
+
+            {error ? (
+              <div className="login-error" role="alert">
+                {error}
+              </div>
+            ) : null}
+
+            <MicrosoftSignInLink variant="login" />
+
+            <div className="login-trust-divider">
+              <span aria-hidden="true" />
+              <p>Secure and trusted</p>
+              <span aria-hidden="true" />
+            </div>
+
+            <div className="login-security">
+              <span
+                className="login-icon-medallion login-icon-medallion--security"
+                aria-hidden="true"
+              >
+                <SecurityIcon />
+              </span>
+              <div className="login-security-copy">
+                <h2>Secure sign-in with Microsoft</h2>
+                <p>Your organization’s data is protected.</p>
+              </div>
+            </div>
+          </section>
+        </div>
       </div>
-
-      <section className={panelClassName} aria-labelledby="login-title">
-        <span className="login-icon-medallion login-icon-medallion--people" aria-hidden="true">
-          <PeopleIcon />
-        </span>
-
-        <h1 id="login-title">Welcome back.</h1>
-
-        <p className="login-description">
-          <span className="login-description-line">
-            Sign in with your company Microsoft account
-          </span>
-          <span className="login-description-line">to access Onboarding Accelerator.</span>
-        </p>
-
-        {error ? (
-          <div className="login-error" role="alert">
-            {error}
-          </div>
-        ) : null}
-
-        <MicrosoftSignInLink variant="login" />
-
-        <div className="login-trust-divider">
-          <span aria-hidden="true" />
-          <p>Secure and trusted</p>
-          <span aria-hidden="true" />
-        </div>
-
-        <div className="login-security">
-          <span className="login-icon-medallion login-icon-medallion--security" aria-hidden="true">
-            <SecurityIcon />
-          </span>
-          <div className="login-security-copy">
-            <h2>Secure sign-in with Microsoft</h2>
-            <p>Your organization’s data is protected.</p>
-          </div>
-        </div>
-      </section>
     </main>
   );
 }
@@ -71,12 +78,14 @@ export function LoginScreen({ error }: { error: string | null }) {
 function LoginBackground() {
   return (
     <div className="login-background" aria-hidden="true">
-      <span className="login-background-ellipse login-background-ellipse--deep" />
-      <span className="login-background-ellipse login-background-ellipse--outer-gap" />
-      <span className="login-background-ellipse login-background-ellipse--middle" />
-      <span className="login-background-ellipse login-background-ellipse--inner-gap" />
-      <span className="login-background-ellipse login-background-ellipse--light" />
-      <span className="login-background-ellipse login-background-ellipse--surface" />
+      <div className="login-background-art">
+        <span className="login-background-ellipse login-background-ellipse--deep" />
+        <span className="login-background-ellipse login-background-ellipse--outer-gap" />
+        <span className="login-background-ellipse login-background-ellipse--middle" />
+        <span className="login-background-ellipse login-background-ellipse--inner-gap" />
+        <span className="login-background-ellipse login-background-ellipse--light" />
+        <span className="login-background-ellipse login-background-ellipse--surface" />
+      </div>
     </div>
   );
 }
