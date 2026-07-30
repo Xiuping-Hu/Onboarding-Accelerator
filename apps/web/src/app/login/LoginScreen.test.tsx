@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { JSDOM } from 'jsdom';
 import React, { type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { LoginScreen } from './LoginScreen';
 import { MicrosoftSignInLink } from './MicrosoftSignInLink';
+
+const authCss = readFileSync(new URL('./auth.css', import.meta.url), 'utf8');
 
 function renderDocument(node: ReactNode): Document {
   return new JSDOM(renderToStaticMarkup(node)).window.document;
@@ -38,8 +41,12 @@ function renderedText(root: Node): string {
 void test('renders the reference login copy in the expected landmark structure', () => {
   const document = renderDocument(<LoginScreen error={null} />);
   const main = requireElement(document, 'main.login-shell');
-  const brand = requireElement(main, '.login-brand');
-  const panel = requireElement(main, 'section.login-panel');
+  const background = requireElement(main, '.login-background[aria-hidden="true"]');
+  const backgroundArt = requireElement(background, '.login-background-art');
+  const stage = requireElement(main, '.login-stage');
+  const layout = requireElement(stage, '.login-layout');
+  const brand = requireElement(layout, '.login-brand');
+  const panel = requireElement(layout, 'section.login-panel');
   const heading = requireElement(panel, 'h1');
   const signInLink = requireElement(panel, 'a[href="/api/auth/microsoft/start"]');
   const pageText = renderedText(main);
@@ -49,6 +56,7 @@ void test('renders the reference login copy in the expected landmark structure',
     renderedText(brand);
 
   assert.equal(document.querySelectorAll('h1').length, 1);
+  assert.equal(backgroundArt.querySelectorAll('.login-background-ellipse').length, 6);
   assert.equal(heading.textContent, 'Welcome back.');
   assert.equal(brandName, 'Onboarding Accelerator');
   assert.equal(signInLink.textContent?.trim(), 'Continue with Microsoft');
@@ -98,4 +106,19 @@ void test('renders the optional authentication error as an accessible alert', ()
 
   const baselineDocument = renderDocument(<LoginScreen error={null} />);
   assert.equal(baselineDocument.querySelector('[role="alert"]'), null);
+});
+
+void test('scales the desktop scene uniformly while the background independently covers the viewport', () => {
+  assert.match(
+    authCss,
+    /\.login-background-art\s*\{[\s\S]*?width: max\(100vw, 150dvh\);[\s\S]*?aspect-ratio: 3 \/ 2;/,
+  );
+  assert.match(
+    authCss,
+    /\.login-layout\s*\{[\s\S]*?width: 1536px;[\s\S]*?height: 1024px;[\s\S]*?transform: scale\(calc\(100cqw \/ 1536px\)\);/,
+  );
+  assert.doesNotMatch(
+    authCss,
+    /\.login-background-ellipse\s*\{[^}]*width: 1536px;[^}]*height: 1024px;/,
+  );
 });
