@@ -41,9 +41,7 @@ void test('keeps assistant state across routed workspace pages', async () => {
   const user = userEvent.setup({ document: dom.window.document });
   const view = render(shellAt('/workspace', <p>Overview route body</p>));
 
-  await screen.findByRole('button', {
-    name: 'Manage onboarding plans. Current plan: First plan',
-  });
+  await screen.findByRole('tab', { name: 'First plan' });
   await user.click(screen.getByRole('button', { name: 'Minimize onboarding assistant' }));
   assert.ok(screen.getByRole('button', { name: 'Open onboarding assistant' }));
 
@@ -61,35 +59,28 @@ void test('keeps assistant state across routed workspace pages', async () => {
   );
 });
 
-void test('preserves plan selection, creation, and deletion outside primary navigation', async () => {
+void test('exposes session selection, creation, and deletion in the workspace tab bar', async () => {
   const firstPlan = createSessionFixture('plan-1', 'First plan');
   const secondPlan = createSessionFixture('plan-2', 'Second plan');
   const requests = installWorkspaceFetch([firstPlan, secondPlan]);
   const user = userEvent.setup({ document: dom.window.document });
   render(shellAt('/workspace', <p>Overview route body</p>));
 
-  await user.click(
-    await screen.findByRole('button', {
-      name: 'Manage onboarding plans. Current plan: First plan',
-    }),
-  );
-  let planDialog = await screen.findByRole('dialog', { name: 'Manage onboarding plans' });
-  const secondPlanButton = within(planDialog).getByText('Second plan').closest('button');
-  assert.ok(secondPlanButton);
-  await user.click(secondPlanButton);
-  await screen.findByRole('button', {
-    name: 'Manage onboarding plans. Current plan: Second plan',
-  });
+  const tabList = await screen.findByRole('tablist', { name: 'Onboarding sessions' });
+  const firstPlanTab = within(tabList).getByRole('tab', { name: 'First plan' });
+  const secondPlanTab = within(tabList).getByRole('tab', { name: 'Second plan' });
+  assert.equal(firstPlanTab.getAttribute('aria-selected'), 'true');
 
-  planDialog = screen.getByRole('dialog', { name: 'Manage onboarding plans' });
-  await user.click(within(planDialog).getByRole('button', { name: 'New plan' }));
-  await screen.findByRole('button', {
-    name: 'Manage onboarding plans. Current plan: Onboarding plan 3',
-  });
+  await user.click(secondPlanTab);
+  assert.equal(secondPlanTab.getAttribute('aria-selected'), 'true');
 
-  planDialog = screen.getByRole('dialog', { name: 'Manage onboarding plans' });
-  await user.click(within(planDialog).getByRole('button', { name: 'Delete Second plan' }));
-  await user.click(await screen.findByRole('button', { name: 'Confirm delete Second plan' }));
+  await user.click(within(tabList).getByRole('button', { name: 'New session' }));
+  const createdPlanTab = await within(tabList).findByRole('tab', { name: 'Onboarding plan 3' });
+  assert.equal(createdPlanTab.getAttribute('aria-selected'), 'true');
+
+  await user.click(within(tabList).getByRole('button', { name: 'Delete Second plan' }));
+  const deleteDialog = await screen.findByRole('alertdialog');
+  await user.click(within(deleteDialog).getByRole('button', { name: 'Delete Second plan' }));
 
   await waitFor(() => {
     assert.ok(requests.includes('POST /api/sessions'));
