@@ -1,6 +1,14 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+} from 'react';
 import { usePathname } from 'next/navigation';
 import type {
   ChatMessage,
@@ -25,10 +33,8 @@ import {
   removeSessionMessages,
   replaceSessionMessages,
 } from '@/features/workspace/workspaceThreadModel';
-import { Button } from '@/components/ui/button';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/common/overlays/Popover';
+import { ConfirmDialog } from '@/components/common/dialogs/ConfirmDialog';
 import { AgentChatDrawer } from './assistant/AgentChatDrawer';
-import { PlanThreadList } from './assistant/PlanThreadList';
 import { WorkspaceAssistantRuntimeProvider } from './assistant/WorkspaceAssistantRuntimeProvider';
 import { WorkspaceNavigation } from './navigation/WorkspaceNavigation';
 import { WorkspaceRouteProvider } from './WorkspaceRouteContext';
@@ -81,10 +87,6 @@ export function WorkspaceShell({
   const pageHeadingRef = useRef<HTMLHeadingElement | null>(null);
   const previousPathnameRef = useRef(pathname);
 
-  const activeSession = useMemo(
-    () => sessions.find((session) => session.id === activeSessionId) ?? null,
-    [activeSessionId, sessions],
-  );
   const selectedStep = useMemo(
     () => graph?.steps.find((step) => step.id === selectedStepId) ?? null,
     [graph, selectedStepId],
@@ -443,13 +445,6 @@ export function WorkspaceShell({
               <p>{pageMeta.subtitle}</p>
             </div>
             <div className="workspace-header-actions">
-              <WorkspacePlanManager
-                activeSession={activeSession}
-                deleteError={deleteError}
-                deletingSessionId={deletingSessionId}
-                sessions={sessions}
-                onDelete={handleDeleteSession}
-              />
               <span
                 aria-label={`${accountLabel}, ${formatAccountRole(account.role)}`}
                 className="workspace-avatar"
@@ -460,6 +455,16 @@ export function WorkspaceShell({
               </span>
             </div>
           </header>
+
+          <WorkspaceSessionTabs
+            activeSessionId={activeSessionId}
+            deleteError={deleteError}
+            deletingSessionId={deletingSessionId}
+            onCreate={handleCreateSession}
+            onDelete={handleDeleteSession}
+            onSelect={setActiveSessionId}
+            sessions={sessions}
+          />
 
           {isSigningOut ? (
             <div className="workspace-alert" role="status">
@@ -489,8 +494,12 @@ export function WorkspaceShell({
             <div className="workspace-dashboard-grid">
               <main
                 aria-busy={isLoading}
+                aria-labelledby={
+                  activeSessionId ? `workspace-session-tab-${activeSessionId}` : undefined
+                }
                 className="workspace-route-content"
                 id="workspace-content"
+                role="tabpanel"
               >
                 {children}
               </main>
@@ -542,51 +551,124 @@ export function WorkspaceShell({
   );
 }
 
-function WorkspacePlanManager({
-  activeSession,
+function WorkspaceSessionTabs({
+  activeSessionId,
   deleteError,
   deletingSessionId,
+  onCreate,
   onDelete,
+  onSelect,
   sessions,
 }: {
-  activeSession: OnboardingSession | null;
+  activeSessionId: string | null;
   deleteError: DeleteError;
   deletingSessionId: string | null;
+  onCreate: () => Promise<void>;
   onDelete: (sessionId: string) => Promise<void>;
+  onSelect: (sessionId: string) => void;
   sessions: OnboardingSession[];
 }) {
+  const [sessionPendingDelete, setSessionPendingDelete] = useState<OnboardingSession | null>(null);
+
+  useEffect(() => {
+    if (
+      sessionPendingDelete &&
+      !sessions.some((session) => session.id === sessionPendingDelete.id)
+    ) {
+      setSessionPendingDelete(null);
+    }
+  }, [sessionPendingDelete, sessions]);
+
+  const isDeleting = deletingSessionId === sessionPendingDelete?.id;
+  const deleteDialogError =
+    deleteError && sessionPendingDelete && deleteError.sessionId === sessionPendingDelete.id
+      ? deleteError.message
+      : null;
+
+  function handleTabKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>, index: number) {
+    let nextIndex: number | null = null;
+    if (event.key === 'ArrowRight') nextIndex = (index + 1) % sessions.length;
+    if (event.key === 'ArrowLeft') nextIndex = (index - 1 + sessions.length) % sessions.length;
+    if (event.key === 'Home') nextIndex = 0;
+    if (event.key === 'End') nextIndex = sessions.length - 1;
+    if (nextIndex === null) return;
+
+    const nextSession = sessions[nextIndex];
+    if (!nextSession) return;
+    event.preventDefault();
+    onSelect(nextSession.id);
+    document.getElementById(`workspace-session-tab-${nextSession.id}`)?.focus();
+  }
+
   return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button
-          aria-label={`Manage onboarding plans. Current plan: ${activeSession?.title ?? 'Loading'}`}
-          className="workspace-plan-trigger"
-          type="button"
-          variant="outline"
-        >
-          <PlanIcon />
-          <span>{activeSession?.title ?? 'Loading plan'}</span>
-          <ChevronDownIcon />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent
-        align="end"
-        aria-label="Manage onboarding plans"
-        className="workspace-plan-popover"
-        side="bottom"
-      >
-        <div className="workspace-plan-popover-heading">
-          <span>Current journey</span>
-          <strong>Onboarding plans</strong>
+    <>
+      <div aria-label="Onboarding sessions" className="workspace-session-tabs" role="tablist">
+        <div className="workspace-session-tabs__scroller">
+          {sessions.map((session, index) => {
+            const isActive = session.id === activeSessionId;
+            return (
+              <div
+                className="workspace-session-tab"
+                data-active={isActive ? 'true' : undefined}
+                key={session.id}
+                role="presentation"
+              >
+                <button
+                  aria-controls="workspace-content"
+                  aria-selected={isActive}
+                  className="workspace-session-tab__select"
+                  id={`workspace-session-tab-${session.id}`}
+                  onClick={() => onSelect(session.id)}
+                  onKeyDown={(event) => handleTabKeyDown(event, index)}
+                  role="tab"
+                  tabIndex={isActive ? 0 : -1}
+                  title={session.title}
+                  type="button"
+                >
+                  {session.title}
+                </button>
+                {sessions.length > 1 ? (
+                  <button
+                    aria-label={`Delete ${session.title}`}
+                    className="workspace-session-tab__delete"
+                    disabled={deletingSessionId !== null}
+                    onClick={() => setSessionPendingDelete(session)}
+                    title={`Delete ${session.title}`}
+                    type="button"
+                  >
+                    <CloseIcon />
+                  </button>
+                ) : null}
+              </div>
+            );
+          })}
+          <button
+            aria-label="New session"
+            className="workspace-session-tab workspace-session-tab--new"
+            disabled={deletingSessionId !== null}
+            onClick={() => void onCreate()}
+            title="New session"
+            type="button"
+          >
+            <PlusIcon />
+          </button>
         </div>
-        <PlanThreadList
-          canDelete={sessions.length > 1}
-          deleteError={deleteError}
-          deletingSessionId={deletingSessionId}
-          onDelete={onDelete}
-        />
-      </PopoverContent>
-    </Popover>
+      </div>
+      <ConfirmDialog
+        confirmLabel={`Delete ${sessionPendingDelete?.title ?? 'session'}`}
+        description="This session and its conversation history will be permanently removed."
+        error={deleteDialogError}
+        onCancel={() => setSessionPendingDelete(null)}
+        onConfirm={() => {
+          if (sessionPendingDelete) void onDelete(sessionPendingDelete.id);
+        }}
+        open={sessionPendingDelete !== null}
+        pending={isDeleting}
+        pendingLabel="Deleting session…"
+        title={`Delete “${sessionPendingDelete?.title ?? 'this session'}”?`}
+        tone="danger"
+      />
+    </>
   );
 }
 
@@ -645,23 +727,23 @@ function SparklesIcon() {
   );
 }
 
-function PlanIcon() {
+function PlusIcon() {
   return (
     <svg aria-hidden="true" fill="none" viewBox="0 0 20 20">
-      <path
-        d="M5 3.5h10a1.5 1.5 0 0 1 1.5 1.5v10a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 15V5A1.5 1.5 0 0 1 5 3.5Zm2.25 4h5.5m-5.5 3h5.5m-5.5 3h3"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeWidth="1.4"
-      />
+      <path d="M10 4v12M4 10h12" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
     </svg>
   );
 }
 
-function ChevronDownIcon() {
+function CloseIcon() {
   return (
     <svg aria-hidden="true" fill="none" viewBox="0 0 16 16">
-      <path d="m4 6 4 4 4-4" stroke="currentColor" strokeLinecap="round" strokeWidth="1.4" />
+      <path
+        d="m4.5 4.5 7 7m0-7-7 7"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="1.5"
+      />
     </svg>
   );
 }
