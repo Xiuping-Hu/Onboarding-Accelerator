@@ -26,8 +26,8 @@
 .brand-loader__visual {
   position: relative;
   display: grid;
-  width: 116px;
-  height: 116px;
+  width: 96px;
+  height: 96px;
   place-items: center;
   isolation: isolate;
 }
@@ -35,8 +35,8 @@
 .brand-loader__glow {
   position: absolute;
   z-index: -1;
-  inset: 17px;
-  border-radius: 24px;
+  inset: 14px;
+  border-radius: 20px;
   background: rgb(213 166 43 / 24%);
   filter: blur(18px);
   animation: brand-loader-glow 1.8s ease-in-out infinite;
@@ -54,10 +54,10 @@
 
 .brand-loader__orbit::after {
   position: absolute;
-  top: 7px;
-  right: 13px;
-  width: 8px;
-  height: 8px;
+  top: 6px;
+  right: 11px;
+  width: 7px;
+  height: 7px;
   border: 2px solid #ffffff;
   border-radius: 999px;
   background: #c79620;
@@ -67,11 +67,11 @@
 
 .brand-loader__mark {
   display: grid;
-  width: 82px;
-  height: 82px;
+  width: 68px;
+  height: 68px;
   place-items: center;
   border: 1px solid rgb(31 31 31 / 8%);
-  border-radius: 24px;
+  border-radius: 20px;
   background: rgb(255 255 255 / 92%);
   box-shadow:
     0 16px 36px rgb(15 23 42 / 14%),
@@ -81,8 +81,8 @@
 
 .brand-loader__image {
   display: block;
-  width: 64px;
-  height: 64px;
+  width: 48px;
+  height: 48px;
   object-fit: contain;
 }
 
