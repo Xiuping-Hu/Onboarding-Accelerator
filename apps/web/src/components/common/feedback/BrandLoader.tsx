@@ -25,9 +25,15 @@ export function BrandLoader({
         <span className="brand-loader__glow" />
         <span className="brand-loader__orbit" />
         <span className="brand-loader__mark">
-          {/* The favicon is already fetched as a browser asset during startup. */}
+          {/* Keep this purpose-sized asset small so the post-login transition appears immediately. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img className="brand-loader__image" src="/favicon.ico" alt="" width={64} height={64} />
+          <img
+            className="brand-loader__image"
+            src="/loading-icon.png"
+            alt=""
+            width={48}
+            height={48}
+          />
         </span>
       </div>
 
