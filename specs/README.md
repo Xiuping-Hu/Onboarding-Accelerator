@@ -25,6 +25,7 @@ superseded, and future-planning documents can be referenced without competing wi
 | 018    | `archive/018-clickable-ai-response-links-source-popover.md` | Implemented | Clickable AI links and an icon/count source popover.                      |
 | 019    | `archive/019-login-page-visual-refactor.md`                 | Implemented | Pixel-matched `/login` refactor based on the supplied reference image.    |
 | 020    | `archive/020-workspace-dashboard-navigation-refactor.md`    | Proposed    | Reference-led dashboard, reduced navigation, and icon-only collapse.      |
+| 021    | `archive/021-workspace-shell-shadcn-tailwind-extraction.md` | Implemented | Extract the workspace shell and replace selector CSS with utility UI.     |
 
 Current runtime documentation lives in `README.md`, `docs/production-readiness.md`, and the generated
 harness docs under `docs/harness/generated`.
