@@ -1,8 +1,72 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-workspace-viewport: var(--workspace-viewport);
+  --color-workspace-surface: var(--workspace-surface);
+  --color-workspace-card: var(--workspace-card);
+  --color-workspace-sidebar: var(--workspace-sidebar);
+  --color-workspace-sidebar-strong: var(--workspace-sidebar-strong);
+  --color-workspace-sidebar-text: var(--workspace-sidebar-text);
+  --color-workspace-border: var(--workspace-border);
+  --color-workspace-heading: var(--workspace-heading);
+  --color-workspace-muted: var(--workspace-muted);
+  --color-workspace-gold: var(--workspace-gold);
+  --color-workspace-gold-soft: var(--workspace-gold-soft);
+  --color-workspace-success: var(--workspace-success);
+  --color-workspace-success-soft: var(--workspace-success-soft);
+  --color-workspace-assistant: var(--workspace-assistant);
+  --color-workspace-assistant-soft: var(--workspace-assistant-soft);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
 * {
   box-sizing: border-box;
 }
 
 :root {
+  --background: #eef1f6;
+  --foreground: #242424;
+  --card: #ffffff;
+  --card-foreground: #171b2a;
+  --popover: #ffffff;
+  --popover-foreground: #171b2a;
+  --primary: #5d63e6;
+  --primary-foreground: #ffffff;
+  --secondary: #eff0ff;
+  --secondary-foreground: #343b91;
+  --muted: #f1f3f7;
+  --muted-foreground: #687086;
+  --accent: #eff0ff;
+  --accent-foreground: #343b91;
+  --destructive: #b42318;
+  --border: #e0e4ec;
+  --input: #d9ddea;
+  --ring: #2458d3;
+  --radius: 0.75rem;
   --panel-surface: rgba(255, 255, 255, 0.96);
   --panel-border: #d9deea;
   --panel-text: #1e293b;

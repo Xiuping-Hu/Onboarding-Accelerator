@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { getCurrentUserFromCookies } from '../../server/auth';
 import { getAppContainer } from '../../server/bootstrap/appContainer';
-import { WorkspaceExperience } from './WorkspaceExperience';
+import { WorkspaceExperience } from '@/components/business/workspace/WorkspaceExperience';
 
 export const dynamic = 'force-dynamic';
 

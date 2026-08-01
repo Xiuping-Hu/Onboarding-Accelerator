@@ -3,7 +3,6 @@ import './globals.css';
 import '../components/common/common.css';
 import './login/auth.css';
 import './admin/admin.css';
-import './workspace/workspace.css';
 
 export const metadata: Metadata = {
   title: 'Onboarding Accelerator',

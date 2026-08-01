@@ -16,8 +16,8 @@ void test('Button applies shadcn variants and composes custom button primitives'
     </Button>,
   );
 
-  assert.match(outline, /ui-button--outline/);
-  assert.match(outline, /ui-button--sm/);
+  assert.match(outline, /border-input/);
+  assert.match(outline, /h-8/);
   assert.match(composed, /<a[^>]*data-slot="button"/);
-  assert.match(composed, /ui-button--destructive/);
+  assert.match(composed, /bg-destructive/);
 });
