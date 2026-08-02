@@ -57,9 +57,9 @@ published roadmap directly from Postgres. The application does not expose a know
 API, and the feature remains disabled by default so existing file-backed guide maps continue to work
 unchanged.
 
-`prisma/migrations` is the active schema history. The former `db/migrations` files are retained only
-as a read-only historical archive. See [Prisma migration adoption](docs/prisma-migration-adoption.md)
-before deploying to a database created with the former migration workflow.
+`prisma/migrations` is the sole schema history. See
+[Prisma migration adoption](docs/prisma-migration-adoption.md) before deploying to a database
+created with the former migration workflow.
 
 ## RAG ingestion
 

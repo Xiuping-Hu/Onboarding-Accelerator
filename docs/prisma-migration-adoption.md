@@ -1,7 +1,7 @@
 # Prisma Migration Adoption
 
-`prisma/migrations` is the only active schema-change history. The SQL in `db/migrations` is retained
-as a read-only historical archive and must not receive new migrations.
+`prisma/migrations` is the only schema-change history. All new migrations and deployments use the
+root `db:migrate:*` commands.
 
 ## New Database
 
