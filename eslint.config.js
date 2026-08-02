@@ -63,7 +63,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['apps/web/src/components/common/**/*.{ts,tsx}'],
+    files: ['apps/web/src/components/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': [
         'error',
@@ -71,7 +71,7 @@ export default tseslint.config(
           paths: [
             {
               name: '@onboarding/shared',
-              message: 'Common components must not depend on product domain models.',
+              message: 'Shared components must not depend on product domain models.',
             },
           ],
           patterns: [
@@ -84,7 +84,29 @@ export default tseslint.config(
                 '**/features/**',
                 '**/server/**',
               ],
-              message: 'Common components may only depend on lower-level, domain-neutral code.',
+              message: 'Shared components may only depend on lower-level, domain-neutral code.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: [
+      'apps/web/src/app/**/*.{ts,tsx}',
+      'apps/web/src/components/data-display/**/*.{ts,tsx}',
+      'apps/web/src/components/dialogs/**/*.{ts,tsx}',
+      'apps/web/src/components/feedback/**/*.{ts,tsx}',
+    ],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@radix-ui/*'],
+              message:
+                'Consume reviewed shadcn source from @/components/ui instead of Radix directly.',
             },
           ],
         },

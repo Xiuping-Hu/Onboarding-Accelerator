@@ -1,10 +1,3 @@
-import {
-  AdminActivityLogService,
-  AiFeeService,
-  FileAiFeeAdjustmentService,
-  FileAdminAuditService,
-  FileAiRateCardService,
-} from '../adminOpsService';
 import { PrismaAuthSessionRepository } from '../authSessionRepository';
 import { loadConfig } from '../config';
 import { LocalHashEmbeddingService, OpenAiEmbeddingService } from '../embeddingService';
@@ -14,16 +7,6 @@ import { PrismaReadinessProbe } from '../infrastructure/prisma/prismaReadiness';
 import { PrismaKnowledgeMapRepository } from '../knowledgeMapService';
 import { PrismaLoginAuditRepository, NoopLoginAuditRepository } from '../loginAuditRepository';
 import { ConsoleLogService, FileLogService } from '../logService';
-import {
-  createAdminActivityController,
-  createAdminAiFeeController,
-  createAdminAuditController,
-} from '../modules/admin/admin.controller';
-import {
-  AdminActivityService,
-  AdminAiFeeService,
-  AdminAuditService,
-} from '../modules/admin/admin.service';
 import { createAskController } from '../modules/ask/ask.controller';
 import { AskService } from '../modules/ask/ask.service';
 import { createAuthController } from '../modules/auth/auth.controller';
@@ -32,9 +15,7 @@ import { createChatController } from '../modules/chat/chat.controller';
 import { ChatService } from '../modules/chat/chat.service';
 import { createGuideController } from '../modules/guide/guide.controller';
 import { GuideService } from '../modules/guide/guide.service';
-import { createAdminKnowledgeMapController } from '../modules/knowledge-maps/knowledgeMap.controller';
 import { KnowledgeMapService } from '../modules/knowledge-maps/knowledgeMap.application.service';
-import { AdminKnowledgeMapService } from '../modules/knowledge-maps/knowledgeMap.service';
 import { createLogController } from '../modules/logs/log.controller';
 import { LogQueryService } from '../modules/logs/log.service';
 import { createSessionController } from '../modules/sessions/session.controller';
@@ -83,11 +64,6 @@ export function createAppContainer() {
       : undefined;
   const logs =
     process.env.VERCEL === '1' ? new ConsoleLogService() : new FileLogService(config.logStorePath);
-  const adminActivity = new AdminActivityLogService(config.logStorePath);
-  const adminAudit = new FileAdminAuditService(config.adminAuditStorePath);
-  const aiRates = new FileAiRateCardService(config.aiRateCardsStorePath);
-  const aiAdjustments = new FileAiFeeAdjustmentService(config.aiFeeAdjustmentsStorePath);
-  const aiFees = new AiFeeService(adminActivity, aiRates);
   const answers = createAnswerProvider(config);
   const embeddings =
     config.embeddingProvider === 'local'
@@ -177,10 +153,6 @@ export function createAppContainer() {
   };
 
   const services = {
-    adminActivity: new AdminActivityService(adminActivity, adminAudit),
-    adminAiFees: new AdminAiFeeService(aiFees, aiRates, aiAdjustments, adminAudit),
-    adminAudit: new AdminAuditService(adminAudit),
-    adminKnowledgeMaps: new AdminKnowledgeMapService(knowledgeMaps),
     ask: new AskService(rag, answers, logs),
     auth: new AuthService(config, authSessions, users, loginAudit),
     chat,
@@ -204,10 +176,6 @@ export function createAppContainer() {
   };
 
   const controllers = {
-    adminActivity: createAdminActivityController(services.adminActivity),
-    adminAiFees: createAdminAiFeeController(services.adminAiFees),
-    adminAudit: createAdminAuditController(services.adminAudit),
-    adminKnowledgeMaps: createAdminKnowledgeMapController(services.adminKnowledgeMaps),
     ask: createAskController(services.ask),
     auth: createAuthController(services.auth),
     chat: createChatController(services.chat),

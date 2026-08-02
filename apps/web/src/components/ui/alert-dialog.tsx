@@ -1,7 +1,7 @@
 'use client';
 
 import * as AlertDialogPrimitive from '@radix-ui/react-alert-dialog';
-import type { ComponentProps } from 'react';
+import React, { type ComponentProps } from 'react';
 import { cn } from '@/lib/utils';
 
 export const AlertDialog = AlertDialogPrimitive.Root;

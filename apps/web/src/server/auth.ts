@@ -29,13 +29,6 @@ export class AuthError extends Error {
   }
 }
 
-export class ForbiddenError extends Error {
-  constructor(message = 'Admin access required') {
-    super(message);
-    this.name = 'ForbiddenError';
-  }
-}
-
 export async function authenticateRequest(
   request: NextRequest,
   dependencies: AuthDependencies,
@@ -92,14 +85,6 @@ export function clearAuthCookie(response: NextResponse, config: ServerConfig): v
     expires: new Date(0),
     maxAge: 0,
   });
-}
-
-export function requireAdminUser(user: AuthenticatedUser): AuthenticatedUser {
-  if (user.role !== 'admin') {
-    throw new ForbiddenError();
-  }
-
-  return user;
 }
 
 export function toAuthenticatedUser(user: UserRecord): AuthenticatedUser {

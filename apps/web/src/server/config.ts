@@ -26,9 +26,6 @@ export interface ServerConfig {
   sessionStore: 'file' | 'postgres';
   sessionStorePath: string;
   logStorePath: string;
-  adminAuditStorePath: string;
-  aiRateCardsStorePath: string;
-  aiFeeAdjustmentsStorePath: string;
   webSearchAllowed: boolean;
   openAiApiKey?: string;
   openAiModel: string;
@@ -85,10 +82,6 @@ export function loadConfig(): ServerConfig {
     sessionStore: parseSessionStore(process.env.SESSION_STORE),
     sessionStorePath: process.env.SESSION_STORE_PATH ?? 'data/sessions.json',
     logStorePath: process.env.LOG_STORE_PATH ?? 'data/events.jsonl',
-    adminAuditStorePath: process.env.ADMIN_AUDIT_STORE_PATH ?? 'data/admin-audit.jsonl',
-    aiRateCardsStorePath: process.env.AI_RATE_CARDS_STORE_PATH ?? 'data/ai-rate-cards.json',
-    aiFeeAdjustmentsStorePath:
-      process.env.AI_FEE_ADJUSTMENTS_STORE_PATH ?? 'data/ai-fee-adjustments.jsonl',
     webSearchAllowed: process.env.WEB_SEARCH_ALLOWED === 'true',
     openAiApiKey: process.env.OPENAI_API_KEY,
     openAiModel: process.env.OPENAI_MODEL ?? 'gpt-4o-mini',

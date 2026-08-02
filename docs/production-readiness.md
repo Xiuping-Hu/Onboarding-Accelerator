@@ -28,21 +28,11 @@ Shared contracts live in `packages/shared/src/index.ts`.
 - `DELETE /api/sessions/:sessionId` returns `204`.
 - `POST /api/sessions/:sessionId/chat` accepts `ChatRequest` and returns `ChatResponse`.
 - `POST /api/sessions/:sessionId/guide/root` reads the current authorized published roadmap from Postgres and returns `GenerateGuideRootResponse` without generating session-specific topology.
-- `POST /api/admin/knowledge-maps/proposals` groups reviewed RAG sources into domain-categorized roadmap drafts.
-- `POST /api/admin/knowledge-maps` stores a reviewed roadmap draft and the version publish endpoint makes it available to eligible sessions.
 - `POST /api/ask` accepts `AskRequest` and returns `AskResponse`.
 - `GET /api/logs/summary` returns `LogSummaryResponse`.
 - `GET /api/logs/recent?limit=10` returns `LogEventsResponse`.
-- `GET /api/admin/activity` returns admin-filtered activity logs for `admin` users.
-- `POST /api/admin/activity/export`, `POST /api/admin/activity/retention`, and `DELETE /api/admin/activity` provide audited admin log operations.
-- `GET /api/admin/ai-fees/summary` returns admin-only AI fee reporting based on token usage and configured rate cards.
-- `GET /api/admin/ai-fees/rates`, `POST /api/admin/ai-fees/rates`, and `PATCH /api/admin/ai-fees/rates/:rateId` manage AI fee rate cards.
-- `POST /api/admin/ai-fees/recalculate` recalculates admin-only fee estimates for the selected usage range.
-- `GET /api/admin/ai-fees/adjustments` and `POST /api/admin/ai-fees/adjustments` manage audited manual fee adjustment records.
-- `GET /api/admin/audit` returns recent admin audit events.
 
 Protected API routes require the auth session cookie; the Microsoft start/callback routes are public so the OIDC redirect can create that cookie after a verified sign-in. `/health`, `/ready`, and `/metrics` are public operational endpoints. Session access is scoped by the authenticated local user ID.
-Admin APIs additionally require `role = admin`; the admin console at `/admin` does not expose operational data until those server-side checks pass.
 
 ## Router And Shared Code Decisions
 
@@ -56,9 +46,6 @@ Set these before running with `NODE_ENV=production`:
 - Session storage: use `SESSION_STORE=postgres` with `DATABASE_URL` for multi-instance deployments, or `SESSION_STORE=file` plus `SESSION_STORE_PATH` for local/single-instance JSON storage.
 - Logging: Vercel deployments emit structured request, error, and AI usage logs to the platform
   collector. Other runtimes use `LOG_STORE_PATH`, which must point to a writable durable path.
-- `ADMIN_AUDIT_STORE_PATH`: writable durable path for JSONL admin audit events.
-- `AI_RATE_CARDS_STORE_PATH`: writable durable path for AI rate-card JSON storage.
-- `AI_FEE_ADJUSTMENTS_STORE_PATH`: writable durable path for manual AI fee adjustment JSONL storage.
 - `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_TIMEOUT_MS`, and `OPENAI_MAX_RETRIES`.
 - Do not copy loopback provider proxies such as `DEEPSEEK_PROXY_URL=http://127.0.0.1:10808` into
   Vercel. They refer to the developer machine locally but to the serverless function in production;
@@ -72,8 +59,8 @@ Set these before running with `NODE_ENV=production`:
   Postgres map/session persistence as a configuration failure.
 
 Run `npm run db:migrate:deploy` before enabling Microsoft auth. Use
-`npm run users:create -- --email admin@example.com --name "Admin" --role admin` to pre-provision the
-first administrator; the verified Microsoft identity binds on first sign-in. The app intentionally
+`npm run users:create -- --email user@example.com --name "User" --role user` to pre-provision the
+first user; the verified Microsoft identity binds on first sign-in. The app intentionally
 has no password login, `/register` page, or registration API.
 
 Do not set `AUTH_DISABLED=true` in production. Startup validation rejects that combination. CORS is not configured by default because the Next app serves UI and API from the same origin; add a hosting/provider policy only if a future cross-origin client is introduced.
@@ -102,4 +89,3 @@ against such a database.
 
 - The current in-process rate limiter is suitable for local and single-instance use; production should use Redis, an edge/provider limiter, or another shared backend.
 - RAG ingestion is request-time file and website scanning unless `knowledge_chunks` is populated separately. Larger deployments should move all ingestion to an indexing job.
-- Admin activity logs, AI rate cards, and audit events currently use file-backed storage. Multi-instance production should move those admin operations stores to PostgreSQL.
