@@ -81,9 +81,9 @@ configure the Entra app credentials, and register
 5. Provide the production environment variables above.
 6. Ensure the configured session and log paths are backed by durable storage.
 
-Existing databases created from the historical SQL files must be baselined before the first Prisma
-deployment. Follow [Prisma migration adoption](prisma-migration-adoption.md); do not run deploy first
-against such a database.
+Existing databases created with the legacy SQL migration workflow must be baselined before the
+first Prisma deployment. Follow [Prisma migration adoption](prisma-migration-adoption.md); do not
+run deploy first against such a database.
 
 ## Deferred Production Choices
 
