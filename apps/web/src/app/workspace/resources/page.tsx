@@ -1,4 +1,4 @@
-import { ResourcesDashboard } from '@/components/business/workspace/resources/ResourcesDashboard';
+import { ResourcesDashboard } from './components/ResourcesDashboard';
 
 export default function ResourcesPage() {
   return <ResourcesDashboard />;

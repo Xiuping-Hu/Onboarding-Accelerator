@@ -34,7 +34,7 @@ for each deployed environment. The Entra application must be single-tenant and u
 store Microsoft access or refresh tokens.
 
 With `AUTH_MICROSOFT_AUTO_PROVISION=true`, a tenant user is added to the local `users` table on first
-sign-in with role `user`. To pre-provision an administrator, run:
+sign-in with role `user`. To pre-provision a user with elevated workflow approval privileges, run:
 
 ```powershell
 npm run users:create -- --email admin@example.com --name "Admin" --role admin
@@ -52,12 +52,10 @@ migrations, populate `knowledge_chunks` with 1536-dimension embeddings, and set
 `RAG_VECTOR_ENABLED=true`.
 
 To enable governed RAG knowledge maps, deploy the Prisma migrations, set `SESSION_STORE=postgres`,
-and set `RAG_KNOWLEDGE_MAP_ENABLED=true`. Administrators can create a
-validated draft through `POST /api/admin/knowledge-maps` and publish it through the version publish
-endpoint. The proposal flow groups reviewed RAG sources into onboarding domains, stores the reviewed
-roadmap in Postgres, and every eligible session reads the current published roadmap directly. The
-feature remains disabled by default so existing file-backed guide maps continue
-to work unchanged.
+and set `RAG_KNOWLEDGE_MAP_ENABLED=true`. Every eligible session reads the current authorized
+published roadmap directly from Postgres. The application does not expose a knowledge-map authoring
+API, and the feature remains disabled by default so existing file-backed guide maps continue to work
+unchanged.
 
 `prisma/migrations` is the active schema history. The former `db/migrations` files are retained only
 as a read-only historical archive. See [Prisma migration adoption](docs/prisma-migration-adoption.md)
@@ -139,12 +137,5 @@ Authenticated workflow endpoints are rooted at
 `/api/sessions/:sessionId/rag-workflows`. They support starting a run, reading its safe projection
 and audit events, resuming refinement or plan checkpoints, and correcting a failed phase. The
 existing chat endpoint is unchanged while the feature is disabled.
-
-Admin operations are available at `/admin`. The admin console uses the same browser account session
-as the workspace and requires the authenticated user role to be `admin`; all `/api/admin/*` routes
-enforce that role server-side. In local `AUTH_DISABLED=true` development, the admin login form can
-set the role header for smoke testing. Admin audit events, AI rate cards, and AI fee adjustments
-persist to `ADMIN_AUDIT_STORE_PATH`, `AI_RATE_CARDS_STORE_PATH`, and
-`AI_FEE_ADJUSTMENTS_STORE_PATH`.
 
 The pre-commit hook updates harness docs, stages the generated docs, then runs lint and Prettier checks.

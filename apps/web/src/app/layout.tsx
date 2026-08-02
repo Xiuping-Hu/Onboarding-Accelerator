@@ -1,8 +1,5 @@
 import type { Metadata } from 'next';
 import './globals.css';
-import '../components/common/common.css';
-import './login/auth.css';
-import './admin/admin.css';
 
 export const metadata: Metadata = {
   title: 'Onboarding Accelerator',
@@ -16,7 +13,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body suppressHydrationWarning>{children}</body>
+      <body className="min-h-dvh bg-background font-sans text-foreground" suppressHydrationWarning>
+        {children}
+      </body>
     </html>
   );
 }

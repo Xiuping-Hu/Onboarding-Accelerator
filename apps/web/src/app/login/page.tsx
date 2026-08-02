@@ -2,7 +2,7 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { getCurrentUserFromCookies } from '../../server/auth';
 import { getAppContainer } from '../../server/bootstrap/appContainer';
-import { LoginScreen } from './LoginScreen';
+import { LoginScreen } from './components/LoginScreen';
 
 export const dynamic = 'force-dynamic';
 

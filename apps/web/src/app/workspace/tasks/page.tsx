@@ -1,4 +1,4 @@
-import { TasksDashboard } from '@/components/business/workspace/tasks/TasksDashboard';
+import { TasksDashboard } from './components/TasksDashboard';
 
 export default function TasksPage() {
   return <TasksDashboard />;

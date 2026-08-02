@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
-import { readdir, readFile } from 'node:fs/promises';
+import { access, readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import { CreateSessionBodySchema, UpdateSessionBodySchema } from './modules/sessions/session.dto';
 
 void test('route adapters contain no DTO schemas or business-service calls', async () => {
   const routeFiles = await findFiles(join(process.cwd(), 'src/app'), 'route.ts');
-  assert.ok(routeFiles.length >= 27);
+  assert.ok(routeFiles.length > 0);
   for (const file of routeFiles) {
     const source = await readFile(file, 'utf8');
     assert.doesNotMatch(source, /from ['"]zod['"]/);
@@ -22,6 +22,24 @@ void test('application services do not import HTTP, Zod, or Prisma infrastructur
     const source = await readFile(file, 'utf8');
     assert.doesNotMatch(source, /next\/server|from ['"]zod['"]|generated\/prisma|\bPrisma\b/);
   }
+});
+
+void test('retired admin operations are absent from the server graph', async () => {
+  for (const path of [
+    join(process.cwd(), 'src/server/adminOpsService.ts'),
+    join(process.cwd(), 'src/server/modules/admin'),
+    join(process.cwd(), 'src/server/modules/knowledge-maps/knowledgeMap.controller.ts'),
+    join(process.cwd(), 'src/server/modules/knowledge-maps/knowledgeMap.dto.ts'),
+    join(process.cwd(), 'src/server/modules/knowledge-maps/knowledgeMap.service.ts'),
+  ]) {
+    await assert.rejects(() => access(path));
+  }
+
+  const containerSource = await readFile(
+    join(process.cwd(), 'src/server/bootstrap/appContainer.ts'),
+    'utf8',
+  );
+  assert.doesNotMatch(containerSource, /adminOpsService|controllers\.admin|services\.admin/);
 });
 
 void test('session DTOs enforce boundary validation and defaults', () => {

@@ -13,7 +13,7 @@ superseded, and future-planning documents can be referenced without competing wi
 | 006    | `archive/006-internal-ops-logging-no-ai-fees.md`            | Proposed    | Internal ops logging site with no client-visible AI fees or logs.         |
 | 007    | `archive/007-limited-zoomable-client-canvas.md`             | Proposed    | Bounded client canvas with auto-fit, pan, zoom, and collapsible panels.   |
 | 008    | `archive/008-assistant-ui-agent-drawer.md`                  | Proposed    | assistant-ui migration for the right agent assistant drawer.              |
-| 009    | `archive/009-admin-ops-activity-ai-fee.md`                  | Complete    | Admin-only managed website for activity logs and AI fee operations.       |
+| 009    | `archive/009-admin-ops-activity-ai-fee.md`                  | Retired     | Removed admin website, API, activity, audit, and AI fee operations.       |
 | 010    | `archive/010-full-screen-canvas-assistant-chat.md`          | Complete    | Full-screen canvas with chat-only assistant-ui right drawer.              |
 | 011    | `archive/011-dynamic-agent-created-guide-map.md`            | Complete    | Empty-first guide maps created from agent domain knowledge.               |
 | 012    | `archive/012-rag-ingestion-sop.md`                          | Proposed    | Production RAG ingestion SOP for files, media, websites, and SharePoint.  |
@@ -26,6 +26,7 @@ superseded, and future-planning documents can be referenced without competing wi
 | 019    | `archive/019-login-page-visual-refactor.md`                 | Implemented | Pixel-matched `/login` refactor based on the supplied reference image.    |
 | 020    | `archive/020-workspace-dashboard-navigation-refactor.md`    | Proposed    | Reference-led dashboard, reduced navigation, and icon-only collapse.      |
 | 021    | `archive/021-workspace-shell-shadcn-tailwind-extraction.md` | Implemented | Extract the workspace shell and replace selector CSS with utility UI.     |
+| 022    | `archive/022-route-colocated-tailwind-frontend-refactor.md` | Implemented | Route-colocate business UI and remove remaining authored component CSS.   |
 
 Current runtime documentation lives in `README.md`, `docs/production-readiness.md`, and the generated
 harness docs under `docs/harness/generated`.

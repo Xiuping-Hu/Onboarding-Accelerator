@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { NextResponse, type NextRequest } from 'next/server';
 import { ZodError } from 'zod';
-import { AuthError, ForbiddenError, authenticateRequest, requireAdminUser } from '../../auth';
+import { AuthError, authenticateRequest } from '../../auth';
 import type { AuthenticatedUser } from '../../auth';
 import type { AppContainer, AppControllers } from '../../bootstrap/appContainer';
 import { getAppContainer } from '../../bootstrap/appContainer';
@@ -12,7 +12,7 @@ import { AppError } from '../errors/appError';
 import type { Controller } from './controller';
 import type { HttpResult } from './httpResult';
 
-export type RouteAccess = 'public' | 'optional' | 'authenticated' | 'admin';
+export type RouteAccess = 'public' | 'optional' | 'authenticated';
 
 export interface RouteHandlerOptions {
   rateLimit?: boolean;
@@ -53,7 +53,6 @@ export function createRouteHandler(
         }
       } else if (access !== 'public') {
         user = await authenticateRequest(request, container);
-        if (access === 'admin') requireAdminUser(user);
       }
 
       if ((options.rateLimit ?? access !== 'public') && user) {
@@ -122,7 +121,6 @@ async function toErrorResponse(
   userId?: string,
 ): Promise<Response> {
   if (error instanceof AuthError) return jsonError(error.message, requestId, 401);
-  if (error instanceof ForbiddenError) return jsonError(error.message, requestId, 403);
   if (error instanceof RateLimitError) {
     const response = jsonError(error.message, requestId, 429);
     response.headers.set('Retry-After', String(error.retryAfterSeconds));

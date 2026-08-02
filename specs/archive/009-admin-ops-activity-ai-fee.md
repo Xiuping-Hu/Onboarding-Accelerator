@@ -1,5 +1,10 @@
 # Admin Operations Website for Activity Logs and AI Fees Spec
 
+## Status
+
+Retired on 2026-08-02. The admin website, API routes, activity/audit operations, and AI fee
+operations described here were removed after their frontend consumer was retired.
+
 ## Assumption
 
 The account and login system in `004-account-login-system.md` is the intended account source for

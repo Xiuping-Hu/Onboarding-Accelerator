@@ -75,7 +75,7 @@ void test('Microsoft login rejects unknown users when automatic provisioning is 
 });
 
 void test('Microsoft login return paths cannot redirect to another origin', () => {
-  assert.equal(sanitizeReturnTo('/admin?view=audit'), '/admin?view=audit');
+  assert.equal(sanitizeReturnTo('/workspace/resources?view=all'), '/workspace/resources?view=all');
   assert.equal(sanitizeReturnTo('https://attacker.example'), '/workspace');
   assert.equal(sanitizeReturnTo('//attacker.example'), '/workspace');
 });
