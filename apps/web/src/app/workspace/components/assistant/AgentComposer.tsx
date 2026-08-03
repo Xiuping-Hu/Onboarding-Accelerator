@@ -49,7 +49,7 @@ export function AgentComposer({
       <ComposerPrimitive.Root className="grid min-w-0 grid-cols-[minmax(0,1fr)_42px] items-end gap-2">
         <ComposerPrimitive.Input
           aria-label="Message the onboarding assistant"
-          className="min-h-11 max-h-28.5 w-full min-w-0 resize-none rounded-lg border border-input bg-white p-3 leading-snug text-slate-800 outline-none focus-visible:border-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-500/20"
+          className="min-h-18 max-h-28.5 w-full min-w-0 resize-none rounded-lg border border-input bg-white p-3 leading-snug text-slate-800 outline-none focus-visible:border-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-500/20"
           placeholder="Ask about your role, team, tools, or next steps"
           submitMode="enter"
         />
