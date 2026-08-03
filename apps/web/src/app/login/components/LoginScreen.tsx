@@ -33,22 +33,22 @@ export function LoginScreen({ error }: { error: string | null }) {
 
           <section
             className={cn(
-              'relative z-1 flex h-auto min-h-0 w-[min(662px,calc(100vw-32px))] flex-none flex-col items-center rounded-[25px] border border-[#e8e7efc7] bg-white/94 px-[clamp(20px,8vw,48px)] pt-9 pb-10 text-center shadow-[0_10px_32px_rgb(20_25_55_/_8%)] backdrop-blur-[3px] max-[390px]:px-5 [@media_(min-width:1100px)_and_(min-height:700px)_and_(min-aspect-ratio:4/3)]:h-[655px] [@media_(min-width:1100px)_and_(min-height:700px)_and_(min-aspect-ratio:4/3)]:px-[60px] [@media_(min-width:1100px)_and_(min-height:700px)_and_(min-aspect-ratio:4/3)]:pt-[49px] [@media_(min-width:1100px)_and_(min-height:700px)_and_(min-aspect-ratio:4/3)]:pb-[57px]',
+              'relative z-1 flex h-auto min-h-0 w-[min(620px,calc(100vw-32px))] flex-none flex-col items-center rounded-[25px] border border-[#e8e7efc7] bg-white/94 px-[clamp(20px,8vw,48px)] pt-8 pb-9 text-center shadow-[0_10px_32px_rgb(20_25_55_/_8%)] backdrop-blur-[3px] max-[390px]:px-5 [@media_(min-width:1100px)_and_(min-height:700px)_and_(min-aspect-ratio:4/3)]:h-[600px] [@media_(min-width:1100px)_and_(min-height:700px)_and_(min-aspect-ratio:4/3)]:px-[54px] [@media_(min-width:1100px)_and_(min-height:700px)_and_(min-aspect-ratio:4/3)]:pt-[42px] [@media_(min-width:1100px)_and_(min-height:700px)_and_(min-aspect-ratio:4/3)]:pb-[45px]',
               error &&
-                '[@media_(min-width:1100px)_and_(min-height:700px)_and_(min-aspect-ratio:4/3)]:h-auto [@media_(min-width:1100px)_and_(min-height:700px)_and_(min-aspect-ratio:4/3)]:min-h-[721px]',
+                '[@media_(min-width:1100px)_and_(min-height:700px)_and_(min-aspect-ratio:4/3)]:h-auto [@media_(min-width:1100px)_and_(min-height:700px)_and_(min-aspect-ratio:4/3)]:min-h-[665px]',
             )}
             aria-labelledby="login-title"
             data-slot="login-panel"
           >
             <span
-              className="grid size-24 flex-none place-items-center rounded-full bg-[radial-gradient(circle_at_36%_30%,#f7f6ff_0%,#efedff_51%,#e4e0ff_100%)] text-[#4b45e6] [@media_(min-width:1100px)_and_(min-height:700px)_and_(min-aspect-ratio:4/3)]:size-28 [@media_(min-width:1100px)_and_(min-height:700px)_and_(min-aspect-ratio:4/3)]:-translate-x-0.5"
+              className="grid size-24 flex-none place-items-center rounded-full bg-[radial-gradient(circle_at_36%_30%,#f7f6ff_0%,#efedff_51%,#e4e0ff_100%)] text-[#4b45e6] [@media_(min-width:1100px)_and_(min-height:700px)_and_(min-aspect-ratio:4/3)]:size-[104px] [@media_(min-width:1100px)_and_(min-height:700px)_and_(min-aspect-ratio:4/3)]:-translate-x-0.5"
               aria-hidden="true"
             >
               <PeopleIcon />
             </span>
 
             <h1
-              className="relative mt-4.5 text-[clamp(36px,11vw,50px)] leading-[1.15] font-bold tracking-[-1px] text-[#0b1027] max-[390px]:text-[38px] [@media_(min-width:1100px)_and_(min-height:700px)_and_(min-aspect-ratio:4/3)]:left-0.5 [@media_(min-width:1100px)_and_(min-height:700px)_and_(min-aspect-ratio:4/3)]:mt-[19px] [@media_(min-width:1100px)_and_(min-height:700px)_and_(min-aspect-ratio:4/3)]:text-[50px] [@media_(min-width:1100px)_and_(min-height:700px)_and_(min-aspect-ratio:4/3)]:leading-[60px] [@media_(min-width:1100px)_and_(min-height:700px)_and_(min-aspect-ratio:4/3)]:tracking-[0.43px]"
+              className="relative mt-4.5 text-[clamp(36px,11vw,50px)] leading-[1.15] font-bold tracking-[-1px] text-[#0b1027] max-[390px]:text-[38px] [@media_(min-width:1100px)_and_(min-height:700px)_and_(min-aspect-ratio:4/3)]:left-0.5 [@media_(min-width:1100px)_and_(min-height:700px)_and_(min-aspect-ratio:4/3)]:mt-4 [@media_(min-width:1100px)_and_(min-height:700px)_and_(min-aspect-ratio:4/3)]:text-[50px] [@media_(min-width:1100px)_and_(min-height:700px)_and_(min-aspect-ratio:4/3)]:leading-[60px] [@media_(min-width:1100px)_and_(min-height:700px)_and_(min-aspect-ratio:4/3)]:tracking-[0.43px]"
               id="login-title"
             >
               Welcome back.
@@ -71,7 +71,7 @@ export function LoginScreen({ error }: { error: string | null }) {
 
             <MicrosoftSignInLink compactAfterError={Boolean(error)} variant="login" />
 
-            <div className="mt-8 grid h-6 w-full flex-none grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-[13px] text-[#4b5677] [@media_(min-width:1100px)_and_(min-height:700px)_and_(min-aspect-ratio:4/3)]:mt-[41px] [@media_(min-width:1100px)_and_(min-height:700px)_and_(min-aspect-ratio:4/3)]:gap-5">
+            <div className="mt-7 grid h-6 w-full flex-none grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-[13px] text-[#4b5677] [@media_(min-width:1100px)_and_(min-height:700px)_and_(min-aspect-ratio:4/3)]:mt-[30px] [@media_(min-width:1100px)_and_(min-height:700px)_and_(min-aspect-ratio:4/3)]:gap-5">
               <span className="h-px bg-[#d7dae4]" aria-hidden="true" />
               <p className="m-0 text-base leading-6 tracking-[0.55px] whitespace-nowrap [@media_(min-width:1100px)_and_(min-height:700px)_and_(min-aspect-ratio:4/3)]:text-[19px]">
                 Secure and trusted
