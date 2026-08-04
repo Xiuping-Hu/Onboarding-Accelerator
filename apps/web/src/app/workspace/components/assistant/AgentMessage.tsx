@@ -1,7 +1,6 @@
 import { MessagePrimitive, useAuiState } from '@assistant-ui/react';
 import type { ChatMessage } from '@onboarding/shared';
 import { useCallback } from 'react';
-import { AssistantSourcesPopover } from './AssistantSourcesPopover';
 import { MessageRoleCircle } from './MessageRoleCircle';
 import { TypedMarkdown } from './TypedMarkdown';
 
@@ -43,16 +42,12 @@ export function AgentMessage({
             animate={isTyping}
             content={sourceMessage.content}
             onComplete={finishTyping}
+            sources={messageSources}
+            sourcesUnavailable={sourceMessage.sourceLinkStatus === 'unavailable'}
           />
         ) : (
           <MessagePrimitive.Parts />
         )}
-        {!isTyping ? (
-          <AssistantSourcesPopover
-            sources={messageSources}
-            unavailable={sourceMessage?.sourceLinkStatus === 'unavailable'}
-          />
-        ) : null}
       </div>
     </MessagePrimitive.Root>
   );

@@ -210,7 +210,7 @@ function composeFallbackAnswer(
 ): string {
   const sourceSummary = sources
     .slice(0, 3)
-    .map((source) => `[${source.title}]`)
+    .map((source, index) => `[${source.title}] [[${index + 1}]]`)
     .join(', ');
   const guideReference =
     guideNodeIds.length > 0
