@@ -8,9 +8,11 @@ import { getDisplaySourceState } from '@/features/workspace/sourceLinks';
 import { AssistantSourceList } from './AssistantSourceList';
 
 export function AssistantSourcesPopover({
+  inline = false,
   sources,
   unavailable = false,
 }: {
+  inline?: boolean;
   sources: KnowledgeSource[];
   unavailable?: boolean;
 }) {
@@ -28,34 +30,56 @@ export function AssistantSourcesPopover({
   }
 
   if (state.status === 'error' || unavailable) {
+    const ErrorWrapper = inline ? 'span' : 'div';
     return (
-      <div className="mt-2 text-xs font-semibold text-red-700" role="status">
+      <ErrorWrapper
+        className={
+          inline
+            ? 'ml-1 text-xs font-semibold text-red-700'
+            : 'mt-2 text-xs font-semibold text-red-700'
+        }
+        role="status"
+      >
         Sources are temporarily unavailable.
-      </div>
+      </ErrorWrapper>
     );
   }
 
   const count = state.links.length;
   const sourceLabel = `${count} source${count === 1 ? '' : 's'}`;
+  const placementLabel = inline ? 'for the preceding content' : 'for this response';
+  const Wrapper = inline ? 'span' : 'div';
 
   return (
-    <div className="mt-2 inline-flex items-center">
+    <Wrapper
+      className={
+        inline ? 'relative mx-1 inline-flex align-text-bottom' : 'mt-2 inline-flex items-center'
+      }
+    >
       <Popover onOpenChange={setOpen} open={open}>
         <PopoverTrigger asChild>
           <Button
             aria-controls={contentId}
             aria-expanded={open}
-            aria-label={`${open ? 'Hide' : 'Show'} ${sourceLabel} for this response`}
-            className="relative size-8 rounded-full text-workspace-assistant hover:bg-workspace-assistant-soft"
+            aria-label={`${open ? 'Hide' : 'Show'} ${sourceLabel} ${placementLabel}`}
+            className={
+              inline
+                ? 'relative size-5 rounded-full text-workspace-assistant hover:bg-workspace-assistant-soft'
+                : 'relative size-8 rounded-full text-workspace-assistant hover:bg-workspace-assistant-soft'
+            }
             ref={triggerRef}
             size="icon"
             type="button"
             variant="ghost"
           >
-            <LinkIcon aria-hidden="true" className="size-4" />
+            <LinkIcon aria-hidden="true" className={inline ? 'size-3.5' : 'size-4'} />
             <span
               aria-hidden="true"
-              className="absolute -top-1 -right-1 grid min-w-4 place-items-center rounded-full border border-white bg-workspace-assistant px-1 text-[9px] font-bold text-white"
+              className={
+                inline
+                  ? 'absolute -top-1.5 -right-1.5 grid min-w-3.5 place-items-center rounded-full border border-white bg-workspace-assistant px-0.5 text-[8px] leading-3 text-white'
+                  : 'absolute -top-1 -right-1 grid min-w-4 place-items-center rounded-full border border-white bg-workspace-assistant px-1 text-[9px] font-bold text-white'
+              }
             >
               {count}
             </span>
@@ -93,7 +117,7 @@ export function AssistantSourcesPopover({
           side="top"
         >
           <h3 className="m-0 text-sm font-bold" id={headingId}>
-            Sources for this response
+            {inline ? 'Sources for this reference' : 'Sources for this response'}
           </h3>
           <AssistantSourceList
             firstLinkRef={firstLinkRef}
@@ -103,7 +127,7 @@ export function AssistantSourcesPopover({
           />
         </PopoverContent>
       </Popover>
-    </div>
+    </Wrapper>
   );
 }
 
