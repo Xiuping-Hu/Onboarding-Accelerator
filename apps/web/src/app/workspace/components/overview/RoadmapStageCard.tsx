@@ -24,6 +24,11 @@ const stageStyles: Record<
     badge: 'border-slate-200 bg-slate-50 text-slate-600',
     card: '',
   },
+  overdue: {
+    marker: 'border-red-600 bg-red-600 text-white',
+    badge: 'border-red-200 bg-red-50 text-red-700',
+    card: 'border-l-4 border-l-red-600',
+  },
   'status-unavailable': {
     marker: 'border-slate-300 bg-white text-slate-600',
     badge: 'border-slate-200 bg-slate-50 text-slate-600',
@@ -45,7 +50,9 @@ export function RoadmapStageCard({
         ? 'In progress'
         : stage.status === 'upcoming'
           ? 'Upcoming'
-          : 'Status unavailable';
+          : stage.status === 'overdue'
+            ? 'Overdue'
+            : 'Status unavailable';
   const styles = stageStyles[stage.status];
 
   return (
@@ -72,14 +79,24 @@ export function RoadmapStageCard({
         <p className="mt-2 mb-3 text-sm leading-relaxed text-workspace-muted">
           {stage.description}
         </p>
-        <Button
-          className="h-auto p-0 text-workspace-assistant hover:bg-transparent hover:underline"
-          onClick={() => onReferenceStep(stage.id)}
-          type="button"
-          variant="ghost"
-        >
-          Ask assistant about this stage
-        </Button>
+        {stage.dueAt ? (
+          <p className="mt-0 mb-3 text-xs font-semibold text-workspace-muted">
+            Due{' '}
+            {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(
+              new Date(stage.dueAt),
+            )}
+          </p>
+        ) : null}
+        {stage.guideStepId ? (
+          <Button
+            className="h-auto p-0 text-workspace-assistant hover:bg-transparent hover:underline"
+            onClick={() => onReferenceStep(stage.guideStepId!)}
+            type="button"
+            variant="ghost"
+          >
+            Ask assistant about this stage
+          </Button>
+        ) : null}
       </article>
     </li>
   );

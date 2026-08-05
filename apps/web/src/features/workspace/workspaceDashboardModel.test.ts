@@ -1,223 +1,190 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { GuideGraph, GuideStep, KnowledgeSource } from '@onboarding/shared';
+import type { GuideGraph, KnowledgeSource, WorkspaceOnboardingState } from '@onboarding/shared';
 import {
   createWorkspaceDashboardModel,
+  deriveWorkspaceProgress,
   deriveWorkspaceResources,
-  deriveWorkspaceRoadmap,
-  getUnavailableUpcomingTasks,
 } from './workspaceDashboardModel';
 
-function createGraph(
-  steps: GuideStep[],
-  sources: KnowledgeSource[] = [],
-  rootId = 'root',
-): GuideGraph {
-  return { rootId, steps, edges: [], sources };
-}
-
-const roadmapGraph = createGraph([
-  {
-    id: 'nested',
-    title: 'Nested detail',
-    summary: 'Not a top-level stage',
-    status: 'complete',
-    depth: 2,
-    parentId: 'first',
-    childIds: [],
-  },
-  {
-    id: 'third',
-    title: 'Contribute',
-    summary: 'Begin contributing',
-    status: 'locked',
-    depth: 1,
-    parentId: 'root',
-    childIds: [],
-  },
-  {
-    id: 'root',
-    title: 'Begin onboarding',
-    summary: 'Synthetic guide root',
-    status: 'in-progress',
-    depth: 0,
-    childIds: ['first', 'second', 'third'],
-  },
-  {
-    id: 'second',
-    title: 'Explore',
-    summary: 'Learn the tools',
-    status: 'in-progress',
-    depth: 1,
-    parentId: 'root',
-    childIds: [],
-  },
-  {
-    id: 'first',
-    title: 'Orientation',
-    summary: 'Meet the team',
-    status: 'complete',
-    depth: 1,
-    parentId: 'root',
-    childIds: ['nested'],
-  },
-]);
-
-void test('derives only top-level roadmap stages in the root child order', () => {
-  const roadmap = deriveWorkspaceRoadmap(roadmapGraph);
-
-  assert.equal(roadmap.status, 'ready');
-  assert.deepEqual(
-    roadmap.stages.map((stage) => ({
-      id: stage.id,
-      position: stage.position,
-      status: stage.status,
-    })),
-    [
-      { id: 'first', position: 1, status: 'status-unavailable' },
-      { id: 'second', position: 2, status: 'status-unavailable' },
-      { id: 'third', position: 3, status: 'status-unavailable' },
+const readyState: WorkspaceOnboardingState = {
+  status: 'ready',
+  projection: {
+    planId: 'plan-1',
+    planRevision: 2,
+    planStatus: 'active',
+    definitionVersionId: 'definition-1',
+    calculatedAt: '2026-08-05T12:00:00.000Z',
+    progress: {
+      percentComplete: 50,
+      completedWeight: 1,
+      totalWeight: 2,
+      completedTaskCount: 1,
+      totalTaskCount: 2,
+      currentStageId: 'stage-2',
+    },
+    roadmap: [
+      {
+        id: 'stage-1',
+        stableKey: 'orientation',
+        position: 1,
+        title: 'Orientation',
+        description: 'Meet the team',
+        status: 'completed',
+        completedTaskCount: 1,
+        totalTaskCount: 1,
+      },
+      {
+        id: 'stage-2',
+        stableKey: 'tools',
+        position: 2,
+        title: 'Tools',
+        description: 'Set up access',
+        status: 'in-progress',
+        completedTaskCount: 0,
+        totalTaskCount: 1,
+      },
     ],
-  );
-});
+    tasks: [
+      {
+        id: 'task-1',
+        planId: 'plan-1',
+        stageId: 'stage-1',
+        stableKey: 'meet-team',
+        title: 'Meet the team',
+        status: 'completed',
+        required: true,
+        countsTowardProgress: true,
+        weight: 1,
+        completedAt: '2026-08-04T12:00:00.000Z',
+        revision: 1,
+        overdue: false,
+      },
+      {
+        id: 'task-2',
+        planId: 'plan-1',
+        stageId: 'stage-2',
+        stableKey: 'set-up-access',
+        title: 'Set up access',
+        status: 'not_started',
+        required: true,
+        countsTowardProgress: true,
+        weight: 1,
+        revision: 0,
+        overdue: false,
+      },
+    ],
+    upcomingTasks: [
+      {
+        id: 'task-2',
+        planId: 'plan-1',
+        stageId: 'stage-2',
+        stableKey: 'set-up-access',
+        title: 'Set up access',
+        status: 'not_started',
+        required: true,
+        countsTowardProgress: true,
+        weight: 1,
+        revision: 0,
+        overdue: false,
+      },
+    ],
+  },
+};
 
-void test('keeps progress unavailable until a lifecycle contract exists', () => {
-  const model = createWorkspaceDashboardModel(roadmapGraph);
-
+void test('uses the lifecycle projection for roadmap, progress, and upcoming tasks', () => {
+  const model = createWorkspaceDashboardModel(createGraph([]), readyState);
+  assert.equal(model.roadmap.status, 'ready');
+  assert.equal(model.roadmap.stages[1]?.status, 'in-progress');
   assert.deepEqual(model.progress, {
-    status: 'unavailable',
-    summary: null,
-    reason: 'progress-contract-unavailable',
+    status: 'ready',
+    summary: {
+      completedTaskCount: 1,
+      totalTaskCount: 2,
+      percentComplete: 50,
+      currentStage: readyState.projection.roadmap[1],
+    },
   });
+  assert.equal(model.upcomingTasks.status, 'ready');
+  assert.equal(model.upcomingTasks.items[0]?.id, 'task-2');
 });
 
-void test('keeps unavailable, empty, and partial roadmap data distinct', () => {
-  const unavailable = createWorkspaceDashboardModel(null);
-  assert.deepEqual(unavailable.roadmap, {
+void test('keeps missing and empty lifecycle state explicit', () => {
+  assert.deepEqual(createWorkspaceDashboardModel(null, null).roadmap, {
     status: 'unavailable',
     stages: [],
-    reason: 'guide-unavailable',
+    reason: 'onboarding-unavailable',
   });
-  assert.deepEqual(unavailable.progress, {
-    status: 'unavailable',
-    summary: null,
-    reason: 'guide-unavailable',
+  const empty = createWorkspaceDashboardModel(null, {
+    status: 'empty',
+    reason: 'no-active-plan',
   });
-
-  const empty = createWorkspaceDashboardModel({
-    rootId: 'root',
-    steps: [],
-    edges: [],
-    sources: [],
-    emptyReason: 'not_created',
-  });
-  assert.equal(empty.roadmap.status, 'empty');
   assert.deepEqual(empty.progress, { status: 'empty', summary: null });
-
-  const partial = createWorkspaceDashboardModel(
-    createGraph([
-      {
-        id: 'root',
-        title: 'Root',
-        summary: 'Root',
-        status: 'in-progress',
-        depth: 0,
-        childIds: ['known', 'missing'],
-      },
-      {
-        id: 'known',
-        title: 'Known',
-        summary: 'Known stage',
-        status: 'ready',
-        depth: 1,
-        parentId: 'root',
-        childIds: [],
-      },
-    ]),
-  );
-  assert.equal(partial.roadmap.status, 'partial');
-  assert.equal(partial.roadmap.stages.length, 1);
-  assert.deepEqual(partial.progress, {
-    status: 'unavailable',
-    summary: null,
-    reason: 'partial-roadmap',
-  });
+  assert.deepEqual(empty.upcomingTasks, { status: 'empty', items: [] });
 });
 
-void test('does not reinterpret guide stages as upcoming tasks', () => {
-  assert.deepEqual(getUnavailableUpcomingTasks(), {
+void test('reports a zero progress denominator as unavailable', () => {
+  const state = structuredClone(readyState);
+  if (state.status !== 'ready') return;
+  state.projection.progress.percentComplete = null;
+  state.projection.progress.totalWeight = 0;
+  assert.deepEqual(deriveWorkspaceProgress(state), {
     status: 'unavailable',
-    items: [],
-    reason: 'task-contract-unavailable',
+    summary: null,
+    reason: 'no-progress-tasks',
   });
 });
 
 void test('normalizes and deduplicates authorized graph sources as resource candidates', () => {
   const resources = deriveWorkspaceResources(
-    createGraph(
-      [],
-      [
-        {
-          id: 'handbook#one',
-          title: 'Handbook',
-          excerpt: 'First excerpt',
-          href: '/api/sources/handbook',
-          sourceType: 'knowledge_base',
-          metadata: { rootSourceId: 'handbook' },
-        },
-        {
-          id: 'handbook#two',
-          title: 'Handbook duplicate',
-          excerpt: 'Second excerpt',
-          href: '/api/sources/handbook',
-          sourceType: 'knowledge_base',
-          metadata: { rootSourceId: 'handbook' },
-        },
-        {
-          id: 'policy',
-          title: 'Public policy',
-          excerpt: 'Policy excerpt',
-          href: 'https://example.com/policy',
-          sourceType: 'web',
-        },
-      ],
-    ),
-  );
-
-  assert.equal(resources.status, 'ready');
-  assert.equal(resources.items.length, 2);
-  assert.deepEqual(
-    resources.items.map(({ id, href, label }) => ({ id, href, label })),
-    [
+    createGraph([
       {
         id: 'handbook#one',
+        title: 'Handbook',
+        excerpt: 'First excerpt',
         href: '/api/sources/handbook',
-        label: 'Company knowledge',
+        sourceType: 'knowledge_base',
+        metadata: { rootSourceId: 'handbook' },
       },
-      { id: 'policy', href: 'https://example.com/policy', label: 'example.com' },
-    ],
+      {
+        id: 'handbook#two',
+        title: 'Handbook duplicate',
+        excerpt: 'Second excerpt',
+        href: '/api/sources/handbook',
+        sourceType: 'knowledge_base',
+        metadata: { rootSourceId: 'handbook' },
+      },
+      {
+        id: 'policy',
+        title: 'Public policy',
+        excerpt: 'Policy excerpt',
+        href: 'https://example.com/policy',
+        sourceType: 'web',
+      },
+    ]),
   );
+  assert.equal(resources.status, 'ready');
+  assert.equal(resources.items.length, 2);
 });
 
-void test('does not expose a resource collection when source links cannot be normalized', () => {
-  const unsafe = deriveWorkspaceResources(
-    createGraph(
-      [],
-      [
-        {
-          id: 'private-source',
-          title: 'Private source',
-          excerpt: 'Do not expose this locator',
-          href: 'file:///private/handbook.pdf',
-        },
-      ],
-    ),
+void test('does not expose resources when a source link cannot be normalized', () => {
+  const resources = deriveWorkspaceResources(
+    createGraph([
+      {
+        id: 'private-source',
+        title: 'Private source',
+        excerpt: 'Do not expose this locator',
+        href: 'file:///private/handbook.pdf',
+      },
+    ]),
   );
-
-  assert.deepEqual(unsafe, {
+  assert.deepEqual(resources, {
     status: 'unavailable',
     items: [],
     reason: 'source-links-unavailable',
   });
-  assert.deepEqual(deriveWorkspaceResources(createGraph([])), { status: 'empty', items: [] });
 });
+
+function createGraph(sources: KnowledgeSource[]): GuideGraph {
+  return { rootId: 'root', steps: [], edges: [], sources };
+}

@@ -10,18 +10,93 @@ datasource db {
 }
 
 model OnboardingSession {
-  id          String   @id @db.Uuid
-  ownerId     String   @map("owner_id")
-  title       String
-  createdAt   DateTime @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime @map("updated_at") @db.Timestamptz(6)
-  settings    Json     @default("{}")
-  chatHistory Json     @default("[]") @map("chat_history")
-  guide       Json     @default("{}")
-  revision    BigInt   @default(0)
+  id              String           @id @db.Uuid
+  ownerId         String           @map("owner_id")
+  title           String
+  createdAt       DateTime         @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime         @map("updated_at") @db.Timestamptz(6)
+  settings        Json             @default("{}")
+  chatHistory     Json             @default("[]") @map("chat_history")
+  guide           Json             @default("{}")
+  revision        BigInt           @default(0)
+  onboardingPlans OnboardingPlan[]
 
   @@index([ownerId, updatedAt(sort: Desc)], map: "onboarding_sessions_owner_updated_idx")
   @@map("onboarding_sessions")
+}
+
+model OnboardingJourneyVersion {
+  id        String           @id @db.Uuid
+  ownerId   String           @map("owner_id")
+  title     String
+  stages    Json
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  plans     OnboardingPlan[]
+
+  @@index([ownerId, createdAt(sort: Desc)], map: "onboarding_journey_versions_owner_created_idx")
+  @@map("onboarding_journey_versions")
+}
+
+model OnboardingPlan {
+  id                  String                   @id @db.Uuid
+  sessionId           String?                  @map("session_id") @db.Uuid
+  ownerId             String                   @map("owner_id")
+  definitionVersionId String                   @map("definition_version_id") @db.Uuid
+  activationRequestId String                   @map("activation_request_id")
+  title               String
+  status              String
+  startAt             DateTime                 @map("start_at") @db.Timestamptz(6)
+  targetAt            DateTime?                @map("target_at") @db.Timestamptz(6)
+  revision            Int                      @default(0)
+  createdAt           DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  activatedAt         DateTime                 @map("activated_at") @db.Timestamptz(6)
+  session             OnboardingSession?       @relation(fields: [sessionId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  definitionVersion   OnboardingJourneyVersion @relation(fields: [definitionVersionId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  taskInstances       OnboardingTaskInstance[]
+  taskEvents          OnboardingTaskEvent[]
+
+  @@unique([ownerId, activationRequestId], map: "onboarding_plans_activation_request_key")
+  @@index([ownerId, status], map: "onboarding_plans_owner_status_idx")
+  @@map("onboarding_plans")
+}
+
+model OnboardingTaskInstance {
+  id           String                @id @db.Uuid
+  planId       String                @map("plan_id") @db.Uuid
+  definitionId String                @map("definition_id") @db.Uuid
+  stableKey    String                @map("stable_key")
+  stageId      String                @map("stage_id") @db.Uuid
+  status       String
+  dueAt        DateTime?             @map("due_at") @db.Timestamptz(6)
+  completedAt  DateTime?             @map("completed_at") @db.Timestamptz(6)
+  completedBy  String?               @map("completed_by")
+  revision     Int                   @default(0)
+  plan         OnboardingPlan        @relation(fields: [planId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  events       OnboardingTaskEvent[]
+
+  @@unique([planId, definitionId], map: "onboarding_task_instances_definition_key")
+  @@index([planId, stageId], map: "onboarding_task_instances_plan_stage_idx")
+  @@map("onboarding_task_instances")
+}
+
+model OnboardingTaskEvent {
+  id             String                 @id @db.Uuid
+  planId         String                 @map("plan_id") @db.Uuid
+  taskId         String                 @map("task_id") @db.Uuid
+  actorId        String                 @map("actor_id")
+  fromStatus     String                 @map("from_status")
+  toStatus       String                 @map("to_status")
+  source         String
+  idempotencyKey String                 @map("idempotency_key")
+  taskRevision   Int                    @map("task_revision")
+  planRevision   Int                    @map("plan_revision")
+  createdAt      DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  plan           OnboardingPlan         @relation(fields: [planId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  task           OnboardingTaskInstance @relation(fields: [taskId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([planId, idempotencyKey], map: "onboarding_task_events_idempotency_key")
+  @@index([taskId, createdAt], map: "onboarding_task_events_task_created_idx")
+  @@map("onboarding_task_events")
 }
 
 model RagWorkflowRun {

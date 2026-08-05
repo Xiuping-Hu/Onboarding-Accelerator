@@ -26,14 +26,6 @@ export function RoadmapSection({
       >
         Onboarding Roadmap
       </h2>
-      {roadmap.status === 'partial' ? (
-        <p
-          className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"
-          role="status"
-        >
-          Some roadmap stages are temporarily unavailable.
-        </p>
-      ) : null}
       {roadmap.stages.length > 0 ? (
         <ol className="mt-4 grid list-none gap-3 p-0">
           {roadmap.stages.map((stage) => (
@@ -45,10 +37,10 @@ export function RoadmapSection({
           <DashboardEmptyState
             description={
               roadmap.status === 'empty'
-                ? 'A published roadmap will show your onboarding stages here.'
-                : 'The roadmap could not be loaded. Try again from the workspace status message.'
+                ? 'Activate an approved onboarding plan to see its roadmap stages here.'
+                : 'The onboarding roadmap could not be loaded. Try again from the workspace status message.'
             }
-            title={roadmap.status === 'empty' ? 'No roadmap available' : 'Roadmap unavailable'}
+            title={roadmap.status === 'empty' ? 'No active plan' : 'Roadmap unavailable'}
           />
         </div>
       )}

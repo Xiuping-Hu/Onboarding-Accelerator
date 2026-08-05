@@ -8,18 +8,33 @@ import { RoadmapSection } from './RoadmapSection';
 import { UpcomingTasksCard } from './UpcomingTasksCard';
 
 export function OverviewDashboard() {
-  const { graph, isLoading, onReferenceStep } = useWorkspaceRoute();
-  const dashboard = useMemo(() => createWorkspaceDashboardModel(graph), [graph]);
+  const {
+    graph,
+    onboarding,
+    onboardingIsLoading,
+    onReferenceStep,
+    onTransitionTask,
+    pendingTaskIds,
+  } = useWorkspaceRoute();
+  const dashboard = useMemo(
+    () => createWorkspaceDashboardModel(graph, onboarding),
+    [graph, onboarding],
+  );
 
   return (
     <div className="grid min-w-0 gap-5 pb-2">
-      <ProgressCard isLoading={isLoading} progress={dashboard.progress} />
+      <ProgressCard isLoading={onboardingIsLoading} progress={dashboard.progress} />
       <RoadmapSection
-        isLoading={isLoading}
+        isLoading={onboardingIsLoading}
         onReferenceStep={onReferenceStep}
         roadmap={dashboard.roadmap}
       />
-      <UpcomingTasksCard isLoading={isLoading} />
+      <UpcomingTasksCard
+        isLoading={onboardingIsLoading}
+        onTransitionTask={onTransitionTask}
+        pendingTaskIds={pendingTaskIds}
+        tasks={dashboard.upcomingTasks}
+      />
     </div>
   );
 }

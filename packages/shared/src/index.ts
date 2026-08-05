@@ -218,6 +218,121 @@ export interface GenerateGuideRootResponse {
   knowledgeMapEnabled?: boolean;
 }
 
+export type OnboardingPlanStatus = 'draft' | 'active' | 'completed' | 'cancelled';
+
+export type OnboardingTaskStatus =
+  | 'not_started'
+  | 'in_progress'
+  | 'blocked'
+  | 'completed'
+  | 'waived';
+
+export type OnboardingTaskMutationSource = 'tasks_ui' | 'overview_ui' | 'agent_confirmed';
+
+export type RoadmapStageProjectionStatus =
+  | 'completed'
+  | 'in-progress'
+  | 'upcoming'
+  | 'overdue'
+  | 'status-unavailable';
+
+export interface OnboardingTaskDefinitionInput {
+  stableKey: string;
+  title: string;
+  description?: string;
+  required?: boolean;
+  countsTowardProgress?: boolean;
+  weight?: number;
+  dueOffsetDays?: number;
+  dependsOnTaskKeys?: string[];
+}
+
+export interface RoadmapStageDefinitionInput {
+  stableKey: string;
+  title: string;
+  description: string;
+  position: number;
+  guideStepId?: string;
+  dependsOnStageKeys?: string[];
+  tasks: OnboardingTaskDefinitionInput[];
+}
+
+export interface ActivateOnboardingPlanRequest {
+  approved: true;
+  clientRequestId: string;
+  title: string;
+  definitionVersionId?: string;
+  startAt?: string;
+  targetAt?: string;
+  stages: RoadmapStageDefinitionInput[];
+}
+
+export interface OnboardingTaskProjection {
+  id: string;
+  planId: string;
+  stageId: string;
+  stableKey: string;
+  title: string;
+  description?: string;
+  status: OnboardingTaskStatus;
+  required: boolean;
+  countsTowardProgress: boolean;
+  weight: number;
+  dueAt?: string;
+  completedAt?: string;
+  revision: number;
+  overdue: boolean;
+}
+
+export interface RoadmapStageProjection {
+  id: string;
+  stableKey: string;
+  position: number;
+  title: string;
+  description: string;
+  status: RoadmapStageProjectionStatus;
+  guideStepId?: string;
+  dueAt?: string;
+  completedAt?: string;
+  completedTaskCount: number;
+  totalTaskCount: number;
+}
+
+export interface WorkspaceOnboardingProjection {
+  planId: string;
+  planRevision: number;
+  planStatus: OnboardingPlanStatus;
+  definitionVersionId: string;
+  calculatedAt: string;
+  progress: {
+    percentComplete: number | null;
+    completedWeight: number;
+    totalWeight: number;
+    completedTaskCount: number;
+    totalTaskCount: number;
+    currentStageId: string | null;
+  };
+  roadmap: RoadmapStageProjection[];
+  tasks: OnboardingTaskProjection[];
+  upcomingTasks: OnboardingTaskProjection[];
+}
+
+export type WorkspaceOnboardingState =
+  | { status: 'empty'; reason: 'no-active-plan' }
+  | { status: 'ready'; projection: WorkspaceOnboardingProjection };
+
+export interface TransitionOnboardingTaskRequest {
+  status: OnboardingTaskStatus;
+  expectedRevision: number;
+  idempotencyKey: string;
+  source: OnboardingTaskMutationSource;
+}
+
+export interface TransitionOnboardingTaskResponse {
+  state: WorkspaceOnboardingState;
+  idempotentReplay: boolean;
+}
+
 export interface AiUsageStats {
   model: string;
   inputTokens: number;
