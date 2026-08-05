@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useWorkspaceChat } from './useWorkspaceChat';
 import { useWorkspaceGuide } from './useWorkspaceGuide';
 import { useWorkspaceNavigationState } from './useWorkspaceNavigationState';
+import { useWorkspaceOnboarding } from './useWorkspaceOnboarding';
 import { useWorkspaceRouteFocus } from './useWorkspaceRouteFocus';
 import { useWorkspaceSessions } from './useWorkspaceSessions';
 import type {
@@ -35,6 +36,7 @@ export function useWorkspaceController({
   const [isAssistantMinimized, setIsAssistantMinimized] = useState(false);
 
   const activeSessionId = sessions.state.activeSessionId;
+  const onboarding = useWorkspaceOnboarding(activeSessionId);
   const activeMessages = activeSessionId
     ? (sessions.state.messagesBySessionId[activeSessionId] ?? [])
     : [];
@@ -45,18 +47,25 @@ export function useWorkspaceController({
   return {
     account: { label: account.displayName ?? account.email ?? account.userId },
     route: {
-      apiError: sessions.apiError ?? guide.apiError,
+      apiError: sessions.apiError ?? guide.apiError ?? onboarding.error,
       graph: guide.graph,
       headingRef,
       isGuideEmpty: guide.isGuideEmpty,
       isLoading: sessions.isBootstrapping || guide.isLoading,
       knowledgeMapEnabled: guide.knowledgeMapEnabled,
+      onboarding: onboarding.state,
+      onboardingIsLoading: onboarding.isLoading,
+      pendingTaskIds: onboarding.pendingTaskIds,
       meta: getWorkspacePageMeta(pathname, account.displayName),
       onReferenceStep(stepId) {
         guide.referenceStep(stepId);
         setIsAssistantMinimized(false);
       },
-      onRetry: guide.retry,
+      onRetry() {
+        guide.retry();
+        void onboarding.reload();
+      },
+      onTransitionTask: onboarding.transitionTask,
       sources: guide.sources,
     },
     navigation,

@@ -15,6 +15,10 @@ import type {
   ListSessionsResponse,
   LogEventsResponse,
   LogSummaryResponse,
+  ActivateOnboardingPlanRequest,
+  TransitionOnboardingTaskRequest,
+  TransitionOnboardingTaskResponse,
+  WorkspaceOnboardingState,
 } from '@onboarding/shared';
 
 export interface AccountSession {
@@ -191,6 +195,33 @@ export async function sendChat(payload: ChatRequest): Promise<ChatResponse> {
     method: 'POST',
     body: JSON.stringify(payload),
   });
+}
+
+export async function getOnboardingState(sessionId: string): Promise<WorkspaceOnboardingState> {
+  return requestJson<WorkspaceOnboardingState>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/onboarding`,
+  );
+}
+
+export async function activateOnboardingPlan(
+  sessionId: string,
+  payload: ActivateOnboardingPlanRequest,
+): Promise<TransitionOnboardingTaskResponse> {
+  return requestJson<TransitionOnboardingTaskResponse>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/onboarding`,
+    { method: 'POST', body: JSON.stringify(payload) },
+  );
+}
+
+export async function transitionOnboardingTask(
+  sessionId: string,
+  taskId: string,
+  payload: TransitionOnboardingTaskRequest,
+): Promise<TransitionOnboardingTaskResponse> {
+  return requestJson<TransitionOnboardingTaskResponse>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/onboarding/tasks/${encodeURIComponent(taskId)}`,
+    { method: 'PATCH', body: JSON.stringify(payload) },
+  );
 }
 
 export async function getLogSummary(): Promise<LogSummaryResponse> {

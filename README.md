@@ -106,6 +106,26 @@ Guide maps are created from the workspace agent flow. A new session starts with 
 the agent for domain knowledge, then use Create map when the response includes a draft map proposal.
 The created map is saved with the session guide state.
 
+## Onboarding plans, tasks, and progress
+
+Onboarding lifecycle state is separate from guide navigation state. An approved plan pins an
+immutable journey definition, materializes learner task instances, records task transitions as
+append-only events, and calculates progress deterministically from progress-bearing task weights.
+Guide nodes are never interpreted as completed tasks.
+
+Authenticated lifecycle endpoints are rooted at `/api/sessions/:sessionId/onboarding`:
+
+- `GET` returns the current learner's active plan projection or an explicit `no-active-plan` state;
+- `POST` activates an explicitly approved, validated journey definition using a client request ID;
+  and
+- `PATCH /tasks/:taskId` performs a revisioned, idempotent task transition and returns the updated
+  unified projection.
+
+Overview, Roadmap, Upcoming Tasks, and Tasks consume that same projection. Learner progress follows
+the active learner across chat sessions, and deleting the originating chat does not delete the plan.
+File-backed development stores lifecycle data beside `SESSION_STORE_PATH` in
+`onboarding-plans.json`; PostgreSQL deployments require migration `0009_onboarding_task_progress`.
+
 ## Mastra RAG workflows
 
 The snapshot-based three-part RAG workflow from spec 017 is feature-gated. It refines the input,

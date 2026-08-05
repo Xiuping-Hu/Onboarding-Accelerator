@@ -41,7 +41,7 @@ export function ProgressCard({
       </h2>
       <div className="mt-5 grid grid-cols-[136px_minmax(0,1fr)] items-center gap-7 max-md:grid-cols-1">
         <div
-          aria-label={`${summary.percentComplete}% complete, ${summary.completedStageCount} of ${summary.totalStageCount} stages completed`}
+          aria-label={`${summary.percentComplete}% complete, ${summary.completedTaskCount} of ${summary.totalTaskCount} tasks completed`}
           className="relative size-32 justify-self-center"
           role="img"
         >

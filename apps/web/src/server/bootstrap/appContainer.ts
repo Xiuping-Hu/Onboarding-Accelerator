@@ -1,3 +1,4 @@
+import { dirname, join } from 'node:path';
 import { PrismaAuthSessionRepository } from '../authSessionRepository';
 import { loadConfig } from '../config';
 import { LocalHashEmbeddingService, OpenAiEmbeddingService } from '../embeddingService';
@@ -18,6 +19,10 @@ import { GuideService } from '../modules/guide/guide.service';
 import { KnowledgeMapService } from '../modules/knowledge-maps/knowledgeMap.application.service';
 import { createLogController } from '../modules/logs/log.controller';
 import { LogQueryService } from '../modules/logs/log.service';
+import { createOnboardingController } from '../modules/onboarding/onboarding.controller';
+import { PrismaOnboardingRepository } from '../modules/onboarding/onboarding.prisma.repository';
+import { FileOnboardingRepository } from '../modules/onboarding/onboarding.repository';
+import { OnboardingService } from '../modules/onboarding/onboarding.service';
 import { createSessionController } from '../modules/sessions/session.controller';
 import { SessionService } from '../modules/sessions/session.service';
 import { createSystemController } from '../modules/system/system.controller';
@@ -146,6 +151,9 @@ export function createAppContainer() {
   });
   const sourceLinks = new SourceLinkService(rag, resolveRagAccessScopes, knowledgeMaps);
   const chat = new ChatService(sessions, rag, answers, logs, knowledgeMaps, sourceLinks);
+  const onboardingRepository = prisma
+    ? new PrismaOnboardingRepository(prisma)
+    : new FileOnboardingRepository(join(dirname(config.sessionStorePath), 'onboarding-plans.json'));
   const metrics = {
     startedAt: new Date().toISOString(),
     requestsTotal: 0,
@@ -158,6 +166,7 @@ export function createAppContainer() {
     chat,
     guide: new GuideService(sessions, knowledgeMaps),
     logs: new LogQueryService(logs),
+    onboarding: new OnboardingService(onboardingRepository, sessions),
     ragWorkflows,
     sessions: new SessionService(sessions, sourceLinks),
     sources: sourceLinks,
@@ -181,6 +190,7 @@ export function createAppContainer() {
     chat: createChatController(services.chat),
     guide: createGuideController(services.guide),
     logs: createLogController(services.logs),
+    onboarding: createOnboardingController(services.onboarding),
     ragWorkflows: createRagWorkflowController(services.ragWorkflows),
     sessions: createSessionController(services.sessions),
     sources: createSourceController(services.sources),
@@ -198,6 +208,7 @@ export function createAppContainer() {
     logs,
     ragWorkflowRuntime,
     ragWorkflowRepository,
+    onboardingRepository,
     metrics,
     services,
     controllers,

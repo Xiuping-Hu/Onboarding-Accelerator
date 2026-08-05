@@ -4,6 +4,9 @@ import type {
   GuideStep,
   KnowledgeSource,
   OnboardingSession,
+  OnboardingTaskMutationSource,
+  OnboardingTaskStatus,
+  WorkspaceOnboardingState,
 } from '@onboarding/shared';
 import type { RefObject } from 'react';
 import type { AccountSession } from '../api';
@@ -24,9 +27,18 @@ export interface WorkspaceController {
     isGuideEmpty: boolean;
     isLoading: boolean;
     knowledgeMapEnabled: boolean;
+    onboarding: WorkspaceOnboardingState | null;
+    onboardingIsLoading: boolean;
+    pendingTaskIds: string[];
     meta: WorkspacePageMeta;
     onReferenceStep: (stepId: string) => void;
     onRetry: () => void;
+    onTransitionTask: (
+      taskId: string,
+      status: OnboardingTaskStatus,
+      expectedRevision: number,
+      source: OnboardingTaskMutationSource,
+    ) => Promise<void>;
     sources: KnowledgeSource[];
   };
   navigation: {

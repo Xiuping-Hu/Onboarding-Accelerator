@@ -34,8 +34,12 @@ export function WorkspaceShell({
         isGuideEmpty: controller.route.isGuideEmpty,
         isLoading: controller.route.isLoading,
         knowledgeMapEnabled: controller.route.knowledgeMapEnabled,
+        onboarding: controller.route.onboarding,
+        onboardingIsLoading: controller.route.onboardingIsLoading,
+        pendingTaskIds: controller.route.pendingTaskIds,
         onReferenceStep: controller.route.onReferenceStep,
         onRetry: controller.route.onRetry,
+        onTransitionTask: controller.route.onTransitionTask,
         sources: controller.route.sources,
       }}
     >

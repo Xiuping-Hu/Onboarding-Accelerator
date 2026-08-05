@@ -9,6 +9,8 @@ import type {
   CreateSessionResponse,
   GenerateGuideRootResponse,
   GetSessionResponse,
+  TransitionOnboardingTaskResponse,
+  WorkspaceOnboardingState,
 } from '@onboarding/shared';
 import { resetAppContainerForTests } from '../server/bootstrap/appContainer';
 
@@ -26,6 +28,9 @@ void test('Next API handlers create sessions, generate guides, chat, and expose 
   const chatRoute = await import('./api/sessions/[sessionId]/chat/route');
   const sessionRoute = await import('./api/sessions/[sessionId]/route');
   const sourceRoute = await import('./api/sources/[sourceId]/route');
+  const onboardingRoute = await import('./api/sessions/[sessionId]/onboarding/route');
+  const onboardingTaskRoute =
+    await import('./api/sessions/[sessionId]/onboarding/tasks/[taskId]/route');
   const ragWorkflowRoute = await import('./api/sessions/[sessionId]/rag-workflows/route');
   const logsRoute = await import('./api/logs/recent/route');
   const meRoute = await import('./api/auth/me/route');
@@ -46,6 +51,74 @@ void test('Next API handlers create sessions, generate guides, chat, and expose 
   assert.equal(createdResponse.status, 201);
   const created = (await createdResponse.json()) as CreateSessionResponse;
   assert.equal(created.session.title, 'API route smoke');
+
+  const emptyOnboardingResponse = await onboardingRoute.GET(
+    new NextRequest(`http://localhost/api/sessions/${created.session.id}/onboarding`, {
+      headers: { 'x-user-id': 'api-test-user' },
+    }),
+    { params: Promise.resolve({ sessionId: created.session.id }) },
+  );
+  assert.equal(emptyOnboardingResponse.status, 200);
+  assert.deepEqual(await emptyOnboardingResponse.json(), {
+    status: 'empty',
+    reason: 'no-active-plan',
+  });
+
+  const activationResponse = await onboardingRoute.POST(
+    jsonRequest(`http://localhost/api/sessions/${created.session.id}/onboarding`, {
+      approved: true,
+      clientRequestId: 'api-activate-plan',
+      title: 'API onboarding plan',
+      startAt: '2026-08-05T12:00:00Z',
+      stages: [
+        {
+          stableKey: 'orientation',
+          title: 'Orientation',
+          description: 'Learn the basics',
+          position: 1,
+          tasks: [{ stableKey: 'read-handbook', title: 'Read the handbook' }],
+        },
+      ],
+    }),
+    { params: Promise.resolve({ sessionId: created.session.id }) },
+  );
+  assert.equal(activationResponse.status, 201);
+  const activation = (await activationResponse.json()) as TransitionOnboardingTaskResponse;
+  assert.equal(activation.state.status, 'ready');
+  if (activation.state.status !== 'ready') return;
+  const onboardingTask = activation.state.projection.tasks[0]!;
+
+  const transitionResponse = await onboardingTaskRoute.PATCH(
+    jsonRequest(
+      `http://localhost/api/sessions/${created.session.id}/onboarding/tasks/${onboardingTask.id}`,
+      {
+        status: 'completed',
+        expectedRevision: onboardingTask.revision,
+        idempotencyKey: 'api-complete-task',
+        source: 'tasks_ui',
+      },
+      'PATCH',
+    ),
+    { params: Promise.resolve({ sessionId: created.session.id, taskId: onboardingTask.id }) },
+  );
+  assert.equal(transitionResponse.status, 200);
+  const completed = (await transitionResponse.json()) as TransitionOnboardingTaskResponse;
+  assert.equal(
+    completed.state.status === 'ready' && completed.state.projection.progress.percentComplete,
+    100,
+  );
+
+  const onboardingReloadResponse = await onboardingRoute.GET(
+    new NextRequest(`http://localhost/api/sessions/${created.session.id}/onboarding`, {
+      headers: { 'x-user-id': 'api-test-user' },
+    }),
+    { params: Promise.resolve({ sessionId: created.session.id }) },
+  );
+  const onboardingReload = (await onboardingReloadResponse.json()) as WorkspaceOnboardingState;
+  assert.equal(
+    onboardingReload.status === 'ready' && onboardingReload.projection.progress.percentComplete,
+    100,
+  );
 
   const rootResponse = await guideRootRoute.POST(
     jsonRequest(`http://localhost/api/sessions/${created.session.id}/guide/root`, {}),
@@ -145,9 +218,9 @@ void test('retired registration and admin routes do not exist', async () => {
   }
 });
 
-function jsonRequest(url: string, body: unknown): NextRequest {
+function jsonRequest(url: string, body: unknown, method = 'POST'): NextRequest {
   return new NextRequest(url, {
-    method: 'POST',
+    method,
     headers: {
       'content-type': 'application/json',
       'x-user-id': 'api-test-user',
