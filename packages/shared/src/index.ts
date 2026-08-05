@@ -23,9 +23,15 @@ export interface SourceProvenance {
 
 export type KnowledgeSource = SourceProvenance;
 
+export interface CitationSegment {
+  markdown: string;
+  sourceIds: string[];
+}
+
 export interface AskResponse {
   answer: string;
   sources: SourceProvenance[];
+  citationSegments?: CitationSegment[];
   usage?: AiUsageStats;
 }
 
@@ -62,6 +68,7 @@ export interface ChatMessage {
   content: string;
   createdAt: string;
   sources?: SourceProvenance[];
+  citationSegments?: CitationSegment[];
   sourceLinkStatus?: 'unavailable';
   guideNodeIds?: string[];
   focusStepIds?: string[];

@@ -31,7 +31,12 @@ export class AskService {
           });
         }
 
-        return { answer: answer.content, sources, usage: answer.usage };
+        return {
+          answer: answer.content,
+          sources,
+          citationSegments: answer.citationSegments,
+          usage: answer.usage,
+        };
       }
     } catch (error) {
       console.error(error);

@@ -4,6 +4,7 @@ import {
   buildGroundedPrompt,
   formatGroundedHistory,
   onboardingSystemPrompt,
+  parseGroundedAnswer,
 } from './groundedPrompt';
 import { deepSeekFetch } from './providerFetch';
 
@@ -51,9 +52,10 @@ export class DeepSeekAnswerProvider implements AnswerProvider {
     if (!response.ok) throw new Error(`DeepSeek request failed with status ${response.status}`);
     const payload = (await response.json()) as DeepSeekResponse;
     const content = payload.choices?.[0]?.message?.content?.trim();
-    if (!content) return undefined;
+    const answer = content ? parseGroundedAnswer(content, input.sources) : undefined;
+    if (!answer) return undefined;
 
-    return { content, usage: extractUsage(payload, this.config.model) };
+    return { ...answer, usage: extractUsage(payload, this.config.model) };
   }
 }
 

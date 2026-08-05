@@ -40,6 +40,7 @@ export function AgentMessage({
         {sourceMessage ? (
           <TypedMarkdown
             animate={isTyping}
+            citationSegments={sourceMessage.citationSegments}
             content={sourceMessage.content}
             onComplete={finishTyping}
             sources={messageSources}

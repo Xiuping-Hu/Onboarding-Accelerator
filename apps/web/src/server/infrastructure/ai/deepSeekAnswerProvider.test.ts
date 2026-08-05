@@ -14,7 +14,15 @@ void test('DeepSeekAnswerProvider maps grounded chat requests and usage', async 
       requestBody = JSON.parse(String(init.body)) as Record<string, unknown>;
       return new Response(
         JSON.stringify({
-          choices: [{ message: { content: 'Grounded answer.' } }],
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  segments: [{ markdown: 'Grounded answer.', sourceNumbers: [1] }],
+                }),
+              },
+            },
+          ],
           usage: { prompt_tokens: 10, completion_tokens: 4, total_tokens: 14 },
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -30,6 +38,9 @@ void test('DeepSeekAnswerProvider maps grounded chat requests and usage', async 
   assert.equal(requestBody?.model, 'deepseek-v4-flash');
   assert.equal(Array.isArray(requestBody?.messages), true);
   assert.equal(answer?.content, 'Grounded answer.');
+  assert.deepEqual(answer?.citationSegments, [
+    { markdown: 'Grounded answer.', sourceIds: ['team'] },
+  ]);
   assert.deepEqual(answer?.usage, {
     model: 'deepseek-v4-flash',
     inputTokens: 10,

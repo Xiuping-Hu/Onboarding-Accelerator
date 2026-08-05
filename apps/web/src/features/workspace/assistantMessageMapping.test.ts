@@ -9,6 +9,7 @@ const message: ChatMessage = {
   content: 'Here is the next step.',
   createdAt: '2026-07-05T10:00:00.000Z',
   focusStepIds: ['step-1'],
+  citationSegments: [{ markdown: 'Here is the next step.', sourceIds: ['source-1'] }],
   sources: [
     {
       id: 'source-1',
@@ -34,6 +35,7 @@ void test('maps chat messages to assistant-ui text messages with metadata', () =
   assert.equal(mapped.createdAt?.toISOString(), '2026-07-05T10:00:00.000Z');
   assert.deepEqual(mapped.metadata?.custom?.focusStepIds, ['step-1']);
   assert.deepEqual(mapped.metadata?.custom?.sources, message.sources);
+  assert.deepEqual(mapped.metadata?.custom?.citationSegments, message.citationSegments);
   assert.deepEqual(mapped.metadata?.custom?.usage, message.usage);
 });
 

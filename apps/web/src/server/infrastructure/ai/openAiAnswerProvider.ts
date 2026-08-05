@@ -4,6 +4,7 @@ import {
   buildGroundedPrompt,
   formatGroundedHistory,
   onboardingSystemPrompt,
+  parseGroundedAnswer,
 } from './groundedPrompt';
 import { openAiFetch } from './providerFetch';
 
@@ -59,13 +60,14 @@ export class OpenAiAnswerProvider implements AnswerProvider {
 
     const payload = (await response.json()) as OpenAiResponse;
     const content = extractOutputText(payload);
+    const answer = content ? parseGroundedAnswer(content, input.sources) : undefined;
 
-    if (!content) {
+    if (!answer) {
       return undefined;
     }
 
     return {
-      content,
+      ...answer,
       usage: extractUsageStats(payload, this.config),
     };
   }
