@@ -3,7 +3,30 @@ import test from 'node:test';
 import type { AnswerProvider } from '../../core/ports/answerProvider';
 import type { RagRetriever } from '../rag/rag.service';
 import { InMemorySessionRepository } from '../../sessionRepository';
-import { ChatService } from './chat.service';
+import { ChatService, normalizeCitationSegments } from './chat.service';
+
+void test('normalizes structured citations only when every source ID was retrieved', () => {
+  const sources = [{ id: 'source-1', title: 'Handbook', excerpt: 'Approved evidence.' }];
+
+  assert.deepEqual(
+    normalizeCitationSegments(
+      [{ markdown: '  Grounded answer.  ', sourceIds: ['source-1', 'source-1'] }],
+      sources,
+    ),
+    [{ markdown: 'Grounded answer.', sourceIds: ['source-1'] }],
+  );
+  assert.equal(
+    normalizeCitationSegments(
+      [{ markdown: 'Unknown evidence.', sourceIds: ['not-retrieved'] }],
+      sources,
+    ),
+    undefined,
+  );
+  assert.equal(
+    normalizeCitationSegments([{ markdown: 'Missing citation.', sourceIds: [] }], sources),
+    undefined,
+  );
+});
 
 void test('chat persists an explicit roadmap node reference and uses its evidence', async () => {
   const ownerId = 'reference-user';
@@ -36,7 +59,13 @@ void test('chat persists an explicit roadmap node reference and uses its evidenc
   const rag: RagRetriever = {
     retrieve: async (query) => ({
       query,
-      sources: [],
+      sources: [
+        {
+          id: 'source-unused',
+          title: 'Uncited retrieval result',
+          excerpt: 'This source is retrieved but not used in the answer.',
+        },
+      ],
       knowledgeBaseSources: [],
       webSources: [],
     }),
@@ -45,7 +74,12 @@ void test('chat persists an explicit roadmap node reference and uses its evidenc
   const answers: AnswerProvider = {
     answer: async ({ sources }) => {
       answerSourceIds = sources.map((source) => source.id);
-      return { content: 'Use the referenced roadmap evidence.' };
+      return {
+        content: 'Use the referenced roadmap evidence.',
+        citationSegments: [
+          { markdown: 'Use the referenced roadmap evidence.', sourceIds: ['source-access'] },
+        ],
+      };
     },
   };
 
@@ -60,10 +94,17 @@ void test('chat persists an explicit roadmap node reference and uses its evidenc
     ownerId,
   );
 
-  assert.deepEqual(answerSourceIds, ['source-access']);
+  assert.deepEqual(answerSourceIds, ['source-access', 'source-unused']);
+  assert.deepEqual(
+    response.sources.map((source) => source.id),
+    ['source-access'],
+  );
   assert.deepEqual(response.focusStepIds, ['node-access']);
   assert.equal(response.session?.chatHistory[0]?.roadmapReferences?.[0]?.title, 'Tools & Access');
   assert.equal(response.session?.chatHistory[0]?.guideNodeIds?.[0], 'node-access');
+  assert.deepEqual(response.message.citationSegments, [
+    { markdown: 'Use the referenced roadmap evidence.', sourceIds: ['source-access'] },
+  ]);
   assert.equal(
     response.session?.chatHistory[1]?.sources?.[0]?.excerpt,
     'Use the approved access request process.',
@@ -76,4 +117,7 @@ void test('chat persists an explicit roadmap node reference and uses its evidenc
     'Evidence is resolved after the current access policy is checked.',
   );
   assert.equal(persistedSession.chatHistory[1]?.sources?.[0]?.href, undefined);
+  assert.deepEqual(persistedSession.chatHistory[1]?.citationSegments, [
+    { markdown: 'Use the referenced roadmap evidence.', sourceIds: ['source-access'] },
+  ]);
 });

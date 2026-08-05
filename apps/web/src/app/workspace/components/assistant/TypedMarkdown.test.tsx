@@ -50,7 +50,11 @@ void test('places each source icon immediately after its referenced content', ()
   const output = renderToStaticMarkup(
     <TypedMarkdown
       animate={false}
-      content="Read the handbook. [[1]] Then complete security training. [[2]]"
+      citationSegments={[
+        { markdown: 'Read the handbook.', sourceIds: ['handbook'] },
+        { markdown: 'Then complete security training.', sourceIds: ['policy'] },
+      ]}
+      content="Read the handbook.\n\nThen complete security training."
       onComplete={() => undefined}
       sources={sources}
     />,
@@ -64,14 +68,19 @@ void test('places each source icon immediately after its referenced content', ()
   assert.ok(firstContent < firstIcon);
   assert.ok(firstIcon < secondContent);
   assert.ok(secondContent < secondIcon);
-  assert.doesNotMatch(output, /\[\[[12]\]\]/);
 });
 
 void test('supports multiple sources on one inline reference', () => {
   const output = renderToStaticMarkup(
     <TypedMarkdown
       animate={false}
-      content="This step is supported by both policies. [[1, 2]]"
+      citationSegments={[
+        {
+          markdown: 'This step is supported by both policies.',
+          sourceIds: ['handbook', 'policy'],
+        },
+      ]}
+      content="This step is supported by both policies."
       onComplete={() => undefined}
       sources={sources}
     />,
@@ -84,12 +93,29 @@ void test('fails closed when an inline reference points to a missing source', ()
   const output = renderToStaticMarkup(
     <TypedMarkdown
       animate={false}
-      content="This claim has an invalid source. [[3]]"
+      citationSegments={[{ markdown: 'This claim has an invalid source.', sourceIds: ['missing'] }]}
+      content="This claim has an invalid source."
       onComplete={() => undefined}
       sources={sources}
     />,
   );
 
   assert.match(output, /Sources are temporarily unavailable/);
-  assert.doesNotMatch(output, /\[\[3\]\]/);
+});
+
+void test('keeps an aggregate source control for a legacy unstructured answer', () => {
+  const output = renderToStaticMarkup(
+    <TypedMarkdown
+      animate={false}
+      content="Historical answer without structured citations. [[1]]"
+      onComplete={() => undefined}
+      sources={sources}
+    />,
+  );
+
+  assert.ok(
+    output.indexOf('Historical answer without structured citations.') <
+      output.indexOf('Show 2 sources for this response'),
+  );
+  assert.doesNotMatch(output, /\[\[1\]\]/);
 });

@@ -12,6 +12,7 @@ export function toAssistantMessage(message: ChatMessage): ThreadMessageLike {
         focusStepIds: message.focusStepIds ?? [],
         guideNodeIds: message.guideNodeIds ?? [],
         sources: message.sources ?? [],
+        citationSegments: message.citationSegments ?? [],
         usage: message.usage,
       },
     },

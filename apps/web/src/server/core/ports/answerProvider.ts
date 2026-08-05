@@ -1,4 +1,9 @@
-import type { AiUsageStats, ChatMessage, SourceProvenance } from '@onboarding/shared';
+import type {
+  AiUsageStats,
+  ChatMessage,
+  CitationSegment,
+  SourceProvenance,
+} from '@onboarding/shared';
 
 export interface AnswerRequest {
   prompt: string;
@@ -9,6 +14,7 @@ export interface AnswerRequest {
 
 export interface AnswerResult {
   content: string;
+  citationSegments?: CitationSegment[];
   usage?: AiUsageStats;
 }
 

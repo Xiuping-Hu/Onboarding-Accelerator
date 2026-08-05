@@ -3,13 +3,14 @@ import type {
   ChatMessage,
   ChatRequest,
   ChatResponse,
+  CitationSegment,
   GuideNode,
   OnboardingSession,
   RoadmapNodeReference,
   SourceProvenance,
 } from '@onboarding/shared';
 import type { RagRetriever } from '../rag/rag.service';
-import type { AnswerProvider } from '../../core/ports/answerProvider';
+import type { AnswerProvider, AnswerResult } from '../../core/ports/answerProvider';
 import { NoopLogService, type LogService } from '../../logService';
 import type { SessionRepository } from '../../sessionRepository';
 import { touchSession } from '../../sessionRepository';
@@ -65,23 +66,25 @@ export class ChatService {
       retrieval.sources,
       guideNodeIds,
     );
+    const answerSources = selectAnswerSources(retrieval.sources, answer.citationSegments);
     const assistantMessage: ChatMessage = {
       id: randomUUID(),
       role: 'assistant',
       content: answer.content,
       createdAt: now,
-      sources: retrieval.sources,
+      sources: answerSources,
+      citationSegments: answer.citationSegments,
       guideNodeIds,
       ...(roadmapReference.reference ? { focusStepIds: [roadmapReference.reference.nodeId] } : {}),
       usage: answer.usage,
     };
     const persistedAssistantMessage: ChatMessage = {
       ...assistantMessage,
-      sources: toPersistedSourceReferences(retrieval.sources),
+      sources: toPersistedSourceReferences(answerSources),
     };
     session.chatHistory.push(userMessage, persistedAssistantMessage);
     const savedSession = await this.sessions.save(touchSession(session), ownerId);
-    const resolvedSources = await this.sourceLinks.resolveSources(retrieval.sources, ownerId);
+    const resolvedSources = await this.sourceLinks.resolveSources(answerSources, ownerId);
     const responseAssistantMessage: ChatMessage = {
       ...assistantMessage,
       sources: resolvedSources.sources,
@@ -143,7 +146,7 @@ export class ChatService {
     prompt: string,
     sources: ChatMessage['sources'] = [],
     guideNodeIds: string[],
-  ): Promise<{ content: string; usage?: ChatMessage['usage'] }> {
+  ): Promise<AnswerResult> {
     try {
       const modelAnswer = await this.answers.answer({
         prompt,
@@ -153,8 +156,21 @@ export class ChatService {
       });
 
       if (modelAnswer) {
+        const citationSegments = modelAnswer.citationSegments
+          ? normalizeCitationSegments(modelAnswer.citationSegments, sources)
+          : undefined;
+        if (modelAnswer.citationSegments && !citationSegments) {
+          return {
+            ...composeFallbackAnswer(prompt, sources, guideNodeIds),
+            usage: modelAnswer.usage,
+          };
+        }
+
         return {
-          content: modelAnswer.content,
+          content:
+            citationSegments?.map((segment) => segment.markdown).join('\n\n') ??
+            modelAnswer.content,
+          citationSegments,
           usage: modelAnswer.usage,
         };
       }
@@ -162,9 +178,7 @@ export class ChatService {
       console.error(error);
     }
 
-    return {
-      content: composeFallbackAnswer(prompt, sources, guideNodeIds),
-    };
+    return composeFallbackAnswer(prompt, sources, guideNodeIds);
   }
 }
 
@@ -188,6 +202,38 @@ function unique(values: string[]): string[] {
   return [...new Set(values)];
 }
 
+function selectAnswerSources(
+  sources: SourceProvenance[],
+  citationSegments: CitationSegment[] | undefined,
+): SourceProvenance[] {
+  if (!citationSegments) return sources;
+  const citedSourceIds = new Set(citationSegments.flatMap((segment) => segment.sourceIds));
+  return sources.filter((source) => citedSourceIds.has(source.id));
+}
+
+export function normalizeCitationSegments(
+  segments: CitationSegment[],
+  sources: SourceProvenance[],
+): CitationSegment[] | undefined {
+  if (segments.length === 0) return undefined;
+
+  const allowedSourceIds = new Set(sources.map((source) => source.id));
+  const normalized = segments.map((segment) => ({
+    markdown: segment.markdown.trim(),
+    sourceIds: [...new Set(segment.sourceIds)],
+  }));
+  const invalid = normalized.some(
+    (segment) =>
+      !segment.markdown || segment.sourceIds.some((sourceId) => !allowedSourceIds.has(sourceId)),
+  );
+  if (invalid) return undefined;
+
+  const hasCitation = normalized.some((segment) => segment.sourceIds.length > 0);
+  if (sources.length > 0 && !hasCitation) return undefined;
+
+  return normalized;
+}
+
 function toPersistedSourceReferences(sources: SourceProvenance[]): SourceProvenance[] {
   return sources.map((source) => ({
     id: source.id,
@@ -207,24 +253,44 @@ function composeFallbackAnswer(
   prompt: string,
   sources: ChatMessage['sources'] = [],
   guideNodeIds: string[],
-): string {
-  const sourceSummary = sources
-    .slice(0, 3)
-    .map((source, index) => `[${source.title}] [[${index + 1}]]`)
-    .join(', ');
+): Pick<AnswerResult, 'content' | 'citationSegments'> {
+  const citedSources = sources.slice(0, 3);
+  const sourceSummary = citedSources.map((source) => source.title).join(', ');
   const guideReference =
     guideNodeIds.length > 0
       ? ` I also found ${guideNodeIds.length} related visual guide node(s) for follow-up.`
       : '';
+  const citationSegments: CitationSegment[] = [
+    {
+      markdown: `Based on the retrieved onboarding sources, here is a starting answer for "${prompt}".`,
+      sourceIds: [],
+    },
+    ...(sourceSummary
+      ? [
+          {
+            markdown: `Grounding sources: ${sourceSummary}.`,
+            sourceIds: citedSources.map((source) => source.id),
+          },
+        ]
+      : [
+          {
+            markdown:
+              'No matching onboarding source was retrieved, so I cannot verify the answer from company material.',
+            sourceIds: [],
+          },
+        ]),
+    {
+      markdown:
+        'If you need a policy-specific answer, add the missing source content or connect the model layer.' +
+        guideReference,
+      sourceIds: [],
+    },
+  ];
 
-  return (
-    `Based on the retrieved onboarding sources, here is a starting answer for "${prompt}". ` +
-    (sourceSummary
-      ? `Grounding sources: ${sourceSummary}. `
-      : 'No matching onboarding source was retrieved, so I cannot verify the answer from company material. ') +
-    `If you need a policy-specific answer, add the missing source content or connect the model layer. ` +
-    guideReference
-  );
+  return {
+    content: citationSegments.map((segment) => segment.markdown).join('\n\n'),
+    citationSegments,
+  };
 }
 
 function findRelevantGuideNodeIds(session: OnboardingSession, query: string): string[] {
