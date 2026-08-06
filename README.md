@@ -125,6 +125,9 @@ Overview, Roadmap, Upcoming Tasks, and Tasks consume that same projection. Learn
 the active learner across chat sessions, and deleting the originating chat does not delete the plan.
 File-backed development stores lifecycle data beside `SESSION_STORE_PATH` in
 `onboarding-plans.json`; PostgreSQL deployments require migration `0009_onboarding_task_progress`.
+Production Vercel builds apply pending committed Prisma migrations before compiling the application
+and fail closed if the database cannot be migrated; preview and local builds do not mutate the
+production schema.
 
 ## Mastra RAG workflows
 

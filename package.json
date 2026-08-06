@@ -9,6 +9,7 @@
     "packages/*"
   ],
   "scripts": {
+    "prebuild": "node scripts/deploy-production-migrations.mjs",
     "build": "npm run prisma:generate && npm run build -w @onboarding/shared && npm run build -w @onboarding/web",
     "prisma:generate": "prisma generate",
     "prisma:format": "prisma format",
