@@ -27,7 +27,8 @@
     "format:check": "prettier . --check",
     "lint": "eslint .",
     "pretest": "npm run prisma:generate",
-    "test": "npm run test -w @onboarding/web",
+    "test": "npm run test -w @onboarding/web && npm run test:deployment",
+    "test:deployment": "node --test scripts/*.test.mjs",
     "prepare": "husky"
   },
   "devDependencies": {

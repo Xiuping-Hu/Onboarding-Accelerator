@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { adoptLegacyMigrationHistoryIfNeeded } from './legacy-prisma-baseline.mjs';
 
 const isVercelProduction = process.env.VERCEL === '1' && process.env.VERCEL_ENV === 'production';
 
@@ -7,6 +8,13 @@ if (isVercelProduction) {
     throw new Error('DATABASE_URL is required for a production Vercel build.');
   }
 
+  const adoption = await adoptLegacyMigrationHistoryIfNeeded({
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.POSTGRES_SSL === 'true',
+    resolveMigration: (migration) =>
+      runNpm(['exec', '--', 'prisma', 'migrate', 'resolve', '--applied', migration]),
+  });
+  console.log(adoption.message);
   await runNpm(['run', 'db:migrate:deploy']);
 } else {
   console.log('Skipping production database migrations outside a production Vercel build.');

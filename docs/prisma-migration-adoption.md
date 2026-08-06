@@ -50,3 +50,11 @@ the new Prisma migration directory. Deployments run `db:migrate:status` followed
 
 After setting `TEST_DATABASE_URL` to a disposable migrated PostgreSQL database, run `npm test` to
 include the Prisma rollback, JSON, revision, and pgvector integration check.
+
+## Vercel Production Adoption
+
+The production prebuild inspects the live schema when `_prisma_migrations` is absent. It records
+`0001` through `0007` as applied only when every expected legacy table, column, index, constraint,
+extension, nullability rule, and composite key is present. It then applies `0008` and later committed
+migrations with `prisma migrate deploy`. Any partial or drifted legacy schema stops the deployment
+without recording a baseline.

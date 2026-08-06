@@ -126,7 +126,9 @@ the active learner across chat sessions, and deleting the originating chat does 
 File-backed development stores lifecycle data beside `SESSION_STORE_PATH` in
 `onboarding-plans.json`; PostgreSQL deployments require migration `0009_onboarding_task_progress`.
 Production Vercel builds apply pending committed Prisma migrations before compiling the application
-and fail closed if the database cannot be migrated; preview and local builds do not mutate the
+and fail closed if the database cannot be migrated. When the migration history is absent, the build
+first verifies the complete legacy schema from migrations `0001` through `0007` before recording
+that baseline; it refuses partial or drifted schemas. Preview and local builds do not mutate the
 production schema.
 
 ## Mastra RAG workflows
