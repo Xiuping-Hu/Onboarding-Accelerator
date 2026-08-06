@@ -32,6 +32,7 @@ import { PgvectorKnowledgeBase } from '../pgvectorKnowledgeBase';
 import { PrismaSessionRepository } from '../postgresSessionRepository';
 import { createConfiguredRagInputAdapters } from '../ragAdapters/index';
 import { RagService } from '../modules/rag/rag.service';
+import { createRagIngestionCronController } from '../modules/rag-ingestion/ragIngestionCron.controller';
 import { createRagWorkflowController } from '../modules/rag-workflows/ragWorkflow.controller';
 import {
   InMemoryRagWorkflowRepository,
@@ -191,6 +192,7 @@ export function createAppContainer() {
     guide: createGuideController(services.guide),
     logs: createLogController(services.logs),
     onboarding: createOnboardingController(services.onboarding),
+    ragIngestion: createRagIngestionCronController(),
     ragWorkflows: createRagWorkflowController(services.ragWorkflows),
     sessions: createSessionController(services.sessions),
     sources: createSourceController(services.sources),

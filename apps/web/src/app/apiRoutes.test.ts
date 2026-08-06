@@ -21,6 +21,7 @@ void test('Next API handlers create sessions, generate guides, chat, and expose 
   process.env.SESSION_STORE_PATH = join(directory, 'sessions.json');
   process.env.LOG_STORE_PATH = join(directory, 'events.jsonl');
   process.env.OPENAI_API_KEY = '';
+  process.env.RAG_SEED_KNOWLEDGE_ENABLED = 'true';
   resetAppContainerForTests();
 
   const sessionsRoute = await import('./api/sessions/route');

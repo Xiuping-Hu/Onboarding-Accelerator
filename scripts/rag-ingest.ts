@@ -1,4 +1,5 @@
 import { resolve } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { loadConfig } from '../apps/web/src/server/config';
 import { getPrismaClient } from '../apps/web/src/server/infrastructure/prisma/prismaClient';
 import {
@@ -8,6 +9,12 @@ import {
 import { closeProviderFetch } from '../apps/web/src/server/infrastructure/ai/providerFetch';
 import { RagIngestionService } from '../apps/web/src/server/ragIngestion/ingestionService';
 import { loadSourceRegistry } from '../apps/web/src/server/ragIngestion/sourceRegistry';
+import {
+  claimRequestedIngestionRun,
+  manualIdempotencyKey,
+  requestIngestionRun,
+} from '../apps/web/src/server/ragIngestion/ingestionScheduler';
+import { ensureKnowledgeSource } from '../apps/web/src/server/ragIngestion/sourceVersionWriter';
 
 // This command has its own database requirement and must be able to dry-run without app auth.
 process.env.AUTH_DISABLED ??= 'true';
@@ -54,10 +61,32 @@ const service = new RagIngestionService(
   },
   config.ragAllowedAccessScopes,
   config.embeddingProfile,
-  config.ragKnowledgeMapEnabled,
+  true,
+  {
+    maximumFileBytes: config.ragMaxFileBytes,
+    websiteAllowlist: config.ragWebsiteAllowlist,
+  },
 );
 
-const reports = await Promise.all(sources.map((source) => service.ingest(source, dryRun)));
+const reports = [];
+for (const source of sources) {
+  let runId: string | undefined;
+  if (database && !dryRun) {
+    await ensureKnowledgeSource(database, source);
+    const run = await requestIngestionRun(database, {
+      sourceId: source.id,
+      triggerType: 'manual',
+      idempotencyKey: manualIdempotencyKey(source.id, randomUUID()),
+      requestedBy: 'rag:ingest-cli',
+    });
+    const claimed = await claimRequestedIngestionRun(database, run.id, 'rag:ingest-cli');
+    if (!claimed) {
+      throw new Error(`Source ${source.id} already has an active ingestion run.`);
+    }
+    runId = claimed.id;
+  }
+  reports.push(await service.ingest(source, dryRun, { runId }));
+}
 for (const report of reports) console.info(JSON.stringify(report));
 if (reports.some((report) => report.status === 'failed')) process.exitCode = 1;
 await closeProviderFetch();

@@ -72,6 +72,58 @@ npm run rag:ingest -- --config config/rag-sources.json
 npm run rag:ingest -- --source wayfinder --config config/rag-sources.json
 ```
 
+The durable scheduled-ingestion path uses the same source registry and ingestion service. Configure
+an exact cron expression and IANA timezone under a source's `schedule`, then synchronize the source
+and schedule records:
+
+```powershell
+npm run rag:schedules:sync -- --config config/rag-sources.json
+npm run rag:dispatch
+npm run rag:worker -- --limit 1
+```
+
+`rag:dispatch` is safe for at-least-once delivery and should be invoked by the hosting platform or
+external scheduler at a short fixed interval. It only creates idempotent durable runs. `rag:worker`
+claims queued runs with a per-source lease and performs acquisition, sanitization, canonical change
+detection, bounded structure-aware chunking, incremental embedding, validation, and versioned
+publication. Failed or quarantined candidates never replace the current source version.
+
+### Vercel scheduled ingestion
+
+The repository and `apps/web` Vercel configurations invoke `GET /api/internal/rag/cron` every five
+minutes, covering projects whose Vercel Root Directory is either the repository root or `apps/web`.
+Vercel reads only the configuration at the selected project root. The protected route dispatches
+due database schedules and processes at most one queued run per invocation. Add a random
+`CRON_SECRET` to the Vercel Production environment; Vercel supplies it as a bearer token on cron
+requests. Also configure the database, embedding, connector, and allowlist variables required by
+the registered sources.
+
+Before enabling the cron in production, apply the Prisma migrations and synchronize the approved
+source registry against the production database:
+
+```powershell
+npm run db:migrate:deploy
+npm run rag:schedules:sync -- --config config/rag-sources.json
+```
+
+The source registry is configuration input and is not read by each cron request. Synchronize it
+again whenever a source or its schedule changes. Vercel Hobby projects support only daily cron
+jobs; change the provider heartbeat to a daily expression or use a paid plan. Sources that can run
+longer than the route's five-minute duration require a dedicated durable worker rather than inline
+Vercel execution.
+
+The example Wayfinder cron is illustrative. Operators must select the production day, time, and
+timezone deliberately rather than relying on the descriptive `refreshCadence` value.
+
+Candidates held by a manual-review policy or anomaly gate can be approved or rejected explicitly,
+and retained published versions can be selected for rollback:
+
+```powershell
+npm run rag:review -- --run <run-id> --actor <operator> --approve
+npm run rag:review -- --run <run-id> --actor <operator> --reject
+npm run rag:rollback -- --source <source-id> --version <version-id> --actor <operator>
+```
+
 The registry supports text/Markdown and `.docx` documents, PDFs, reviewed `.vtt`, `.srt`, or `.txt`
 transcripts, reviewed audio transcription, public websites, and authenticated SharePoint pages.
 PDF extraction requires Poppler's `pdftotext`; scanned PDFs additionally require `ocrmypdf`. Audio
@@ -80,6 +132,12 @@ The SharePoint Wayfinder source uses Microsoft Graph app credentials from
 `RAG_SHAREPOINT_TENANT_ID`, `RAG_SHAREPOINT_CLIENT_ID`, and `RAG_SHAREPOINT_CLIENT_SECRET`; grant
 the app least-privilege read access to the approved site. `accessScope` must be listed in
 `RAG_ALLOWED_ACCESS_SCOPES` or ingestion and retrieval will exclude it.
+
+Website ingestion uses registered origins and paths, validates every redirect, blocks non-public
+network destinations unless a source explicitly opts into a governed private-network connection,
+and applies response byte and timeout limits. Retrieval exposes only enabled sources and chunks
+belonging to each source's current published version. Previous versions remain available for
+controlled rollback and retention.
 
 Mock seed knowledge is disabled by default in production. Set `RAG_SEED_KNOWLEDGE_ENABLED=true`
 only for a deliberate non-production bootstrap scenario.

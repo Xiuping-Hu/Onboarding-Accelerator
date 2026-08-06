@@ -38,24 +38,33 @@ export class PgvectorKnowledgeBase {
       ? Prisma.sql`array[${Prisma.join(queryTerms)}]::text[]`
       : Prisma.sql`array[]::text[]`;
     const result = await this.db.$queryRaw<KnowledgeChunkRow[]>(Prisma.sql`
-       select id,
-              title,
-              excerpt,
-              uri,
-              source_type,
-              metadata,
+       select chunks.id,
+              chunks.title,
+              chunks.excerpt,
+              chunks.uri,
+              chunks.source_type,
+              chunks.metadata,
               least(
                 0.99,
                 greatest(0, 1 - (embedding <=> ${vector}::vector)) +
                   case when ${isLocalProfile}::boolean then
                     (select count(*)::float * 0.25
                      from unnest(${terms}) as term
-                     where lower(concat_ws(' ', title, excerpt)) like '%' || term || '%')
+                     where lower(concat_ws(' ', chunks.title, chunks.excerpt)) like '%' || term || '%')
                   else 0 end
               ) as score
-       from knowledge_chunks
-       where embedding_profile = ${this.embeddingProfile}
-         and coalesce(metadata->>'accessScope', 'all_users') in (${Prisma.join(allowedAccessScopes)})
+       from knowledge_chunks chunks
+       left join knowledge_sources sources on sources.id = chunks.source_id
+       where chunks.embedding_profile = ${this.embeddingProfile}
+         and coalesce(chunks.metadata->>'accessScope', sources.access_scope, 'all_users')
+             in (${Prisma.join(allowedAccessScopes)})
+         and (
+           chunks.source_id is null
+           or (
+             sources.enabled = true
+             and chunks.source_version_id is not distinct from sources.current_version_id
+           )
+         )
        order by score desc
        limit ${this.limit}`);
 
@@ -80,17 +89,26 @@ export class PgvectorKnowledgeBase {
     allowedAccessScopes = this.allowedAccessScopes,
   ): Promise<SourceProvenance | null> {
     const result = await this.db.$queryRaw<KnowledgeChunkRow[]>(Prisma.sql`
-       select id,
-              title,
-              excerpt,
-              uri,
-              source_type,
-              metadata,
+       select chunks.id,
+              chunks.title,
+              chunks.excerpt,
+              chunks.uri,
+              chunks.source_type,
+              chunks.metadata,
               1 as score
-       from knowledge_chunks
-       where id = ${sourceId}
-         and embedding_profile = ${this.embeddingProfile}
-         and coalesce(metadata->>'accessScope', 'all_users') in (${Prisma.join(allowedAccessScopes)})
+       from knowledge_chunks chunks
+       left join knowledge_sources sources on sources.id = chunks.source_id
+       where chunks.id = ${sourceId}
+         and chunks.embedding_profile = ${this.embeddingProfile}
+         and coalesce(chunks.metadata->>'accessScope', sources.access_scope, 'all_users')
+             in (${Prisma.join(allowedAccessScopes)})
+         and (
+           chunks.source_id is null
+           or (
+             sources.enabled = true
+             and chunks.source_version_id is not distinct from sources.current_version_id
+           )
+         )
        limit 1`);
     const row = result[0];
     if (!row) return null;
