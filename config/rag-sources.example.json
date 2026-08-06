@@ -3,11 +3,23 @@
     {
       "id": "wayfinder",
       "kind": "sharepoint_page",
+      "connectorKind": "sharepoint",
       "uri": "https://taxconsultingza.sharepoint.com/SitePages/Wayfinder.aspx",
       "title": "Wayfinder",
       "owner": "Knowledge Owner",
       "accessScope": "all_users",
       "refreshCadence": "weekly",
+      "allowedTriggers": ["manual", "scheduled", "reindex"],
+      "publicationPolicy": "auto_after_validation",
+      "schedule": {
+        "cron": "0 2 * * 1",
+        "timezone": "America/Chicago",
+        "enabled": true,
+        "maxRuntimeSeconds": 900
+      },
+      "validation": {
+        "maximumReductionRatio": 0.5
+      },
       "sharepoint": {
         "pageName": "Wayfinder.aspx",
         "crawlAllPages": true,
@@ -17,19 +29,23 @@
     {
       "id": "employee-handbook",
       "kind": "document",
+      "connectorKind": "manual_artifact",
       "uri": "file:///approved-rag/employee-handbook.md",
       "path": "C:/approved-rag/employee-handbook.md",
       "owner": "People Team",
       "accessScope": "all_users",
+      "allowedTriggers": ["manual", "reindex"],
       "refreshCadence": "monthly"
     },
     {
       "id": "reviewed-call",
       "kind": "audio",
+      "connectorKind": "manual_artifact",
       "uri": "file:///approved-rag/team-call.mp3",
       "path": "C:/approved-rag/team-call.mp3",
       "owner": "People Team",
       "accessScope": "all_users",
+      "allowedTriggers": ["manual", "reindex"],
       "reviewed": true,
       "refreshCadence": "manual"
     }

@@ -29,6 +29,8 @@ Shared contracts live in `packages/shared/src/index.ts`.
 - `POST /api/sessions/:sessionId/chat` accepts `ChatRequest` and returns `ChatResponse`.
 - `POST /api/sessions/:sessionId/guide/root` reads the current authorized published roadmap from Postgres and returns `GenerateGuideRootResponse` without generating session-specific topology.
 - `POST /api/ask` accepts `AskRequest` and returns `AskResponse`.
+- `GET /api/internal/rag/cron` is a `CRON_SECRET`-protected Vercel heartbeat that dispatches due
+  source schedules and processes one queued ingestion run.
 - `GET /api/logs/summary` returns `LogSummaryResponse`.
 - `GET /api/logs/recent?limit=10` returns `LogEventsResponse`.
 
@@ -57,6 +59,10 @@ Set these before running with `NODE_ENV=production`:
 - governed knowledge maps: deploy all Prisma migrations, set
   `SESSION_STORE=postgres`, and enable `RAG_KNOWLEDGE_MAP_ENABLED=true`. Readiness must treat missing
   Postgres map/session persistence as a configuration failure.
+- scheduled RAG ingestion on Vercel: set a random `CRON_SECRET`, deploy the provider heartbeat from
+  `vercel.json`, and synchronize the approved source registry against the production database. The
+  cron route dispatches due schedules and processes one queued run within a five-minute function
+  budget.
 
 Run `npm run db:migrate:deploy` before enabling Microsoft auth. Use
 `npm run users:create -- --email user@example.com --name "User" --role user` to pre-provision the
@@ -88,4 +94,7 @@ run deploy first against such a database.
 ## Deferred Production Choices
 
 - The current in-process rate limiter is suitable for local and single-instance use; production should use Redis, an edge/provider limiter, or another shared backend.
-- RAG ingestion is request-time file and website scanning unless `knowledge_chunks` is populated separately. Larger deployments should move all ingestion to an indexing job.
+- The Vercel cron adapter is appropriate only for sources that reliably finish inside the function
+  duration. Longer OCR, transcription, or large-crawl jobs need a dedicated worker that consumes
+  the existing durable ingestion queue. Request-time adapters remain a development compatibility
+  path and should not be the production source of truth.

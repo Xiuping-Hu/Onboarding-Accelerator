@@ -34,6 +34,10 @@ void test('PgvectorKnowledgeBase retrieves sources with parameterized Prisma SQL
   assert.match(queries[0]?.sql ?? '', /embedding <=> .*::vector/);
   assert.ok(queries[0]?.values.includes('[0.25,0.75]'));
   assert.ok(queries[0]?.values.includes('openai:text-embedding-3-small'));
+  assert.match(
+    queries[0]?.sql ?? '',
+    /source_version_id is not distinct from sources.current_version_id/,
+  );
   assert.equal(sources[0]?.id, 'kb:first');
   assert.equal(sources[0]?.score, 0.82);
   assert.deepEqual(sources[0]?.metadata, { department: 'engineering' });

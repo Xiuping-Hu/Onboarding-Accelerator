@@ -154,18 +154,29 @@ model RagSourceSnapshot {
 }
 
 model KnowledgeSource {
-  id               String
-  uri              String
-  title            String
-  owner            String
-  accessScope      String                      @default("all_users") @map("access_scope")
-  refreshCadence   String                      @default("manual") @map("refresh_cadence")
-  currentVersionId String?                     @map("current_version_id")
-  createdAt        DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime                    @default(now()) @map("updated_at") @db.Timestamptz(6)
-  currentVersion   KnowledgeSourceVersion?     @relation("CurrentKnowledgeSourceVersion", fields: [currentVersionId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "knowledge_sources_current_version_fk")
-  versions         KnowledgeSourceVersion[]    @relation("KnowledgeSourceVersions")
-  mapBindings      KnowledgeMapSourceBinding[]
+  id                  String
+  uri                 String
+  title               String
+  owner               String
+  accessScope         String                      @default("all_users") @map("access_scope")
+  refreshCadence      String                      @default("manual") @map("refresh_cadence")
+  connectorKind       String                      @default("legacy") @map("connector_kind")
+  connectorConfig     Json                        @default("{}") @map("connector_config")
+  allowedContentTypes Json                        @default("[]") @map("allowed_content_types")
+  allowedTriggers     Json                        @default("[]") @map("allowed_triggers")
+  credentialRef       String?                     @map("credential_ref")
+  publicationPolicy   String                      @default("auto_after_validation") @map("publication_policy")
+  enabled             Boolean                     @default(true)
+  validationConfig    Json                        @default("{}") @map("validation_config")
+  currentVersionId    String?                     @map("current_version_id")
+  lastSuccessfulRunAt DateTime?                   @map("last_successful_run_at") @db.Timestamptz(6)
+  createdAt           DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime                    @default(now()) @map("updated_at") @db.Timestamptz(6)
+  currentVersion      KnowledgeSourceVersion?     @relation("CurrentKnowledgeSourceVersion", fields: [currentVersionId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "knowledge_sources_current_version_fk")
+  versions            KnowledgeSourceVersion[]    @relation("KnowledgeSourceVersions")
+  schedules           IngestionSchedule[]
+  ingestionRuns       IngestionRun[]
+  mapBindings         KnowledgeMapSourceBinding[]
 
   @@id([id])
   @@map("knowledge_sources")
@@ -175,16 +186,118 @@ model KnowledgeSourceVersion {
   id                String
   sourceId          String                      @map("source_id")
   contentHash       String                      @map("content_hash")
+  manifestHash      String?                     @map("manifest_hash")
+  status            String                      @default("published")
+  producingRunId    String?                     @map("producing_run_id") @db.Uuid
+  connectorVersion  String?                     @map("connector_version")
+  extractorVersion  String?                     @map("extractor_version")
+  sanitizerVersion  String?                     @map("sanitizer_version")
+  chunkerVersion    String?                     @map("chunker_version")
+  validationSummary Json                        @default("{}") @map("validation_summary")
   upstreamUpdatedAt DateTime                    @map("upstream_updated_at") @db.Timestamptz(6)
   capturedAt        DateTime                    @default(now()) @map("captured_at") @db.Timestamptz(6)
+  publishedAt       DateTime?                   @map("published_at") @db.Timestamptz(6)
+  rejectedAt        DateTime?                   @map("rejected_at") @db.Timestamptz(6)
   metadata          Json                        @default("{}")
   source            KnowledgeSource             @relation("KnowledgeSourceVersions", fields: [sourceId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   currentForSources KnowledgeSource[]           @relation("CurrentKnowledgeSourceVersion")
+  documents         KnowledgeSourceDocument[]
   mapBindings       KnowledgeMapSourceBinding[]
 
   @@id([id])
   @@unique([sourceId, contentHash])
   @@map("knowledge_source_versions")
+}
+
+model KnowledgeSourceDocument {
+  id                String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sourceVersionId   String                 @map("source_version_id")
+  documentKey       String                 @map("document_key")
+  canonicalUri      String                 @map("canonical_uri")
+  title             String
+  mediaType         String                 @map("media_type")
+  contentHash       String                 @map("content_hash")
+  content           String
+  artifactRef       String?                @map("artifact_ref")
+  upstreamUpdatedAt DateTime?              @map("upstream_updated_at") @db.Timestamptz(6)
+  etag              String?
+  accessScope       String                 @default("all_users") @map("access_scope")
+  metadata          Json                   @default("{}")
+  createdAt         DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  sourceVersion     KnowledgeSourceVersion @relation(fields: [sourceVersionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([sourceVersionId, documentKey])
+  @@index([contentHash], map: "knowledge_source_documents_content_hash_idx")
+  @@map("knowledge_source_documents")
+}
+
+model IngestionSchedule {
+  id                String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sourceId          String          @map("source_id")
+  cronExpression    String          @map("cron_expression")
+  timezone          String
+  enabled           Boolean         @default(true)
+  nextRunAt         DateTime        @map("next_run_at") @db.Timestamptz(6)
+  lastEnqueuedAt    DateTime?       @map("last_enqueued_at") @db.Timestamptz(6)
+  misfirePolicy     String          @default("run_once") @map("misfire_policy")
+  maxRuntimeSeconds Int             @default(900) @map("max_runtime_seconds")
+  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime        @default(now()) @map("updated_at") @db.Timestamptz(6)
+  source            KnowledgeSource @relation(fields: [sourceId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([sourceId])
+  @@index([enabled, nextRunAt], map: "ingestion_schedules_due_idx")
+  @@map("ingestion_schedules")
+}
+
+model IngestionRun {
+  id                 String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sourceId           String              @map("source_id")
+  triggerType        String              @map("trigger_type")
+  triggerRef         String?             @map("trigger_ref")
+  requestedBy        String?             @map("requested_by")
+  idempotencyKey     String              @unique @map("idempotency_key")
+  scheduledFor       DateTime?           @map("scheduled_for") @db.Timestamptz(6)
+  availableAt        DateTime            @default(now()) @map("available_at") @db.Timestamptz(6)
+  status             String              @default("queued")
+  attempt            Int                 @default(0)
+  workerId           String?             @map("worker_id")
+  leaseExpiresAt     DateTime?           @map("lease_expires_at") @db.Timestamptz(6)
+  heartbeatAt        DateTime?           @map("heartbeat_at") @db.Timestamptz(6)
+  startedAt          DateTime?           @map("started_at") @db.Timestamptz(6)
+  completedAt        DateTime?           @map("completed_at") @db.Timestamptz(6)
+  candidateVersionId String?             @map("candidate_version_id")
+  documentCount      Int                 @default(0) @map("document_count")
+  characterCount     Int                 @default(0) @map("character_count")
+  chunkCount         Int                 @default(0) @map("chunk_count")
+  embeddingCount     Int                 @default(0) @map("embedding_count")
+  safeErrorCode      String?             @map("safe_error_code")
+  safeErrorMessage   String?             @map("safe_error_message")
+  validationSummary  Json                @default("{}") @map("validation_summary")
+  createdAt          DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime            @default(now()) @map("updated_at") @db.Timestamptz(6)
+  source             KnowledgeSource     @relation(fields: [sourceId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  events             IngestionRunEvent[]
+
+  @@index([status, availableAt, createdAt], map: "ingestion_runs_queue_idx")
+  @@index([sourceId, createdAt(sort: Desc)], map: "ingestion_runs_source_created_idx")
+  @@index([sourceId, leaseExpiresAt], map: "ingestion_runs_source_lease_idx")
+  @@map("ingestion_runs")
+}
+
+model IngestionRunEvent {
+  id         String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  runId      String       @map("run_id") @db.Uuid
+  eventType  String       @map("event_type")
+  reasonCode String?      @map("reason_code")
+  inputHash  String?      @map("input_hash")
+  outputHash String?      @map("output_hash")
+  metadata   Json         @default("{}")
+  eventAt    DateTime     @default(now()) @map("event_at") @db.Timestamptz(6)
+  run        IngestionRun @relation(fields: [runId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([runId, eventAt], map: "ingestion_run_events_run_event_idx")
+  @@map("ingestion_run_events")
 }
 
 model KnowledgeMap {
