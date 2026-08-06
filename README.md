@@ -90,8 +90,9 @@ publication. Failed or quarantined candidates never replace the current source v
 
 ### Vercel scheduled ingestion
 
-The repository and `apps/web` Vercel configurations invoke `GET /api/internal/rag/cron` every five
-minutes, covering projects whose Vercel Root Directory is either the repository root or `apps/web`.
+The repository and `apps/web` Vercel configurations invoke `GET /api/internal/rag/cron` daily at
+09:00 UTC, covering Hobby projects whose Vercel Root Directory is either the repository root or
+`apps/web`.
 Vercel reads only the configuration at the selected project root. The protected route dispatches
 due database schedules and processes at most one queued run per invocation. Add a random
 `CRON_SECRET` to the Vercel Production environment; Vercel supplies it as a bearer token on cron
