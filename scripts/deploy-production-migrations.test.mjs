@@ -9,9 +9,17 @@ test('production preparation synchronizes the committed RAG source registry afte
   );
 
   const migrationIndex = script.indexOf("'db:migrate:deploy'");
+  const prismaGenerateIndex = script.indexOf("'prisma:generate'");
   const scheduleSyncIndex = script.indexOf("'rag:schedules:sync'");
 
   assert.ok(migrationIndex >= 0, 'production preparation must deploy migrations');
-  assert.ok(scheduleSyncIndex > migrationIndex, 'source sync must run after migrations');
+  assert.ok(
+    prismaGenerateIndex > migrationIndex,
+    'Prisma client generation must follow migrations',
+  );
+  assert.ok(
+    scheduleSyncIndex > prismaGenerateIndex,
+    'source sync must run after Prisma client generation',
+  );
   assert.match(script, /'config\/rag-sources\.json'/);
 });

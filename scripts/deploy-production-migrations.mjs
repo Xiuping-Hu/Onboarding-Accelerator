@@ -16,6 +16,7 @@ if (isVercelProduction) {
   });
   console.log(adoption.message);
   await runNpm(['run', 'db:migrate:deploy']);
+  await runNpm(['run', 'prisma:generate']);
   await runNpm(['run', 'rag:schedules:sync', '--', '--config', 'config/rag-sources.json']);
 } else {
   console.log(
