@@ -130,9 +130,10 @@ The registry supports text/Markdown and `.docx` documents, PDFs, reviewed `.vtt`
 transcripts, reviewed audio transcription, public websites, and authenticated SharePoint pages.
 PDF extraction requires Poppler's `pdftotext`; scanned PDFs additionally require `ocrmypdf`. Audio
 uses the configured OpenAI key and is blocked unless the source has `"reviewed": true`.
-The SharePoint Wayfinder source uses Microsoft Graph app credentials from
-`RAG_SHAREPOINT_TENANT_ID`, `RAG_SHAREPOINT_CLIENT_ID`, and `RAG_SHAREPOINT_CLIENT_SECRET`; grant
-the app least-privilege read access to the approved site. `accessScope` must be listed in
+The SharePoint connector uses Microsoft Graph app credentials from `RAG_SHAREPOINT_TENANT_ID`,
+`RAG_SHAREPOINT_CLIENT_ID`, and `RAG_SHAREPOINT_CLIENT_SECRET`. When those variables are unset, it
+falls back to the corresponding `AUTH_MICROSOFT_*` SSO application credentials. Grant that app
+least-privilege read access to the approved site. `accessScope` must be listed in
 `RAG_ALLOWED_ACCESS_SCOPES` or ingestion and retrieval will exclude it.
 
 Website ingestion uses registered origins and paths, validates every redirect, blocks non-public

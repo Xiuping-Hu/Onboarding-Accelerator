@@ -9,6 +9,7 @@ import {
 import { closeProviderFetch } from '../apps/web/src/server/infrastructure/ai/providerFetch';
 import { RagIngestionService } from '../apps/web/src/server/ragIngestion/ingestionService';
 import { loadSourceRegistry } from '../apps/web/src/server/ragIngestion/sourceRegistry';
+import { loadSharePointCredentials } from '../apps/web/src/server/ragIngestion/sharePointCredentials';
 import {
   claimRequestedIngestionRun,
   manualIdempotencyKey,
@@ -54,11 +55,7 @@ const service = new RagIngestionService(
         timeoutMs: config.openAiTimeoutMs,
         maxRetries: config.openAiMaxRetries,
       }),
-  {
-    tenantId: process.env.RAG_SHAREPOINT_TENANT_ID,
-    clientId: process.env.RAG_SHAREPOINT_CLIENT_ID,
-    clientSecret: process.env.RAG_SHAREPOINT_CLIENT_SECRET,
-  },
+  loadSharePointCredentials(),
   config.ragAllowedAccessScopes,
   config.embeddingProfile,
   true,

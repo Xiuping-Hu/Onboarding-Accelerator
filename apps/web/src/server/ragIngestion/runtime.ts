@@ -3,6 +3,7 @@ import { LocalHashEmbeddingService, OpenAiEmbeddingService } from '../embeddingS
 import { closeProviderFetch } from '../infrastructure/ai/providerFetch';
 import { getPrismaClient } from '../infrastructure/prisma/prismaClient';
 import { RagIngestionService } from './ingestionService';
+import { loadSharePointCredentials } from './sharePointCredentials';
 
 export function createRagRuntime(options: { requireEmbeddings?: boolean } = {}) {
   const config = loadConfig();
@@ -32,11 +33,7 @@ export function createRagRuntime(options: { requireEmbeddings?: boolean } = {}) 
   const service = new RagIngestionService(
     database,
     embeddings,
-    {
-      tenantId: process.env.RAG_SHAREPOINT_TENANT_ID,
-      clientId: process.env.RAG_SHAREPOINT_CLIENT_ID,
-      clientSecret: process.env.RAG_SHAREPOINT_CLIENT_SECRET,
-    },
+    loadSharePointCredentials(),
     config.ragAllowedAccessScopes,
     config.embeddingProfile,
     true,
