@@ -82,25 +82,51 @@ export class OpenAiAnswerProvider implements AnswerProvider {
     input: StructuredOutputRequest,
   ): Promise<StructuredOutputResult | undefined> {
     if (!this.config.apiKey) return undefined;
-    const response = await fetchWithRetries(
-      'https://api.openai.com/v1/responses',
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${this.config.apiKey}`,
-          'Content-Type': 'application/json',
+    const request = (format: Record<string, unknown>) =>
+      fetchWithRetries(
+        'https://api.openai.com/v1/responses',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${this.config.apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: this.config.model,
+            input: [
+              { role: 'system', content: input.system },
+              { role: 'user', content: input.prompt },
+            ],
+            text: { format },
+          }),
         },
-        body: JSON.stringify({
-          model: this.config.model,
-          input: [
-            { role: 'system', content: input.system },
-            { role: 'user', content: input.prompt },
-          ],
-        }),
-      },
-      { timeoutMs: this.config.timeoutMs, maxRetries: this.config.maxRetries },
-      this.config.fetch ?? openAiFetch,
+        { timeoutMs: this.config.timeoutMs, maxRetries: this.config.maxRetries },
+        this.config.fetch ?? openAiFetch,
+      );
+
+    let response = await request(
+      input.responseSchema
+        ? {
+            type: 'json_schema',
+            name: input.responseSchema.name,
+            strict: true,
+            schema: input.responseSchema.schema,
+          }
+        : { type: 'json_object' },
     );
+
+    // Older compatible models can support JSON mode without supporting strict schemas.
+    // Keep generation available while the application validator remains authoritative.
+    if (response.status === 400 && input.responseSchema) {
+      console.warn(
+        JSON.stringify({
+          event: 'ai.structured_output.schema_fallback',
+          provider: 'openai',
+          model: this.config.model,
+        }),
+      );
+      response = await request({ type: 'json_object' });
+    }
     if (!response.ok) throw new Error(`OpenAI request failed with status ${response.status}`);
     const payload = (await response.json()) as OpenAiResponse;
     const content = extractOutputText(payload);

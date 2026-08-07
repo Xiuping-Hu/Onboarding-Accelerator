@@ -21,6 +21,10 @@ export interface AnswerResult {
 export interface StructuredOutputRequest {
   system: string;
   prompt: string;
+  responseSchema?: {
+    name: string;
+    schema: Record<string, unknown>;
+  };
 }
 
 export interface StructuredOutputResult {

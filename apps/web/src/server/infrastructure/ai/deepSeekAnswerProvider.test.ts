@@ -49,6 +49,32 @@ void test('DeepSeekAnswerProvider maps grounded chat requests and usage', async 
   });
 });
 
+void test('DeepSeekAnswerProvider enables JSON mode for structured responses', async () => {
+  let requestBody: Record<string, unknown> | undefined;
+  const service = new DeepSeekAnswerProvider({
+    apiKey: 'test-key',
+    baseUrl: 'https://api.deepseek.com',
+    model: 'deepseek-v4-flash',
+    timeoutMs: 1000,
+    maxRetries: 0,
+    fetch: async (_url, init) => {
+      requestBody = JSON.parse(String(init.body)) as Record<string, unknown>;
+      return new Response(
+        JSON.stringify({ choices: [{ message: { content: '{"title":"Plan"}' } }] }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    },
+  });
+
+  const result = await service.generateStructured?.({
+    system: 'Return JSON.',
+    prompt: 'Create a plan.',
+  });
+
+  assert.equal(result?.content, '{"title":"Plan"}');
+  assert.deepEqual(requestBody?.response_format, { type: 'json_object' });
+});
+
 void test('DeepSeekAnswerProvider is disabled without an API key', async () => {
   const service = new DeepSeekAnswerProvider({
     baseUrl: 'https://api.deepseek.com',

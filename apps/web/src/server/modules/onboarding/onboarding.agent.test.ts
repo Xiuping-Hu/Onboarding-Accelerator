@@ -7,12 +7,16 @@ import { OnboardingRoadmapAgent } from './onboarding.agent';
 
 void test('repairs an invalid roadmap once and validates domain dependencies', async () => {
   let calls = 0;
+  let repairPrompt = '';
+  let responseSchema: Record<string, unknown> | undefined;
   const answers: AnswerProvider = {
     async answer() {
       return undefined;
     },
-    async generateStructured() {
+    async generateStructured(input) {
       calls += 1;
+      responseSchema = input.responseSchema?.schema;
+      if (calls === 2) repairPrompt = input.prompt;
       return {
         content: JSON.stringify(
           calls === 1
@@ -58,6 +62,68 @@ void test('repairs an invalid roadmap once and validates domain dependencies', a
   ]);
   assert.equal(result.title, 'Repaired');
   assert.equal(calls, 2);
+  assert.equal(responseSchema?.type, 'object');
+  assert.equal(responseSchema?.additionalProperties, false);
+  assert.deepEqual(responseSchema?.required, [
+    'title',
+    'stages',
+    'assumptions',
+    'warnings',
+    'sourceReferences',
+  ]);
+  assert.doesNotMatch(JSON.stringify(responseSchema), /"(?:\$schema|default|minLength|maxLength)"/);
+  assert.match(repairPrompt, /<invalid_response>/);
+  assert.match(repairPrompt, /"missing"/);
+  assert.match(repairPrompt, /Unknown stage dependency|missing/i);
+});
+
+void test('accepts null placeholders for optional structured-output fields', async () => {
+  const answers: AnswerProvider = {
+    async answer() {
+      return undefined;
+    },
+    async generateStructured() {
+      return {
+        content: JSON.stringify({
+          title: 'Plan',
+          stages: [
+            {
+              stableKey: 'start',
+              title: 'Start',
+              description: '',
+              position: 1,
+              guideStepId: null,
+              dependsOnStageKeys: null,
+              tasks: [
+                {
+                  stableKey: 'first-task',
+                  title: 'First task',
+                  description: null,
+                  completionCriteria: 'The task is complete.',
+                  required: null,
+                  countsTowardProgress: null,
+                  weight: null,
+                  dueOffsetDays: null,
+                  dependsOnTaskKeys: null,
+                },
+              ],
+            },
+          ],
+          assumptions: null,
+          warnings: null,
+          sourceReferences: null,
+        }),
+      };
+    },
+  };
+
+  const result = await new OnboardingRoadmapAgent(answers, emptyRag()).generate(
+    { clientRequestId: 'generate', goal: 'Start well' },
+    ['all_users'],
+  );
+
+  assert.deepEqual(result.assumptions, []);
+  assert.equal(result.stages[0]?.tasks[0]?.title, 'First task');
 });
 
 void test('rejects source references outside the authorized retrieval result', async () => {
