@@ -46,16 +46,31 @@ export async function synchronizeSourceRegistry(
   db: PrismaClient,
   registry: IngestionRegistry,
   now = new Date(),
-): Promise<{ sourceCount: number; scheduleCount: number }> {
+): Promise<{
+  sourceCount: number;
+  scheduleCount: number;
+  initialRunCount: number;
+  initialDuplicateCount: number;
+}> {
   let scheduleCount = 0;
+  let initialRunCount = 0;
+  let initialDuplicateCount = 0;
   for (const source of registry.sources) {
     await ensureKnowledgeSource(db, source);
     if (!source.schedule) continue;
     if (!(source.allowedTriggers ?? ['manual']).includes('scheduled')) {
       throw new Error(`Scheduled source ${source.id} must allow the scheduled trigger.`);
     }
+    const existingSchedule = await db.ingestionSchedule.findUnique({
+      where: { sourceId: source.id },
+      select: { cronExpression: true, timezone: true },
+    });
     const nextRunAt = nextScheduledAt(source.schedule.cron, source.schedule.timezone, now);
-    await db.ingestionSchedule.upsert({
+    const scheduleChanged =
+      !existingSchedule ||
+      existingSchedule.cronExpression !== source.schedule.cron ||
+      existingSchedule.timezone !== source.schedule.timezone;
+    const schedule = await db.ingestionSchedule.upsert({
       where: { sourceId: source.id },
       create: {
         sourceId: source.id,
@@ -69,14 +84,31 @@ export async function synchronizeSourceRegistry(
         cronExpression: source.schedule.cron,
         timezone: source.schedule.timezone,
         enabled: source.schedule.enabled !== false,
-        nextRunAt,
+        ...(scheduleChanged ? { nextRunAt } : {}),
         maxRuntimeSeconds: source.schedule.maxRuntimeSeconds ?? 900,
         updatedAt: now,
       },
+      select: { id: true },
     });
+    if (source.enabled !== false && source.schedule.enabled !== false) {
+      const initialRun = await requestIngestionRun(db, {
+        sourceId: source.id,
+        triggerType: 'scheduled',
+        triggerRef: schedule.id,
+        requestedBy: 'source-registry-sync',
+        idempotencyKey: initialScheduledIdempotencyKey(source.id),
+      });
+      if (initialRun.created) initialRunCount += 1;
+      else initialDuplicateCount += 1;
+    }
     scheduleCount += 1;
   }
-  return { sourceCount: registry.sources.length, scheduleCount };
+  return {
+    sourceCount: registry.sources.length,
+    scheduleCount,
+    initialRunCount,
+    initialDuplicateCount,
+  };
 }
 
 export async function dispatchDueSchedules(
@@ -446,6 +478,10 @@ export function isTransientIngestionFailure(code: string | undefined): boolean {
 
 export function manualIdempotencyKey(sourceId: string, requestId = randomUUID()): string {
   return `manual:${sourceId}:${requestId}`;
+}
+
+export function initialScheduledIdempotencyKey(sourceId: string): string {
+  return `scheduled-initial:${sourceId}`;
 }
 
 function stringArray(value: unknown): string[] {

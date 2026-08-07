@@ -108,6 +108,10 @@ npm run db:migrate:deploy
 npm run rag:schedules:sync -- --config config/rag-sources.json
 ```
 
+The first synchronization of an enabled scheduled source queues one idempotent initial ingestion
+run immediately. Later synchronizations preserve the pending recurring occurrence unless its cron
+expression or timezone changes.
+
 The source registry is configuration input and is not read by each cron request. Synchronize it
 again whenever a source or its schedule changes. Vercel Hobby projects support only daily cron
 jobs; change the provider heartbeat to a daily expression or use a paid plan. Sources that can run
