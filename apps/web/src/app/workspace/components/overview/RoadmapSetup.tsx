@@ -9,17 +9,19 @@ import { useWorkspaceRoute } from '../WorkspaceRouteContext';
 import { dashboardCardClass } from './DashboardState';
 
 export function RoadmapSetup() {
-  const { onCreateRoadmap, onGenerateRoadmap, roadmapIsMutating } = useWorkspaceRoute();
+  const { onGenerateRoadmap, roadmapIsMutating } = useWorkspaceRoute();
   const [goal, setGoal] = useState('Complete my first 30 days successfully');
   const [role, setRole] = useState('');
-  const [title, setTitle] = useState('My onboarding roadmap');
 
   return (
     <section className={`${dashboardCardClass} mt-4 grid gap-5 p-5`}>
       <div>
-        <h3 className="m-0 text-base font-bold text-workspace-heading">Create your live roadmap</h3>
+        <h3 className="m-0 text-base font-bold text-workspace-heading">
+          Generate your live roadmap
+        </h3>
         <p className="mt-1 mb-0 text-sm leading-relaxed text-workspace-muted">
-          The roadmap becomes active immediately and every change is saved as a version.
+          AI creates the stages and tasks. The roadmap becomes active immediately and every change
+          is saved as a version.
         </p>
       </div>
       <div className="grid gap-4 md:grid-cols-2">
@@ -43,7 +45,7 @@ export function RoadmapSetup() {
           />
         </div>
       </div>
-      <div className="flex flex-wrap gap-3">
+      <div>
         <Button
           disabled={roadmapIsMutating || goal.trim().length < 3}
           onClick={() => void onGenerateRoadmap(goal.trim(), role.trim() || undefined)}
@@ -52,22 +54,6 @@ export function RoadmapSetup() {
           <SparklesIcon />
           {roadmapIsMutating ? 'Creating…' : 'Generate with AI'}
         </Button>
-        <div className="flex min-w-64 flex-1 gap-2">
-          <Input
-            aria-label="Manual roadmap title"
-            disabled={roadmapIsMutating}
-            onChange={(event) => setTitle(event.target.value)}
-            value={title}
-          />
-          <Button
-            disabled={roadmapIsMutating || !title.trim()}
-            onClick={() => void onCreateRoadmap(title.trim())}
-            type="button"
-            variant="outline"
-          >
-            Create manually
-          </Button>
-        </div>
       </div>
     </section>
   );

@@ -68,7 +68,6 @@ export function useWorkspaceController({
         guide.retry();
         void onboarding.reload();
       },
-      onCreateRoadmap: onboarding.createManual,
       onGenerateRoadmap: onboarding.generate,
       onRoadmapCommand: onboarding.command,
       onProposeRoadmapChange: onboarding.propose,

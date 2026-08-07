@@ -42,7 +42,6 @@ export function WorkspaceShell({
         roadmapProposal: controller.route.roadmapProposal,
         onReferenceStep: controller.route.onReferenceStep,
         onRetry: controller.route.onRetry,
-        onCreateRoadmap: controller.route.onCreateRoadmap,
         onGenerateRoadmap: controller.route.onGenerateRoadmap,
         onRoadmapCommand: controller.route.onRoadmapCommand,
         onProposeRoadmapChange: controller.route.onProposeRoadmapChange,

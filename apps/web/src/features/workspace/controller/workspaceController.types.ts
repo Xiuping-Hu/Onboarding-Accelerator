@@ -39,7 +39,6 @@ export interface WorkspaceController {
     meta: WorkspacePageMeta;
     onReferenceStep: (stepId: string) => void;
     onRetry: () => void;
-    onCreateRoadmap: (title: string) => Promise<void>;
     onGenerateRoadmap: (goal: string, role?: string) => Promise<void>;
     onRoadmapCommand: (command: RoadmapCommand) => Promise<void>;
     onProposeRoadmapChange: (instruction: string, selectedStageKey?: string) => Promise<void>;

@@ -13,7 +13,6 @@ import {
   applyRoadmapAiProposal,
   applyRoadmapCommand,
   cancelOnboardingPlan,
-  createOnboardingPlan,
   dismissRoadmapAiProposal,
   generateOnboardingPlan,
   getOnboardingCancellationImpact,
@@ -86,25 +85,6 @@ export function useWorkspaceOnboarding(activeSessionId: string | null) {
       setError(message);
     } finally {
       setPendingTaskIds((current) => current.filter((id) => id !== taskId));
-    }
-  }
-
-  async function createManual(title: string) {
-    if (!activeSessionId || isMutating) return;
-    setIsMutating(true);
-    setError(null);
-    try {
-      const response = await createOnboardingPlan(activeSessionId, {
-        clientRequestId: crypto.randomUUID(),
-        title: title.trim() || 'My onboarding roadmap',
-        stages: [],
-      });
-      setState(response.state);
-      await loadHistory();
-    } catch (cause) {
-      setError(formatWorkspaceError(cause, 'Could not create the onboarding roadmap.'));
-    } finally {
-      setIsMutating(false);
     }
   }
 
@@ -272,7 +252,6 @@ export function useWorkspaceOnboarding(activeSessionId: string | null) {
     applyProposal,
     cancel,
     command,
-    createManual,
     dismissProposal,
     error,
     generate,
