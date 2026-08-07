@@ -99,8 +99,9 @@ due database schedules and processes at most one queued run per invocation. Add 
 requests. Also configure the database, embedding, connector, and allowlist variables required by
 the registered sources.
 
-Before enabling the cron in production, apply the Prisma migrations and synchronize the approved
-source registry against the production database:
+The Vercel production prebuild applies Prisma migrations and synchronizes the committed approved
+source registry against the production database before publishing the deployment. Operators can
+run the same idempotent preparation manually outside Vercel:
 
 ```powershell
 npm run db:migrate:deploy
