@@ -90,21 +90,27 @@ publication. Failed or quarantined candidates never replace the current source v
 
 ### Vercel scheduled ingestion
 
-The repository and `apps/web` Vercel configurations invoke `GET /api/internal/rag/cron` every five
-minutes, covering projects whose Vercel Root Directory is either the repository root or `apps/web`.
+The repository and `apps/web` Vercel configurations invoke `GET /api/internal/rag/cron` daily at
+09:00 UTC, covering Hobby projects whose Vercel Root Directory is either the repository root or
+`apps/web`.
 Vercel reads only the configuration at the selected project root. The protected route dispatches
 due database schedules and processes at most one queued run per invocation. Add a random
 `CRON_SECRET` to the Vercel Production environment; Vercel supplies it as a bearer token on cron
 requests. Also configure the database, embedding, connector, and allowlist variables required by
 the registered sources.
 
-Before enabling the cron in production, apply the Prisma migrations and synchronize the approved
-source registry against the production database:
+The Vercel production prebuild applies Prisma migrations and synchronizes the committed approved
+source registry against the production database before publishing the deployment. Operators can
+run the same idempotent preparation manually outside Vercel:
 
 ```powershell
 npm run db:migrate:deploy
 npm run rag:schedules:sync -- --config config/rag-sources.json
 ```
+
+The first synchronization of an enabled scheduled source queues one idempotent initial ingestion
+run immediately. Later synchronizations preserve the pending recurring occurrence unless its cron
+expression or timezone changes.
 
 The source registry is configuration input and is not read by each cron request. Synchronize it
 again whenever a source or its schedule changes. Vercel Hobby projects support only daily cron
@@ -128,9 +134,10 @@ The registry supports text/Markdown and `.docx` documents, PDFs, reviewed `.vtt`
 transcripts, reviewed audio transcription, public websites, and authenticated SharePoint pages.
 PDF extraction requires Poppler's `pdftotext`; scanned PDFs additionally require `ocrmypdf`. Audio
 uses the configured OpenAI key and is blocked unless the source has `"reviewed": true`.
-The SharePoint Wayfinder source uses Microsoft Graph app credentials from
-`RAG_SHAREPOINT_TENANT_ID`, `RAG_SHAREPOINT_CLIENT_ID`, and `RAG_SHAREPOINT_CLIENT_SECRET`; grant
-the app least-privilege read access to the approved site. `accessScope` must be listed in
+The SharePoint connector uses Microsoft Graph app credentials from `RAG_SHAREPOINT_TENANT_ID`,
+`RAG_SHAREPOINT_CLIENT_ID`, and `RAG_SHAREPOINT_CLIENT_SECRET`. When those variables are unset, it
+falls back to the corresponding `AUTH_MICROSOFT_*` SSO application credentials. Grant that app
+least-privilege read access to the approved site. `accessScope` must be listed in
 `RAG_ALLOWED_ACCESS_SCOPES` or ingestion and retrieval will exclude it.
 
 Website ingestion uses registered origins and paths, validates every redirect, blocks non-public

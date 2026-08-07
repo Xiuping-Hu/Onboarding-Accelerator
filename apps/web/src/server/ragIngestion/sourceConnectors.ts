@@ -377,7 +377,7 @@ export class SharePointConnector implements SourceConnector {
 function requiredCredentials(credentials: SharePointCredentials): Required<SharePointCredentials> {
   if (!credentials.tenantId || !credentials.clientId || !credentials.clientSecret) {
     throw new Error(
-      'SharePoint ingestion requires RAG_SHAREPOINT_TENANT_ID, RAG_SHAREPOINT_CLIENT_ID, and RAG_SHAREPOINT_CLIENT_SECRET.',
+      'SharePoint ingestion requires RAG_SHAREPOINT_* credentials or the equivalent AUTH_MICROSOFT_* SSO credentials.',
     );
   }
   return {

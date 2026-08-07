@@ -16,8 +16,12 @@ if (isVercelProduction) {
   });
   console.log(adoption.message);
   await runNpm(['run', 'db:migrate:deploy']);
+  await runNpm(['run', 'prisma:generate']);
+  await runNpm(['run', 'rag:schedules:sync', '--', '--config', 'config/rag-sources.json']);
 } else {
-  console.log('Skipping production database migrations outside a production Vercel build.');
+  console.log(
+    'Skipping production database migrations and RAG schedule sync outside a production Vercel build.',
+  );
 }
 
 function runNpm(args) {

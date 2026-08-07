@@ -13,3 +13,4 @@ data/
 *.local
 *.tsbuildinfo
 apps/web/src/generated/prisma/
+.vercel/
