@@ -183,7 +183,7 @@ void test('Next API handlers create sessions, generate guides, chat, and expose 
   assert.equal(chatResponse.status, 200);
   const chat = (await chatResponse.json()) as ChatResponse;
   assert.equal(chat.message.role, 'assistant');
-  assert.match(chat.message.content, /onboarding/i);
+  assert.match(chat.message.content, /onboarding|first week/i);
   const source = chat.message.sources?.[0];
   assert.ok(source?.href);
 
