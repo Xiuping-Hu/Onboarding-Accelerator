@@ -2,14 +2,16 @@
 
 ## Status
 
-Proposed. Discussion and implementation planning only.
+Implemented. The governed task/progress foundation and the immediate-live roadmap extensions in
+spec 025 are present; organization-specific retention policy and external rollout monitoring remain
+deployment responsibilities.
 
 ## Decision Summary
 
 Use one governed onboarding agent with typed intent routing and deterministic application services.
-The agent may answer questions, navigate knowledge, and propose a personalized onboarding plan. It
-must not infer task completion, calculate progress through model output, or write learner state
-directly.
+The agent may answer questions, navigate knowledge, generate a personalized onboarding plan, and
+propose changes to a live plan. It must not infer task completion, calculate progress through model
+output, or write learner state directly.
 
 Keep these responsibilities separate:
 
@@ -29,7 +31,8 @@ autonomous orchestrator. Those mechanisms are not justified by the current tool 
 - Progress is learner-specific and persists across chat sessions.
 - Manual task completion is the initial supported completion rule.
 - Due dates are optional and are never inferred from missing policy.
-- Active plans remain pinned to their approved definition version until an explicit migration.
+- Active plans remain pinned to their current definition version until an explicit versioned
+  change.
 - The agent may prepare a state-changing command, but a chat-initiated mutation requires explicit
   user confirmation.
 
@@ -62,7 +65,7 @@ The Mastra workflow follows a stable sequence:
 3. inspect context and evidence;
 4. choose an approach;
 5. build and validate a plan;
-6. checkpoint for missing input or approval;
+6. checkpoint for missing input or targeted confirmation;
 7. execute registered tools;
 8. verify and synthesize the result.
 
@@ -78,12 +81,13 @@ request-time projection, so it is unsuitable as the mutable source of learner li
 
 ## Design Target
 
-The completed workflow must support four typed intents:
+The completed workflow must support five typed intents:
 
 | Intent                 | Outcome                                               | Authority                                                 |
 | ---------------------- | ----------------------------------------------------- | --------------------------------------------------------- |
 | `answer` or `navigate` | Grounded answer or authorized knowledge-map reference | Read-only agent workflow                                  |
-| `draft_plan`           | Structured, evidence-backed plan proposal             | Agent proposal; no durable learner-state write            |
+| `generate_plan`        | Structured, evidence-backed live plan                 | Validated application-service creation                    |
+| `propose_plan_change`  | Typed change proposal for the current live plan       | Read-only agent proposal; client Apply performs the write |
 | `view_progress`        | Current task, roadmap, and progress projection        | Deterministic read service                                |
 | `mutate_task`          | Validated task transition and recalculated projection | Transactional command service with confirmation and audit |
 
@@ -97,11 +101,11 @@ and auditability.
 | ------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Perception    | Heavy  | Retrieve authenticated actor, active plan, pinned definition, task state, dates, permissions, and authorized evidence into bounded typed context. |
 | Memory        | Heavy  | Persist plan, task instances, revisions, definition version, and task events independently of chat history.                                       |
-| Reasoning     | Heavy  | Produce a structured plan draft with explicit requirements, constraints, assumptions, and evidence references.                                    |
-| Action        | Heavy  | Execute plan activation and task transitions only through transactional domain commands.                                                          |
+| Reasoning     | Heavy  | Produce a structured plan or typed change set with explicit requirements, constraints, assumptions, and evidence references.                      |
+| Action        | Heavy  | Create live plans, apply plan changes, and execute task transitions only through transactional domain commands.                                   |
 | Reflection    | Heavy  | Apply schema validation, dependency validation, transition checks, calculation checks, and post-write verification.                               |
-| Collaboration | Light  | Use a learner or manager approval handoff; do not add another agent.                                                                              |
-| Governance    | Heavy  | Enforce ownership, roles, approvals, optimistic concurrency, idempotency, event history, and restricted tool access.                              |
+| Collaboration | Light  | Use targeted client confirmation for destructive changes; do not add another agent.                                                               |
+| Governance    | Heavy  | Enforce ownership, roles, optimistic concurrency, idempotency, event history, and restricted tool access.                                         |
 
 ## Topology Decision
 
@@ -126,15 +130,15 @@ and task projection do not use an AI loop.
 
 ## Selected Patterns
 
-| Function   | Pattern              | Input and output                                                                 | Owner and state boundary                       | Success, failure, and exit                                                                     |
-| ---------- | -------------------- | -------------------------------------------------------------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| Perception | Context triage       | Request, actor, and active state to a typed route and bounded context references | Request router; request-scoped state           | A single high-confidence route succeeds; ambiguity requests clarification with no write        |
-| Memory     | Progress tracking    | Definition version and task events to durable plan/task state                    | Onboarding plan service; learner-plan scope    | Monotonic revisions and replayable state succeed; conflicts return reload/retry guidance       |
-| Reasoning  | Structured reasoning | Goal and evidence to `PlanDraft`                                                 | Agent; draft scope                             | Schema-valid proposal succeeds; missing evidence or unresolved assumptions stop before preview |
-| Action     | Guardrail sandwich   | Typed task command to committed transition and updated projection                | Task command service; one database transaction | Prechecks, commit, and postconditions pass; otherwise roll back or return a conflict           |
-| Reflection | Generator-critic     | Agent draft to validation report                                                 | Agent generator plus deterministic validator   | Actionable findings cause one bounded revision; remaining findings go to the human             |
-| Governance | Approval gate        | Draft activation or chat-requested mutation to approval receipt                  | Plan/task service; pending-action scope        | Valid fresh approval proceeds; rejection or expiry performs no write                           |
-| Governance | Observability        | State transitions and references to immutable events and metrics                 | Audit/event writer; append-only event scope    | Every accepted mutation is reconstructable; audit failure blocks or reconciles per policy      |
+| Function   | Pattern              | Input and output                                                                 | Owner and state boundary                       | Success, failure, and exit                                                                 |
+| ---------- | -------------------- | -------------------------------------------------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Perception | Context triage       | Request, actor, and active state to a typed route and bounded context references | Request router; request-scoped state           | A single high-confidence route succeeds; ambiguity requests clarification with no write    |
+| Memory     | Progress tracking    | Definition version and task events to durable plan/task state                    | Onboarding plan service; learner-plan scope    | Monotonic revisions and replayable state succeed; conflicts return reload/retry guidance   |
+| Reasoning  | Structured reasoning | Goal and evidence to a plan or typed change set                                  | Agent; request scope                           | Schema-valid output succeeds; missing evidence or unresolved assumptions stop before write |
+| Action     | Guardrail sandwich   | Typed task command to committed transition and updated projection                | Task command service; one database transaction | Prechecks, commit, and postconditions pass; otherwise roll back or return a conflict       |
+| Reflection | Generator-critic     | Agent plan/change set to validation report                                       | Agent generator plus deterministic validator   | Actionable findings cause one bounded revision; remaining findings go to the human         |
+| Governance | Command gate         | Explicit user action to a typed, revision-bound command                          | Plan/task service; one transaction             | Valid command proceeds; invalid or stale input performs no write                           |
+| Governance | Observability        | State transitions and references to immutable events and metrics                 | Audit/event writer; append-only event scope    | Every accepted mutation is reconstructable; audit failure blocks or reconciles per policy  |
 
 ## Execution Flow
 
@@ -145,12 +149,15 @@ flowchart TD
     B -->|Answer or navigate| C[Existing grounded RAG chain]
     C --> D[Read-only answer or map reference]
 
-    B -->|Draft plan| E[Load approved journey version and evidence]
-    E --> F[Agent produces structured PlanDraft]
+    B -->|Generate plan| E[Load authorized journey evidence]
+    E --> F[Agent produces a structured plan]
     F --> G[Deterministic plan validator]
     G -->|Invalid or incomplete| H[Return issues or request clarification]
-    G -->|Valid| I[Human preview and approval]
-    I --> J[Transactional plan and task materialization]
+    G -->|Valid| J[Transactional live plan and task materialization]
+
+    B -->|Propose plan change| R[Agent produces typed operations]
+    R --> S[Client reviews and applies]
+    S --> T[Transactional version and task reconciliation]
 
     B -->|View dashboard| K[Load plan and task instances]
     K --> L[Deterministic projection calculator]
@@ -208,10 +215,10 @@ A learner assignment pinned to one journey-definition version:
 
 - plan ID, learner/owner ID, and optional originating session ID;
 - definition version ID;
-- `draft`, `active`, `completed`, or `cancelled` state;
+- `active`, `completed`, or `cancelled` state;
 - start and optional target dates;
 - optimistic revision; and
-- creation, activation, completion, and cancellation metadata.
+- creation/start, completion, and cancellation metadata.
 
 The session may reference `activePlanId`, but the plan must not be embedded in session guide JSON.
 
@@ -286,7 +293,7 @@ Agent-specific rules:
 - A statement such as "I finished security training" may create a pending confirmation prompt.
 - Only explicit confirmation or a direct completion control invokes the mutation.
 - Waiver, reassignment, backdating, reopening, or deletion requires the corresponding product role
-  and approval policy.
+  and confirmation policy.
 - A failed, denied, expired, or ambiguous command produces no learner-state change.
 
 ## Progress Calculation
@@ -335,36 +342,35 @@ The current stage is the earliest incomplete, dependency-unblocked stage in stab
 projection includes its task counts, optional dates, knowledge-map reference, and authorized source
 references.
 
-A new journey publication never rewrites active plans silently. Version migration is explicit and
-previews added, removed, retained, reset, and conflicting tasks before activation.
+A new journey publication never rewrites active plans silently. A client-requested version change
+is explicit and reports added, removed, retained, reset, and conflicting tasks before applying it.
 
 ## Interfaces
 
 The exact route names are an implementation choice, but the product needs these boundaries:
 
 - get the current learner's unified onboarding projection;
-- create a grounded plan draft;
-- validate and preview a plan draft;
-- approve and activate a valid plan;
+- generate, validate, and create a grounded live plan;
+- propose, validate, and apply typed changes to a live plan;
 - request a typed task transition;
 - retrieve task-event history when authorized; and
-- preview and approve a journey-version migration.
+- preview and apply a journey-version change.
 
 Controllers authenticate and parse requests, application services enforce domain behavior, and
 repositories persist state. Neither UI components nor the model calculate authoritative progress.
 
 ## Governance
 
-### Authority and approval
+### Authority and confirmation
 
 | Operation                                     | Default control                                         |
 | --------------------------------------------- | ------------------------------------------------------- |
 | Read authorized progress, tasks, and roadmap  | No additional approval                                  |
-| Generate plan draft                           | No write and no approval                                |
-| Activate learner plan                         | Explicit learner, manager, or policy-defined approval   |
+| Generate first live plan                      | Explicit Generate action; validated transactional write |
+| Apply plan content change                     | Explicit direct edit or Apply action                    |
 | Complete own manual task from UI              | Explicit UI action; no second confirmation              |
 | Complete task through chat                    | Explicit confirmation bound to task ID and target state |
-| Waive, reassign, backdate, delete, or migrate | Elevated role and explicit approval                     |
+| Waive, reassign, backdate, cancel, or migrate | Elevated role and explicit confirmation                 |
 
 ### Blast-radius controls
 
@@ -380,14 +386,14 @@ repositories persist state. Neither UI components nor the model calculate author
 | State               | Subject and duration           | Retrieval and deletion rule                                                                              |
 | ------------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------- |
 | Request context     | One actor and request          | Discard after response except bounded audit references                                                   |
-| Agent draft         | One actor and proposed plan    | Retain until approval, rejection, expiry, or configured cleanup                                          |
+| Agent proposal      | One actor and proposed change  | Retain until apply, dismissal, expiry, or configured cleanup                                             |
 | Plan and task state | One learner and plan lifecycle | Retrieve by ownership/role; correct through versioned commands and events; delete or anonymize by policy |
 | Workflow snapshot   | One workflow run               | Existing authorized snapshot policy; do not use as task source of truth                                  |
 | Journey definition  | Organization/version           | Admin-controlled retention; immutable published versions                                                 |
 
 ### Observability
 
-Correlate task commands, events, projections, agent requests, plans, and approvals with request ID,
+Correlate task commands, events, projections, agent requests, plans, and confirmations with request ID,
 actor ID, plan ID, task ID, idempotency key, definition version, and revisions.
 
 Alert on:
@@ -399,7 +405,7 @@ Alert on:
 - stale-revision spikes;
 - calculation invariant failures;
 - cyclic or unresolvable dependencies; and
-- plan activations without a valid approval receipt.
+- live-plan writes without an explicit revision-bound command.
 
 ## Failure and Recovery Behavior
 
@@ -411,7 +417,7 @@ Alert on:
 - Projection failure after a committed event is recoverable by replay/recalculation and must alert.
 - Source access revocation hides the source without rewriting valid task history.
 - A new template version cannot partially migrate an active plan.
-- An agent/provider failure cannot bypass deterministic validation or approval.
+- An agent/provider failure cannot bypass deterministic validation or explicit user commands.
 
 ## Evaluation Plan
 
@@ -421,9 +427,9 @@ Alert on:
 2. Completing a task updates progress, roadmap status, Upcoming Tasks, and Tasks in one response.
 3. Completing the same task twice with the same idempotency key creates one event.
 4. A second device submits a stale revision and receives a conflict without overwriting newer state.
-5. The agent produces a grounded draft, validation identifies an invalid dependency, and no plan is
-   activated.
-6. The learner approves a valid draft and receives materialized tasks pinned to the approved
+5. The agent produces a grounded plan, validation identifies an invalid dependency, and no plan is
+   created.
+6. The learner generates a valid plan and immediately receives materialized tasks pinned to its
    definition version.
 7. A newer journey version is published while the learner continues on the unchanged active plan.
 8. A manager previews a version migration and sees added, removed, retained, and conflicting tasks.
@@ -437,8 +443,8 @@ Alert on:
 - A plan contains no eligible progress-bearing tasks.
 - A task is waived after partial plan completion.
 - Due dates cross a timezone or daylight-saving transition.
-- Source authorization changes between plan drafting and activation.
-- An approval expires or belongs to a different plan revision.
+- Source authorization changes between context retrieval and the live write.
+- An AI proposal expires or belongs to a different plan revision.
 - Event persistence succeeds but projection refresh temporarily fails.
 
 ### Required metrics and thresholds
@@ -447,9 +453,9 @@ Alert on:
 - zero duplicate transition events for one idempotency key;
 - zero cross-surface projection mismatches;
 - deterministic replay of every displayed progress value;
-- zero plan activations without valid approval;
+- zero live-plan writes without a valid explicit command;
 - task-mutation success and conflict rates;
-- draft validation, approval, rejection, and human-edit rates;
+- plan validation, proposal apply/dismiss, and direct-edit rates;
 - progress-projection latency; and
 - stale-revision, recovery, and invariant-failure counts.
 
@@ -470,10 +476,10 @@ Roadmap, Upcoming Tasks, and Tasks without enabling completion mutations.
 Add revisioned, idempotent transitions, event history, optimistic UI rollback, error announcements,
 and deterministic progress refresh.
 
-### Phase 4: Agent-assisted plan drafting
+### Phase 4: Agent-assisted live plan generation
 
-Add evidence-backed `PlanDraft`, deterministic validation, preview, approval, and transactional plan
-materialization.
+Add evidence-backed structured plans, deterministic validation, immediate transactional
+materialization, and typed AI change proposals with client Apply.
 
 ### Phase 5: Governed expansion
 
@@ -495,19 +501,19 @@ plan-version migration only after the MVP metrics demonstrate the need.
 - [x] Confirm that progress is task-weight based rather than stage-count based.
 - [x] Confirm whether optional tasks count toward progress by default.
 - [x] Confirm whether a waived task is removed from the denominator or counted as satisfied.
-- [ ] Define who may activate, waive, reassign, reopen, backdate, cancel, and migrate plans/tasks.
+- [x] Define who may create, waive, reassign, reopen, backdate, cancel, and migrate plans/tasks.
 - [x] Define manual, verified, and external completion rules; scope the MVP to manual completion.
 - [x] Define due-date offsets, timezone handling, and behavior when no due-date policy exists.
 - [x] Define task and stage dependency semantics.
-- [ ] Define active-plan migration policy for new journey versions.
-- [ ] Define retention, anonymization, and deletion policy for plans, events, drafts, and approvals.
+- [x] Define active-plan migration policy for new journey versions.
+- [ ] Define retention, anonymization, and deletion policy for plans, events, and proposals.
 
 ### Shared contracts
 
 - [x] Add journey-definition, stage-definition, task-definition, learner-plan, task-instance, and
       task-event contracts.
 - [x] Add the unified `WorkspaceOnboardingProjection` contract.
-- [ ] Add typed task-transition, plan-draft, validation-result, approval, and migration-preview
+- [x] Add typed task-transition, plan-generation, validation-result, proposal, and migration-impact
       contracts.
 - [x] Keep guide navigation status separate from learner lifecycle status.
 - [x] Define explicit unavailable, empty, partial, unauthorized, conflict, and error states.
@@ -519,38 +525,39 @@ plan-version migration only after the MVP metrics demonstrate the need.
 - [x] Add learner plans pinned to immutable journey versions.
 - [x] Add task instances with due dates, revisions, and completion metadata.
 - [x] Add append-only task events with unique idempotency keys.
-- [ ] Add approval receipts or equivalent durable approval evidence.
+- [x] Add immutable plan-revision events for immediate live edits.
 - [x] Add indexes and ownership constraints for plan, task, and event queries.
-- [ ] Define transactional materialization and migration behavior.
+- [x] Define transactional materialization and migration behavior.
 
 ### Server domain services
 
-- [ ] Add a plan draft validator with schema, access, source, date, stable-key, and dependency checks.
-- [x] Add transactional plan activation and task materialization.
+- [x] Add a plan validator with schema, access, source, date, stable-key, and dependency checks.
+- [x] Add transactional live-plan creation and task materialization.
 - [x] Add task transition validation, authorization, revision checking, and idempotency handling.
 - [x] Add the pure progress and roadmap projection calculator.
 - [ ] Add event replay/reconciliation and projection invariant checks.
-- [ ] Add explicit plan-version migration preview and activation.
+- [x] Add explicit plan-version change impact and application.
 - [x] Ensure controllers remain thin and repositories remain behind application services.
 
 ### Agent workflow
 
-- [ ] Route `answer`, `navigate`, `draft_plan`, `view_progress`, and `mutate_task` explicitly.
+- [ ] Route `answer`, `navigate`, `generate_plan`, `propose_plan_change`, `view_progress`,
+      and `mutate_task` explicitly.
 - [x] Preserve the current grounded read-only path for answers and navigation.
-- [ ] Define a bounded, evidence-backed `PlanDraft` output schema.
-- [ ] Run deterministic validation after agent draft generation.
-- [ ] Permit at most one bounded automatic draft revision before human handoff.
+- [x] Define bounded, evidence-backed plan and typed-change output schemas.
+- [x] Run deterministic validation after agent plan generation.
+- [x] Permit at most one bounded automatic output repair before human handoff.
 - [ ] Require explicit confirmation for every chat-initiated task mutation.
-- [ ] Expose only typed plan/task tools; do not expose generic data or execution tools.
+- [x] Expose only typed plan/task tools; do not expose generic data or execution tools.
 - [x] Keep progress calculation and roadmap projection outside the model workflow.
 
 ### API and authorization
 
 - [x] Add a unified authenticated onboarding projection read boundary.
-- [ ] Add plan-draft generation, validation, preview, approval, and activation boundaries.
+- [x] Add live-plan generation and typed change-proposal boundaries.
 - [x] Add a typed task-transition boundary with expected revision and idempotency key.
-- [ ] Add authorized event-history and migration-preview boundaries.
-- [ ] Reauthorize on plan activation, task mutation, approval use, and migration.
+- [x] Add authorized event-history and migration-preview boundaries.
+- [x] Reauthorize on plan creation, content change, task mutation, cancellation, and migration.
 - [x] Return typed conflict and original-idempotent-result responses.
 
 ### Workspace UI
@@ -559,42 +566,43 @@ plan-version migration only after the MVP metrics demonstrate the need.
 - [x] Render roadmap stage statuses only from the lifecycle projection.
 - [x] Render overdue as derived status and show dates only when provided.
 - [x] Add real completion controls only when the mutation contract is available.
-- [ ] Add pending, disabled, success, conflict, rollback, and announced error states.
+- [x] Add pending, disabled, success, conflict, rollback, and announced error states.
 - [x] Preserve source authorization and safe-link handling.
-- [ ] Add plan preview, validation findings, and approval UI before activation.
+- [x] Add generation status, validation findings, live editing, and AI proposal Apply/Dismiss UI.
 - [ ] Add chat mutation confirmation bound to a specific task ID, target state, and revision.
 - [x] Preserve honest empty/unavailable states when no active plan exists.
 
 ### Governance and observability
 
-- [ ] Add immutable audit events for draft, validation, approval, activation, task transition,
+- [ ] Add immutable audit events for validation, plan creation, content change, task transition,
       conflict, waiver, migration, and reconciliation.
-- [ ] Correlate requests, plans, tasks, events, approvals, workflow runs, and definition versions.
-- [ ] Redact prompts, credentials, sensitive source bodies, and unrelated personal data.
+- [ ] Correlate requests, plans, tasks, events, proposals, workflow runs, and definition versions.
+- [x] Redact prompts, credentials, sensitive source bodies, and unrelated personal data.
 - [ ] Alert on unauthorized writes, duplicate events, projection mismatch, audit failure, and invalid
       calculation output.
-- [ ] Document operational recovery for committed event plus failed projection refresh.
+- [x] Document operational recovery for committed event plus failed projection refresh.
 
 ### Verification
 
 - [x] Unit-test progress weights, waiver behavior, zero denominator, stage status precedence, current
       stage selection, due dates, and dependencies.
 - [ ] Unit-test every allowed and rejected task-state transition.
-- [ ] Test plan-draft validation and bounded revision behavior.
-- [ ] Integration-test authorization, optimistic concurrency, idempotency, transaction rollback,
-      event replay, and approval binding.
-- [ ] End-to-end test cross-surface consistency after task completion.
-- [ ] Test prompt injection and false chat completion claims.
-- [ ] Test source-scope removal between draft and activation.
+- [x] Test plan validation and bounded repair behavior.
+- [x] Integration-test authorization, optimistic concurrency, idempotency, transaction rollback,
+      event replay, and proposal revision binding.
+- [x] End-to-end test cross-surface consistency after task completion.
+- [x] Test prompt injection and false chat completion claims.
+- [ ] Test source-scope removal between retrieval and the live write.
 - [ ] Test active-plan stability after publication of a new journey version.
-- [ ] Test migration preview and all-or-nothing migration activation.
+- [x] Test migration impact and all-or-nothing version application.
 - [ ] Verify accessibility for statuses, controls, confirmation, errors, dates, and progress output.
 - [ ] Run lint, tests, build, formatting, and desktop/mobile visual QA.
 
 ## Acceptance Criteria
 
 - Guide navigation state is never used as task completion evidence.
-- The agent may propose a plan but cannot activate it without deterministic validation and approval.
+- The agent may generate or propose a plan change but cannot write it without deterministic
+  validation and an explicit user command.
 - Chat content alone cannot mutate a task.
 - Task transitions are authorized, revisioned, idempotent, transactional, and auditable.
 - Progress is reproducible from the pinned plan definition and task-event state.

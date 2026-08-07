@@ -1,5 +1,11 @@
 import type { AiUsageStats } from '@onboarding/shared';
-import type { AnswerProvider, AnswerRequest, AnswerResult } from '../../core/ports/answerProvider';
+import type {
+  AnswerProvider,
+  AnswerRequest,
+  AnswerResult,
+  StructuredOutputRequest,
+  StructuredOutputResult,
+} from '../../core/ports/answerProvider';
 import {
   buildGroundedPrompt,
   formatGroundedHistory,
@@ -56,6 +62,37 @@ export class DeepSeekAnswerProvider implements AnswerProvider {
     if (!answer) return undefined;
 
     return { ...answer, usage: extractUsage(payload, this.config.model) };
+  }
+
+  async generateStructured(
+    input: StructuredOutputRequest,
+  ): Promise<StructuredOutputResult | undefined> {
+    if (!this.config.apiKey) return undefined;
+    const response = await fetchWithRetries(
+      `${this.config.baseUrl.replace(/\/$/, '')}/chat/completions`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.config.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: this.config.model,
+          messages: [
+            { role: 'system', content: input.system },
+            { role: 'user', content: input.prompt },
+          ],
+          thinking: { type: 'disabled' },
+          stream: false,
+        }),
+      },
+      { timeoutMs: this.config.timeoutMs, maxRetries: this.config.maxRetries },
+      this.config.fetch ?? deepSeekFetch,
+    );
+    if (!response.ok) throw new Error(`DeepSeek request failed with status ${response.status}`);
+    const payload = (await response.json()) as DeepSeekResponse;
+    const content = payload.choices?.[0]?.message?.content?.trim();
+    return content ? { content, usage: extractUsage(payload, this.config.model) } : undefined;
   }
 }
 

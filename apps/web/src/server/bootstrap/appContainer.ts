@@ -20,6 +20,7 @@ import { KnowledgeMapService } from '../modules/knowledge-maps/knowledgeMap.appl
 import { createLogController } from '../modules/logs/log.controller';
 import { LogQueryService } from '../modules/logs/log.service';
 import { createOnboardingController } from '../modules/onboarding/onboarding.controller';
+import { OnboardingRoadmapAgent } from '../modules/onboarding/onboarding.agent';
 import { PrismaOnboardingRepository } from '../modules/onboarding/onboarding.prisma.repository';
 import { FileOnboardingRepository } from '../modules/onboarding/onboarding.repository';
 import { OnboardingService } from '../modules/onboarding/onboarding.service';
@@ -167,7 +168,12 @@ export function createAppContainer() {
     chat,
     guide: new GuideService(sessions, knowledgeMaps),
     logs: new LogQueryService(logs),
-    onboarding: new OnboardingService(onboardingRepository, sessions),
+    onboarding: new OnboardingService(
+      onboardingRepository,
+      sessions,
+      new OnboardingRoadmapAgent(answers, rag),
+      resolveRagAccessScopes,
+    ),
     ragWorkflows,
     sessions: new SessionService(sessions, sourceLinks),
     sources: sourceLinks,

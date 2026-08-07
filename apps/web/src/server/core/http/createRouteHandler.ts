@@ -55,6 +55,8 @@ export function createRouteHandler(
         user = await authenticateRequest(request, container);
       }
 
+      if (access === 'authenticated') assertSameOriginMutation(request);
+
       if ((options.rateLimit ?? access !== 'public') && user) {
         checkRateLimit({
           request,
@@ -92,6 +94,24 @@ export function createRouteHandler(
     return response;
   };
   return handler as AppRouteHandler;
+}
+
+function assertSameOriginMutation(request: NextRequest): void {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(request.method.toUpperCase())) return;
+  const fetchSite = request.headers.get('sec-fetch-site')?.toLowerCase();
+  if (fetchSite === 'cross-site') {
+    throw new AppError('FORBIDDEN', 'Cross-site mutations are not allowed.');
+  }
+  const origin = request.headers.get('origin');
+  if (!origin) return;
+  try {
+    if (new URL(origin).origin !== request.nextUrl.origin) {
+      throw new AppError('FORBIDDEN', 'Cross-site mutations are not allowed.');
+    }
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    throw new AppError('FORBIDDEN', 'The request origin is invalid.');
+  }
 }
 
 function toResponse(result: HttpResult): NextResponse {

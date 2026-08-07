@@ -3,6 +3,8 @@ import type { WorkspaceRoadmapState } from '@/features/workspace/workspaceDashbo
 import { cn } from '@/lib/utils';
 import { DashboardEmptyState, DashboardSkeleton, dashboardCardClass } from './DashboardState';
 import { RoadmapStageCard } from './RoadmapStageCard';
+import { RoadmapSetup } from './RoadmapSetup';
+import { LiveRoadmapEditor } from './LiveRoadmapEditor';
 
 export function RoadmapSection({
   isLoading,
@@ -26,21 +28,31 @@ export function RoadmapSection({
       >
         Onboarding Roadmap
       </h2>
-      {roadmap.stages.length > 0 ? (
-        <ol className="mt-4 grid list-none gap-3 p-0">
-          {roadmap.stages.map((stage) => (
-            <RoadmapStageCard key={stage.id} onReferenceStep={onReferenceStep} stage={stage} />
-          ))}
-        </ol>
+      {roadmap.status === 'ready' ? (
+        <>
+          {roadmap.stages.length > 0 ? (
+            <ol className="mt-4 grid list-none gap-3 p-0">
+              {roadmap.stages.map((stage) => (
+                <RoadmapStageCard key={stage.id} onReferenceStep={onReferenceStep} stage={stage} />
+              ))}
+            </ol>
+          ) : (
+            <div className={cn(dashboardCardClass, 'mt-4')}>
+              <DashboardEmptyState
+                description="This live roadmap is ready for its first stage and task."
+                title="No stages yet"
+              />
+            </div>
+          )}
+          <LiveRoadmapEditor />
+        </>
+      ) : roadmap.status === 'empty' ? (
+        <RoadmapSetup />
       ) : (
         <div className={cn(dashboardCardClass, 'mt-4')}>
           <DashboardEmptyState
-            description={
-              roadmap.status === 'empty'
-                ? 'Activate an approved onboarding plan to see its roadmap stages here.'
-                : 'The onboarding roadmap could not be loaded. Try again from the workspace status message.'
-            }
-            title={roadmap.status === 'empty' ? 'No active plan' : 'Roadmap unavailable'}
+            description="The onboarding roadmap could not be loaded. Try again from the workspace status message."
+            title="Roadmap unavailable"
           />
         </div>
       )}

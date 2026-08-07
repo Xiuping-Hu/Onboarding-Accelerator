@@ -15,7 +15,17 @@ import type {
   ListSessionsResponse,
   LogEventsResponse,
   LogSummaryResponse,
-  ActivateOnboardingPlanRequest,
+  CreateOnboardingPlanRequest,
+  GenerateOnboardingPlanRequest,
+  RoadmapCommandRequest,
+  RoadmapCommandImpactResponse,
+  MutateOnboardingRoadmapResponse,
+  RequestRoadmapAiProposal,
+  RoadmapChangeProposal,
+  ApplyRoadmapAiProposalRequest,
+  OnboardingPlanHistoryResponse,
+  OnboardingCancellationImpact,
+  CancelOnboardingPlanRequest,
   TransitionOnboardingTaskRequest,
   TransitionOnboardingTaskResponse,
   WorkspaceOnboardingState,
@@ -40,7 +50,14 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
-    throw new Error(`Request to ${path} failed with status ${response.status}`);
+    const body = (await response.json().catch(() => undefined)) as
+      | { error?: string; details?: unknown }
+      | undefined;
+    throw new WorkspaceApiError(
+      body?.error ?? `Request to ${path} failed with status ${response.status}`,
+      response.status,
+      body?.details,
+    );
   }
 
   if (response.status === 204) {
@@ -48,6 +65,17 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   return (await response.json()) as T;
+}
+
+export class WorkspaceApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly details?: unknown,
+  ) {
+    super(message);
+    this.name = 'WorkspaceApiError';
+  }
 }
 
 export async function getCurrentAccount(): Promise<AccountSession> {
@@ -203,12 +231,100 @@ export async function getOnboardingState(sessionId: string): Promise<WorkspaceOn
   );
 }
 
-export async function activateOnboardingPlan(
+export async function createOnboardingPlan(
   sessionId: string,
-  payload: ActivateOnboardingPlanRequest,
+  payload: CreateOnboardingPlanRequest,
 ): Promise<TransitionOnboardingTaskResponse> {
   return requestJson<TransitionOnboardingTaskResponse>(
     `/api/sessions/${encodeURIComponent(sessionId)}/onboarding`,
+    { method: 'POST', body: JSON.stringify(payload) },
+  );
+}
+
+export async function generateOnboardingPlan(
+  sessionId: string,
+  payload: GenerateOnboardingPlanRequest,
+): Promise<TransitionOnboardingTaskResponse> {
+  return requestJson<TransitionOnboardingTaskResponse>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/onboarding/generate`,
+    { method: 'POST', body: JSON.stringify(payload) },
+  );
+}
+
+export async function previewRoadmapCommand(
+  sessionId: string,
+  payload: RoadmapCommandRequest,
+): Promise<RoadmapCommandImpactResponse> {
+  return requestJson<RoadmapCommandImpactResponse>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/onboarding/commands/impact`,
+    { method: 'POST', body: JSON.stringify(payload) },
+  );
+}
+
+export async function applyRoadmapCommand(
+  sessionId: string,
+  payload: RoadmapCommandRequest,
+): Promise<MutateOnboardingRoadmapResponse> {
+  return requestJson<MutateOnboardingRoadmapResponse>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/onboarding/commands`,
+    { method: 'POST', body: JSON.stringify(payload) },
+  );
+}
+
+export async function requestRoadmapAiProposal(
+  sessionId: string,
+  payload: RequestRoadmapAiProposal,
+): Promise<RoadmapChangeProposal> {
+  return requestJson<RoadmapChangeProposal>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/onboarding/ai-proposals`,
+    { method: 'POST', body: JSON.stringify(payload) },
+  );
+}
+
+export async function applyRoadmapAiProposal(
+  sessionId: string,
+  proposalId: string,
+  payload: ApplyRoadmapAiProposalRequest,
+): Promise<MutateOnboardingRoadmapResponse> {
+  return requestJson<MutateOnboardingRoadmapResponse>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/onboarding/ai-proposals/${encodeURIComponent(proposalId)}/apply`,
+    { method: 'POST', body: JSON.stringify(payload) },
+  );
+}
+
+export async function dismissRoadmapAiProposal(
+  sessionId: string,
+  proposalId: string,
+): Promise<void> {
+  await requestJson<void>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/onboarding/ai-proposals/${encodeURIComponent(proposalId)}/dismiss`,
+    { method: 'POST' },
+  );
+}
+
+export async function getOnboardingPlanHistory(
+  sessionId: string,
+): Promise<OnboardingPlanHistoryResponse> {
+  return requestJson<OnboardingPlanHistoryResponse>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/onboarding/history`,
+  );
+}
+
+export async function getOnboardingCancellationImpact(
+  sessionId: string,
+): Promise<OnboardingCancellationImpact> {
+  return requestJson<OnboardingCancellationImpact>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/onboarding/cancellation-impact`,
+    { method: 'POST' },
+  );
+}
+
+export async function cancelOnboardingPlan(
+  sessionId: string,
+  payload: CancelOnboardingPlanRequest,
+): Promise<WorkspaceOnboardingState> {
+  return requestJson<WorkspaceOnboardingState>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/onboarding/cancel`,
     { method: 'POST', body: JSON.stringify(payload) },
   );
 }

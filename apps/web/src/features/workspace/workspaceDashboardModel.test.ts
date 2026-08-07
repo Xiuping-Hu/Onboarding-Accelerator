@@ -7,13 +7,16 @@ import {
   deriveWorkspaceResources,
 } from './workspaceDashboardModel';
 
-const readyState: WorkspaceOnboardingState = {
+const readyState = {
   status: 'ready',
   projection: {
     planId: 'plan-1',
     planRevision: 2,
     planStatus: 'active',
     definitionVersionId: 'definition-1',
+    title: 'Onboarding',
+    startAt: '2026-08-01T12:00:00.000Z',
+    startedAt: '2026-08-01T12:00:00.000Z',
     calculatedAt: '2026-08-05T12:00:00.000Z',
     progress: {
       percentComplete: 50,
@@ -30,6 +33,7 @@ const readyState: WorkspaceOnboardingState = {
         position: 1,
         title: 'Orientation',
         description: 'Meet the team',
+        dependsOnStageKeys: [],
         status: 'completed',
         completedTaskCount: 1,
         totalTaskCount: 1,
@@ -40,6 +44,7 @@ const readyState: WorkspaceOnboardingState = {
         position: 2,
         title: 'Tools',
         description: 'Set up access',
+        dependsOnStageKeys: [],
         status: 'in-progress',
         completedTaskCount: 0,
         totalTaskCount: 1,
@@ -56,6 +61,7 @@ const readyState: WorkspaceOnboardingState = {
         required: true,
         countsTowardProgress: true,
         weight: 1,
+        dependsOnTaskKeys: [],
         completedAt: '2026-08-04T12:00:00.000Z',
         revision: 1,
         overdue: false,
@@ -70,6 +76,7 @@ const readyState: WorkspaceOnboardingState = {
         required: true,
         countsTowardProgress: true,
         weight: 1,
+        dependsOnTaskKeys: [],
         revision: 0,
         overdue: false,
       },
@@ -85,12 +92,13 @@ const readyState: WorkspaceOnboardingState = {
         required: true,
         countsTowardProgress: true,
         weight: 1,
+        dependsOnTaskKeys: [],
         revision: 0,
         overdue: false,
       },
     ],
   },
-};
+} satisfies WorkspaceOnboardingState;
 
 void test('uses the lifecycle projection for roadmap, progress, and upcoming tasks', () => {
   const model = createWorkspaceDashboardModel(createGraph([]), readyState);
@@ -124,7 +132,7 @@ void test('keeps missing and empty lifecycle state explicit', () => {
 });
 
 void test('reports a zero progress denominator as unavailable', () => {
-  const state = structuredClone(readyState);
+  const state: WorkspaceOnboardingState = structuredClone(readyState);
   if (state.status !== 'ready') return;
   state.projection.progress.percentComplete = null;
   state.projection.progress.totalWeight = 0;

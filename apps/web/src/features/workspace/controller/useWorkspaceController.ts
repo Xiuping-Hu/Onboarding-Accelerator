@@ -56,6 +56,9 @@ export function useWorkspaceController({
       onboarding: onboarding.state,
       onboardingIsLoading: onboarding.isLoading,
       pendingTaskIds: onboarding.pendingTaskIds,
+      roadmapHistory: onboarding.history,
+      roadmapIsMutating: onboarding.isMutating,
+      roadmapProposal: onboarding.proposal,
       meta: getWorkspacePageMeta(pathname, account.displayName),
       onReferenceStep(stepId) {
         guide.referenceStep(stepId);
@@ -65,6 +68,13 @@ export function useWorkspaceController({
         guide.retry();
         void onboarding.reload();
       },
+      onCreateRoadmap: onboarding.createManual,
+      onGenerateRoadmap: onboarding.generate,
+      onRoadmapCommand: onboarding.command,
+      onProposeRoadmapChange: onboarding.propose,
+      onApplyRoadmapProposal: onboarding.applyProposal,
+      onDismissRoadmapProposal: onboarding.dismissProposal,
+      onCancelRoadmap: onboarding.cancel,
       onTransitionTask: onboarding.transitionTask,
       sources: guide.sources,
     },

@@ -218,7 +218,7 @@ export interface GenerateGuideRootResponse {
   knowledgeMapEnabled?: boolean;
 }
 
-export type OnboardingPlanStatus = 'draft' | 'active' | 'completed' | 'cancelled';
+export type OnboardingPlanStatus = 'active' | 'completed' | 'cancelled';
 
 export type OnboardingTaskStatus =
   | 'not_started'
@@ -227,7 +227,11 @@ export type OnboardingTaskStatus =
   | 'completed'
   | 'waived';
 
-export type OnboardingTaskMutationSource = 'tasks_ui' | 'overview_ui' | 'agent_confirmed';
+export type OnboardingTaskMutationSource =
+  | 'tasks_ui'
+  | 'overview_ui'
+  | 'agent_confirmed'
+  | 'roadmap_edit';
 
 export type RoadmapStageProjectionStatus =
   | 'completed'
@@ -240,6 +244,7 @@ export interface OnboardingTaskDefinitionInput {
   stableKey: string;
   title: string;
   description?: string;
+  completionCriteria?: string;
   required?: boolean;
   countsTowardProgress?: boolean;
   weight?: number;
@@ -257,14 +262,144 @@ export interface RoadmapStageDefinitionInput {
   tasks: OnboardingTaskDefinitionInput[];
 }
 
-export interface ActivateOnboardingPlanRequest {
-  approved: true;
+export interface CreateOnboardingPlanRequest {
   clientRequestId: string;
   title: string;
   definitionVersionId?: string;
   startAt?: string;
   targetAt?: string;
   stages: RoadmapStageDefinitionInput[];
+}
+
+export interface GenerateOnboardingPlanRequest {
+  clientRequestId: string;
+  goal: string;
+  role?: string;
+  title?: string;
+  startAt?: string;
+  targetAt?: string;
+}
+
+export type RoadmapCommand =
+  | {
+      type: 'set_metadata';
+      title?: string;
+      startAt?: string;
+      targetAt?: string | null;
+    }
+  | {
+      type: 'add_stage';
+      stage: Omit<RoadmapStageDefinitionInput, 'position'> & { position?: number };
+      afterStageKey?: string;
+    }
+  | {
+      type: 'update_stage';
+      stageKey: string;
+      patch: Partial<
+        Pick<
+          RoadmapStageDefinitionInput,
+          'title' | 'description' | 'guideStepId' | 'dependsOnStageKeys'
+        >
+      >;
+    }
+  | { type: 'move_stage'; stageKey: string; afterStageKey?: string }
+  | { type: 'delete_stage'; stageKey: string }
+  | {
+      type: 'add_task';
+      stageKey: string;
+      task: OnboardingTaskDefinitionInput;
+      afterTaskKey?: string;
+    }
+  | {
+      type: 'update_task';
+      taskKey: string;
+      patch: Partial<Omit<OnboardingTaskDefinitionInput, 'stableKey'>>;
+    }
+  | {
+      type: 'move_task';
+      taskKey: string;
+      toStageKey: string;
+      afterTaskKey?: string;
+    }
+  | { type: 'delete_task'; taskKey: string };
+
+export interface RoadmapCommandRequest {
+  expectedPlanRevision: number;
+  idempotencyKey: string;
+  command: RoadmapCommand;
+  destructiveImpactHash?: string;
+}
+
+export interface RoadmapChangeImpact {
+  tasksAdded: number;
+  tasksRetired: number;
+  completedTasksRetained: number;
+  completedTasksReset: number;
+  destructive: boolean;
+  impactHash?: string;
+}
+
+export interface RoadmapCommandImpactResponse {
+  impact: RoadmapChangeImpact;
+}
+
+export interface RequestRoadmapAiProposal {
+  instruction: string;
+  selectedStageKey?: string;
+  selectedTaskKey?: string;
+}
+
+export interface RoadmapChangeProposal {
+  id: string;
+  planId: string;
+  basePlanRevision: number;
+  baseContentHash: string;
+  proposalHash: string;
+  operations: RoadmapCommand[];
+  rationale: string;
+  assumptions: string[];
+  warnings: string[];
+  progressImpact: RoadmapChangeImpact;
+  sourceReferences: string[];
+  expiresAt: string;
+}
+
+export interface ApplyRoadmapAiProposalRequest {
+  expectedPlanRevision: number;
+  proposalHash: string;
+  idempotencyKey: string;
+  destructiveImpactHash?: string;
+}
+
+export interface OnboardingPlanRevisionEvent {
+  id: string;
+  planId: string;
+  planRevision: number;
+  commandType: string;
+  actorId: string;
+  fromDefinitionVersionId?: string;
+  toDefinitionVersionId: string;
+  impact: RoadmapChangeImpact;
+  createdAt: string;
+}
+
+export interface OnboardingPlanHistoryResponse {
+  events: OnboardingPlanRevisionEvent[];
+}
+
+export interface OnboardingCancellationImpact {
+  planId: string;
+  planRevision: number;
+  incompleteTaskCount: number;
+  completedTaskCount: number;
+  impactHash: string;
+}
+
+export interface CancelOnboardingPlanRequest {
+  expectedPlanRevision: number;
+  idempotencyKey: string;
+  impactHash: string;
+  reason: string;
 }
 
 export interface OnboardingTaskProjection {
@@ -274,10 +409,13 @@ export interface OnboardingTaskProjection {
   stableKey: string;
   title: string;
   description?: string;
+  completionCriteria?: string;
   status: OnboardingTaskStatus;
   required: boolean;
   countsTowardProgress: boolean;
   weight: number;
+  dueOffsetDays?: number;
+  dependsOnTaskKeys: string[];
   dueAt?: string;
   completedAt?: string;
   revision: number;
@@ -292,6 +430,7 @@ export interface RoadmapStageProjection {
   description: string;
   status: RoadmapStageProjectionStatus;
   guideStepId?: string;
+  dependsOnStageKeys: string[];
   dueAt?: string;
   completedAt?: string;
   completedTaskCount: number;
@@ -303,6 +442,10 @@ export interface WorkspaceOnboardingProjection {
   planRevision: number;
   planStatus: OnboardingPlanStatus;
   definitionVersionId: string;
+  title: string;
+  startAt: string;
+  targetAt?: string;
+  startedAt: string;
   calculatedAt: string;
   progress: {
     percentComplete: number | null;
@@ -331,6 +474,11 @@ export interface TransitionOnboardingTaskRequest {
 export interface TransitionOnboardingTaskResponse {
   state: WorkspaceOnboardingState;
   idempotentReplay: boolean;
+}
+
+export interface MutateOnboardingRoadmapResponse extends TransitionOnboardingTaskResponse {
+  impact: RoadmapChangeImpact;
+  revisionEvent?: OnboardingPlanRevisionEvent;
 }
 
 export interface AiUsageStats {

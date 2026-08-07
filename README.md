@@ -166,23 +166,30 @@ The created map is saved with the session guide state.
 
 ## Onboarding plans, tasks, and progress
 
-Onboarding lifecycle state is separate from guide navigation state. An approved plan pins an
-immutable journey definition, materializes learner task instances, records task transitions as
-append-only events, and calculates progress deterministically from progress-bearing task weights.
-Guide nodes are never interpreted as completed tasks.
+Onboarding lifecycle state is separate from guide navigation state. AI generation or manual
+creation makes a plan live immediately. Every edit creates an immutable journey-definition version,
+reconciles learner task instances, records revision/task events, and recalculates progress
+deterministically from progress-bearing task weights. Guide nodes are never interpreted as completed
+tasks, and there is no draft or activation lifecycle.
 
 Authenticated lifecycle endpoints are rooted at `/api/sessions/:sessionId/onboarding`:
 
 - `GET` returns the current learner's active plan projection or an explicit `no-active-plan` state;
-- `POST` activates an explicitly approved, validated journey definition using a client request ID;
-  and
+- `POST` creates an empty or populated live manual plan using a client request ID;
+- `POST /generate` creates a validated, grounded live plan with AI;
+- `POST /commands/impact` previews completed-work impact and `POST /commands` applies one typed,
+  revision-bound live edit;
+- `POST /ai-proposals` creates a persisted typed AI diff, while `/apply` and `/dismiss` resolve it;
+- `GET /history` returns immutable plan-revision events;
+- `POST /cancellation-impact` and `POST /cancel` perform an explicit, reasoned cancellation; and
 - `PATCH /tasks/:taskId` performs a revisioned, idempotent task transition and returns the updated
   unified projection.
 
 Overview, Roadmap, Upcoming Tasks, and Tasks consume that same projection. Learner progress follows
 the active learner across chat sessions, and deleting the originating chat does not delete the plan.
 File-backed development stores lifecycle data beside `SESSION_STORE_PATH` in
-`onboarding-plans.json`; PostgreSQL deployments require migration `0009_onboarding_task_progress`.
+`onboarding-plans.json`; PostgreSQL deployments require migrations
+`0009_onboarding_task_progress` through `0011_live_ai_onboarding_roadmap`.
 Production Vercel builds apply pending committed Prisma migrations before compiling the application
 and fail closed if the database cannot be migrated. When the migration history is absent, the build
 first verifies the complete legacy schema from migrations `0001` through `0007` before recording

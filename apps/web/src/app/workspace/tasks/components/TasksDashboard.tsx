@@ -4,6 +4,7 @@ import { ListChecksIcon } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useWorkspaceRoute } from '../../components/WorkspaceRouteContext';
 import { OnboardingTaskRow } from '../../components/tasks/OnboardingTaskRow';
+import { RoadmapSetup } from '../../components/overview/RoadmapSetup';
 
 export function TasksDashboard() {
   const { onboarding, onboardingIsLoading, onTransitionTask, pendingTaskIds } = useWorkspaceRoute();
@@ -20,7 +21,7 @@ export function TasksDashboard() {
 
   if (!onboarding || onboarding.status === 'empty') {
     return (
-      <section aria-labelledby="tasks-content-heading" className="pb-2">
+      <section aria-labelledby="tasks-content-heading" className="grid gap-4 pb-2">
         <div className="grid min-h-52 grid-cols-[64px_minmax(0,1fr)] items-center gap-5 rounded-xl border border-workspace-border bg-white p-7 shadow-[0_5px_18px_rgb(31_38_61_/_5%)] max-md:min-h-0 max-md:grid-cols-1 max-md:p-5">
           <div
             aria-hidden="true"
@@ -33,11 +34,11 @@ export function TasksDashboard() {
               No active onboarding plan
             </h2>
             <p className="mt-2 mb-0 max-w-2xl text-sm leading-relaxed text-workspace-muted">
-              Tasks will appear after an approved onboarding plan is activated for this
-              conversation.
+              Generate with AI or create a roadmap manually to see its tasks here.
             </p>
           </div>
         </div>
+        <RoadmapSetup />
       </section>
     );
   }

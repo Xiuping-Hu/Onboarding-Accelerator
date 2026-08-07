@@ -1,5 +1,11 @@
 import type { AiUsageStats } from '@onboarding/shared';
-import type { AnswerProvider, AnswerRequest, AnswerResult } from '../../core/ports/answerProvider';
+import type {
+  AnswerProvider,
+  AnswerRequest,
+  AnswerResult,
+  StructuredOutputRequest,
+  StructuredOutputResult,
+} from '../../core/ports/answerProvider';
 import {
   buildGroundedPrompt,
   formatGroundedHistory,
@@ -70,6 +76,35 @@ export class OpenAiAnswerProvider implements AnswerProvider {
       ...answer,
       usage: extractUsageStats(payload, this.config),
     };
+  }
+
+  async generateStructured(
+    input: StructuredOutputRequest,
+  ): Promise<StructuredOutputResult | undefined> {
+    if (!this.config.apiKey) return undefined;
+    const response = await fetchWithRetries(
+      'https://api.openai.com/v1/responses',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.config.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: this.config.model,
+          input: [
+            { role: 'system', content: input.system },
+            { role: 'user', content: input.prompt },
+          ],
+        }),
+      },
+      { timeoutMs: this.config.timeoutMs, maxRetries: this.config.maxRetries },
+      this.config.fetch ?? openAiFetch,
+    );
+    if (!response.ok) throw new Error(`OpenAI request failed with status ${response.status}`);
+    const payload = (await response.json()) as OpenAiResponse;
+    const content = extractOutputText(payload);
+    return content ? { content, usage: extractUsageStats(payload, this.config) } : undefined;
   }
 }
 

@@ -18,6 +18,17 @@ export interface AnswerResult {
   usage?: AiUsageStats;
 }
 
+export interface StructuredOutputRequest {
+  system: string;
+  prompt: string;
+}
+
+export interface StructuredOutputResult {
+  content: string;
+  usage?: AiUsageStats;
+}
+
 export interface AnswerProvider {
   answer(input: AnswerRequest): Promise<AnswerResult | undefined>;
+  generateStructured?(input: StructuredOutputRequest): Promise<StructuredOutputResult | undefined>;
 }

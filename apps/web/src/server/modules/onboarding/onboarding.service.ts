@@ -1,7 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import type {
-  ActivateOnboardingPlanRequest,
+  ApplyRoadmapAiProposalRequest,
+  CancelOnboardingPlanRequest,
+  CreateOnboardingPlanRequest,
+  GenerateOnboardingPlanRequest,
+  MutateOnboardingRoadmapResponse,
+  OnboardingCancellationImpact,
+  OnboardingPlanHistoryResponse,
+  OnboardingPlanRevisionEvent,
   OnboardingTaskStatus,
+  RequestRoadmapAiProposal,
+  RoadmapChangeProposal,
+  RoadmapCommandRequest,
   TransitionOnboardingTaskRequest,
   TransitionOnboardingTaskResponse,
   WorkspaceOnboardingState,
@@ -9,19 +19,32 @@ import type {
 import type { AuthenticatedUser } from '../../auth';
 import { AppError } from '../../core/errors/appError';
 import type { SessionRepository } from '../../sessionRepository';
-import { calculateOnboardingProjection } from './onboardingProjection';
+import type { OnboardingRoadmapAgent } from './onboarding.agent';
 import {
   ActiveOnboardingPlanError,
   type CreateOnboardingPlanInput,
   type OnboardingPlanAggregate,
   type OnboardingRepository,
-  type StoredStageDefinition,
+  type StoredPlanRevisionEvent,
+  type StoredRoadmapProposal,
 } from './onboarding.repository';
+import {
+  createStoredStages,
+  hashDefinition,
+  hashValue,
+  prepareRoadmapMutation,
+  type PreparedRoadmapMutation,
+} from './onboardingRoadmap';
+import { calculateOnboardingProjection } from './onboardingProjection';
+
+type ResolveAccessScopes = (ownerId: string) => Promise<string[]>;
 
 export class OnboardingService {
   constructor(
     private readonly repository: OnboardingRepository,
     private readonly sessions: SessionRepository,
+    private readonly agent?: OnboardingRoadmapAgent,
+    private readonly resolveAccessScopes: ResolveAccessScopes = async () => ['all_users'],
   ) {}
 
   async get(sessionId: string, ownerId: string): Promise<WorkspaceOnboardingState> {
@@ -32,25 +55,315 @@ export class OnboardingService {
       : { status: 'empty', reason: 'no-active-plan' };
   }
 
-  async activate(
+  async create(
     sessionId: string,
-    input: ActivateOnboardingPlanRequest,
+    input: CreateOnboardingPlanRequest,
     actor: AuthenticatedUser,
   ): Promise<TransitionOnboardingTaskResponse> {
     await this.sessions.get(sessionId, actor.id);
-    const creation = createPlanInput(sessionId, input, actor.id);
-    try {
-      const result = await this.repository.createPlan(creation);
-      return {
-        state: { status: 'ready', projection: calculateOnboardingProjection(result.aggregate) },
-        idempotentReplay: result.idempotentReplay,
-      };
-    } catch (error) {
-      if (error instanceof ActiveOnboardingPlanError) {
-        throw AppError.conflict(error.message);
+    return this.createPrepared(sessionId, input, actor, 'manual');
+  }
+
+  async generate(
+    sessionId: string,
+    input: GenerateOnboardingPlanRequest,
+    actor: AuthenticatedUser,
+  ): Promise<TransitionOnboardingTaskResponse> {
+    await this.sessions.get(sessionId, actor.id);
+    const existing = await this.repository.getActive(sessionId, actor.id);
+    if (existing) {
+      if (existing.plan.creationRequestId === input.clientRequestId) {
+        return {
+          state: { status: 'ready', projection: calculateOnboardingProjection(existing) },
+          idempotentReplay: true,
+        };
       }
-      throw error;
+      throw AppError.conflict('An active onboarding plan already exists.');
     }
+    if (!this.agent) {
+      throw AppError.featureDisabled(
+        'AI roadmap generation is not configured. Create the roadmap manually.',
+      );
+    }
+    const generated = await this.agent.generate(input, await this.resolveAccessScopes(actor.id));
+    return this.createPrepared(
+      sessionId,
+      {
+        clientRequestId: input.clientRequestId,
+        title: input.title ?? generated.title,
+        ...(input.startAt ? { startAt: input.startAt } : {}),
+        ...(input.targetAt ? { targetAt: input.targetAt } : {}),
+        stages: generated.stages,
+      },
+      actor,
+      'ai_generated',
+      generated.sourceReferences,
+    );
+  }
+
+  async commandImpact(sessionId: string, input: RoadmapCommandRequest, actor: AuthenticatedUser) {
+    const current = await this.requireActive(sessionId, actor.id);
+    assertExpectedPlanRevision(current, input.expectedPlanRevision);
+    const prepared = prepareRoadmapMutation({
+      current,
+      commands: [input.command],
+      actorId: actor.id,
+      idempotencyKey: input.idempotencyKey,
+      now: new Date().toISOString(),
+      changeSource: input.command.type,
+    });
+    return { impact: prepared.impact };
+  }
+
+  async applyCommand(
+    sessionId: string,
+    input: RoadmapCommandRequest,
+    actor: AuthenticatedUser,
+  ): Promise<MutateOnboardingRoadmapResponse> {
+    const current = await this.requireActive(sessionId, actor.id);
+    const replay = await this.replayMutation(current, input.idempotencyKey, input.command.type);
+    if (replay) return replay;
+    assertExpectedPlanRevision(current, input.expectedPlanRevision);
+    const now = new Date().toISOString();
+    const prepared = prepareRoadmapMutation({
+      current,
+      commands: [input.command],
+      actorId: actor.id,
+      idempotencyKey: input.idempotencyKey,
+      now,
+      changeSource: input.command.type,
+    });
+    assertDestructiveImpact(prepared, input.destructiveImpactHash);
+    return this.persistMutation({
+      sessionId,
+      actor,
+      current,
+      prepared,
+      idempotencyKey: input.idempotencyKey,
+      commandType: input.command.type,
+      now,
+    });
+  }
+
+  async proposeChange(
+    sessionId: string,
+    input: RequestRoadmapAiProposal,
+    actor: AuthenticatedUser,
+  ): Promise<RoadmapChangeProposal> {
+    const current = await this.requireActive(sessionId, actor.id);
+    if (!this.agent) {
+      throw AppError.featureDisabled(
+        'AI roadmap changes are not configured. Edit the roadmap manually.',
+      );
+    }
+    const generated = await this.agent.propose({
+      aggregate: current,
+      instruction: input.instruction,
+      ...(input.selectedStageKey ? { selectedStageKey: input.selectedStageKey } : {}),
+      ...(input.selectedTaskKey ? { selectedTaskKey: input.selectedTaskKey } : {}),
+      allowedAccessScopes: await this.resolveAccessScopes(actor.id),
+    });
+    const now = new Date();
+    const preview = prepareRoadmapMutation({
+      current,
+      commands: generated.operations,
+      actorId: actor.id,
+      idempotencyKey: `proposal-preview:${randomUUID()}`,
+      now: now.toISOString(),
+      changeSource: 'ai_proposal',
+      sourceReferences: [
+        ...new Set([...current.definition.sourceReferences, ...generated.sourceReferences]),
+      ],
+    });
+    const baseContentHash = hashDefinition(current.definition);
+    const proposalHash = hashValue({
+      planId: current.plan.id,
+      basePlanRevision: current.plan.revision,
+      baseContentHash,
+      operations: generated.operations,
+    });
+    const proposal: StoredRoadmapProposal = {
+      id: randomUUID(),
+      planId: current.plan.id,
+      ownerId: actor.id,
+      basePlanRevision: current.plan.revision,
+      baseContentHash,
+      proposalHash,
+      operations: generated.operations,
+      rationale: generated.rationale,
+      assumptions: generated.assumptions,
+      warnings: generated.warnings,
+      progressImpact: preview.impact,
+      sourceReferences: generated.sourceReferences,
+      status: 'pending',
+      expiresAt: new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+      createdAt: now.toISOString(),
+    };
+    await this.repository.saveProposal(proposal);
+    emitRoadmapEvent('roadmap.ai_proposal.created', {
+      planId: current.plan.id,
+      proposalId: proposal.id,
+      planRevision: current.plan.revision,
+      operationCount: proposal.operations.length,
+    });
+    return toPublicProposal(proposal);
+  }
+
+  async applyProposal(
+    sessionId: string,
+    proposalId: string,
+    input: ApplyRoadmapAiProposalRequest,
+    actor: AuthenticatedUser,
+  ): Promise<MutateOnboardingRoadmapResponse> {
+    const current = await this.requireActive(sessionId, actor.id);
+    const replay = await this.replayMutation(current, input.idempotencyKey, 'ai_proposal');
+    if (replay) return replay;
+    const proposal = await this.repository.getProposal(proposalId, actor.id);
+    if (!proposal || proposal.planId !== current.plan.id) {
+      throw AppError.notFound('Roadmap proposal not found.');
+    }
+    if (proposal.status !== 'pending' || Date.parse(proposal.expiresAt) <= Date.now()) {
+      throw AppError.conflict('Roadmap proposal is no longer available.');
+    }
+    if (proposal.proposalHash !== input.proposalHash) {
+      throw AppError.conflict('Roadmap proposal content has changed.');
+    }
+    if (
+      proposal.basePlanRevision !== input.expectedPlanRevision ||
+      proposal.basePlanRevision !== current.plan.revision ||
+      proposal.baseContentHash !== hashDefinition(current.definition)
+    ) {
+      throw AppError.conflict('Roadmap proposal is stale. Generate a new proposal.');
+    }
+    const now = new Date().toISOString();
+    const prepared = prepareRoadmapMutation({
+      current,
+      commands: proposal.operations,
+      actorId: actor.id,
+      idempotencyKey: input.idempotencyKey,
+      now,
+      changeSource: 'ai_proposal',
+      sourceReferences: [
+        ...new Set([...current.definition.sourceReferences, ...proposal.sourceReferences]),
+      ],
+    });
+    assertDestructiveImpact(prepared, input.destructiveImpactHash);
+    const response = await this.persistMutation({
+      sessionId,
+      actor,
+      current,
+      prepared,
+      idempotencyKey: input.idempotencyKey,
+      commandType: 'ai_proposal',
+      proposalId: proposal.id,
+      now,
+    });
+    emitRoadmapEvent('roadmap.ai_proposal.applied', {
+      planId: current.plan.id,
+      proposalId: proposal.id,
+      planRevision: response.revisionEvent?.planRevision,
+    });
+    return response;
+  }
+
+  async dismissProposal(
+    sessionId: string,
+    proposalId: string,
+    actor: AuthenticatedUser,
+  ): Promise<void> {
+    const current = await this.requireActive(sessionId, actor.id);
+    const proposal = await this.repository.getProposal(proposalId, actor.id);
+    if (!proposal || proposal.planId !== current.plan.id) {
+      throw AppError.notFound('Roadmap proposal not found.');
+    }
+    if (proposal.status !== 'pending') return;
+    if (!(await this.repository.dismissProposal(proposalId, actor.id))) {
+      throw AppError.conflict('Roadmap proposal is no longer available.');
+    }
+    emitRoadmapEvent('roadmap.ai_proposal.dismissed', {
+      planId: current.plan.id,
+      proposalId,
+      planRevision: current.plan.revision,
+    });
+  }
+
+  async history(
+    sessionId: string,
+    actor: AuthenticatedUser,
+  ): Promise<OnboardingPlanHistoryResponse> {
+    const current = await this.requireActive(sessionId, actor.id);
+    const events = await this.repository.listRevisionEvents(current.plan.id, actor.id);
+    return { events: events.map(toPublicRevisionEvent) };
+  }
+
+  async cancellationImpact(
+    sessionId: string,
+    actor: AuthenticatedUser,
+  ): Promise<OnboardingCancellationImpact> {
+    const current = await this.requireActive(sessionId, actor.id);
+    const completedTaskCount = current.tasks.filter(
+      (task) => task.status === 'completed' || task.status === 'waived',
+    ).length;
+    const incompleteTaskCount = current.tasks.length - completedTaskCount;
+    return {
+      planId: current.plan.id,
+      planRevision: current.plan.revision,
+      completedTaskCount,
+      incompleteTaskCount,
+      impactHash: hashValue({
+        action: 'cancel_plan',
+        planId: current.plan.id,
+        planRevision: current.plan.revision,
+        completedTaskCount,
+        incompleteTaskCount,
+      }),
+    };
+  }
+
+  async cancel(
+    sessionId: string,
+    input: CancelOnboardingPlanRequest,
+    actor: AuthenticatedUser,
+  ): Promise<WorkspaceOnboardingState> {
+    await this.sessions.get(sessionId, actor.id);
+    const replay = await this.repository.getRevisionEventByIdempotency(
+      actor.id,
+      input.idempotencyKey,
+    );
+    if (replay) {
+      if (replay.commandType !== 'cancel_plan') {
+        throw AppError.conflict('Idempotency key was already used for another command.');
+      }
+      return { status: 'empty', reason: 'no-active-plan' };
+    }
+    const impact = await this.cancellationImpact(sessionId, actor);
+    if (
+      impact.planRevision !== input.expectedPlanRevision ||
+      impact.impactHash !== input.impactHash
+    ) {
+      throw AppError.conflict('The cancellation impact has changed. Review it again.');
+    }
+    const result = await this.repository.cancelPlan({
+      ownerId: actor.id,
+      sessionId,
+      expectedPlanRevision: input.expectedPlanRevision,
+      idempotencyKey: input.idempotencyKey,
+      reason: input.reason,
+      actorId: actor.id,
+      changedAt: new Date().toISOString(),
+    });
+    if (result.kind === 'not_found')
+      throw AppError.notFound('No active onboarding plan was found.');
+    if (result.kind === 'revision_conflict') {
+      throw new AppError('CONFLICT', 'The roadmap changed before it could be cancelled.', {
+        actualRevision: result.actualRevision,
+      });
+    }
+    emitRoadmapEvent('roadmap.cancellation.completed', {
+      planId: impact.planId,
+      planRevision: impact.planRevision,
+    });
+    return { status: 'empty', reason: 'no-active-plan' };
   }
 
   async transitionTask(
@@ -59,12 +372,9 @@ export class OnboardingService {
     input: TransitionOnboardingTaskRequest,
     actor: AuthenticatedUser,
   ): Promise<TransitionOnboardingTaskResponse> {
-    await this.sessions.get(sessionId, actor.id);
-    const aggregate = await this.repository.getActive(sessionId, actor.id);
-    if (!aggregate) throw AppError.notFound('No active onboarding plan was found.');
+    const aggregate = await this.requireActive(sessionId, actor.id);
     const task = aggregate.tasks.find((candidate) => candidate.id === taskId);
     if (!task) throw AppError.notFound('Onboarding task not found.');
-
     if (task.status !== input.status && !canTransition(task.status, input.status, actor.role)) {
       throw AppError.conflict(`Task cannot transition from ${task.status} to ${input.status}.`);
     }
@@ -82,9 +392,8 @@ export class OnboardingService {
       changedAt: new Date().toISOString(),
     });
     if (result.kind === 'not_found') throw AppError.notFound('Onboarding task not found.');
-    if (result.kind === 'no_change') {
+    if (result.kind === 'no_change')
       throw AppError.conflict('Task is already in the requested state.');
-    }
     if (result.kind === 'idempotency_conflict') {
       throw AppError.conflict('Idempotency key was already used for a different task command.');
     }
@@ -98,62 +407,163 @@ export class OnboardingService {
       idempotentReplay: result.kind === 'duplicate',
     };
   }
+
+  private async requireActive(
+    sessionId: string,
+    ownerId: string,
+  ): Promise<OnboardingPlanAggregate> {
+    await this.sessions.get(sessionId, ownerId);
+    const aggregate = await this.repository.getActive(sessionId, ownerId);
+    if (!aggregate) throw AppError.notFound('No active onboarding plan was found.');
+    return aggregate;
+  }
+
+  private async createPrepared(
+    sessionId: string,
+    input: CreateOnboardingPlanRequest,
+    actor: AuthenticatedUser,
+    changeSource: string,
+    sourceReferences: string[] = [],
+  ): Promise<TransitionOnboardingTaskResponse> {
+    const creation = createPlanInput(sessionId, input, actor.id, changeSource, sourceReferences);
+    try {
+      const result = await this.repository.createPlan(creation);
+      emitRoadmapEvent('roadmap.plan.created', {
+        planId: result.aggregate.plan.id,
+        source: changeSource,
+        taskCount: result.aggregate.tasks.length,
+        idempotentReplay: result.idempotentReplay,
+      });
+      return {
+        state: { status: 'ready', projection: calculateOnboardingProjection(result.aggregate) },
+        idempotentReplay: result.idempotentReplay,
+      };
+    } catch (error) {
+      if (error instanceof ActiveOnboardingPlanError) throw AppError.conflict(error.message);
+      throw error;
+    }
+  }
+
+  private async replayMutation(
+    current: OnboardingPlanAggregate,
+    idempotencyKey: string,
+    commandType: string,
+  ): Promise<MutateOnboardingRoadmapResponse | null> {
+    const event = await this.repository.getRevisionEventByIdempotency(
+      current.plan.ownerId,
+      idempotencyKey,
+    );
+    if (!event || event.planId !== current.plan.id) return null;
+    if (event.commandType !== commandType) {
+      throw AppError.conflict('Idempotency key was already used for another roadmap command.');
+    }
+    return {
+      state: { status: 'ready', projection: calculateOnboardingProjection(current) },
+      idempotentReplay: true,
+      impact: event.impact,
+      revisionEvent: toPublicRevisionEvent(event),
+    };
+  }
+
+  private async persistMutation(input: {
+    sessionId: string;
+    actor: AuthenticatedUser;
+    current: OnboardingPlanAggregate;
+    prepared: PreparedRoadmapMutation;
+    idempotencyKey: string;
+    commandType: string;
+    proposalId?: string;
+    now: string;
+  }): Promise<MutateOnboardingRoadmapResponse> {
+    const result = await this.repository.mutatePlan({
+      ownerId: input.actor.id,
+      sessionId: input.sessionId,
+      expectedPlanRevision: input.current.plan.revision,
+      idempotencyKey: input.idempotencyKey,
+      commandType: input.commandType,
+      contentHash: input.prepared.contentHash,
+      impact: input.prepared.impact,
+      aggregate: input.prepared.aggregate,
+      retiredTaskIds: input.prepared.retiredTaskIds,
+      resetEvents: input.prepared.resetEvents,
+      ...(input.proposalId ? { proposalId: input.proposalId } : {}),
+      actorId: input.actor.id,
+      changedAt: input.now,
+    });
+    if (result.kind === 'not_found')
+      throw AppError.notFound('No active onboarding plan was found.');
+    if (result.kind === 'idempotency_conflict') {
+      throw AppError.conflict('Idempotency key was already used for a different roadmap command.');
+    }
+    if (result.kind === 'proposal_conflict') {
+      throw AppError.conflict('Roadmap proposal is no longer available.');
+    }
+    if (result.kind === 'revision_conflict') {
+      throw new AppError('CONFLICT', 'The roadmap was changed by another request.', {
+        actualRevision: result.actualRevision,
+      });
+    }
+    emitRoadmapEvent('roadmap.version.created', {
+      planId: result.aggregate.plan.id,
+      planRevision: result.aggregate.plan.revision,
+      commandType: input.commandType,
+      idempotentReplay: result.kind === 'duplicate',
+      impact: result.event.impact,
+    });
+    return {
+      state: { status: 'ready', projection: calculateOnboardingProjection(result.aggregate) },
+      idempotentReplay: result.kind === 'duplicate',
+      impact: result.event.impact,
+      revisionEvent: toPublicRevisionEvent(result.event),
+    };
+  }
 }
 
 function createPlanInput(
   sessionId: string,
-  input: ActivateOnboardingPlanRequest,
+  input: CreateOnboardingPlanRequest,
   ownerId: string,
+  changeSource: string,
+  sourceReferences: string[],
 ): CreateOnboardingPlanInput {
-  validateDefinition(input);
   const now = new Date().toISOString();
   const startAt = input.startAt ?? now;
+  validateDates(startAt, input.targetAt);
   const definitionId = input.definitionVersionId ?? randomUUID();
-  const stages: StoredStageDefinition[] = input.stages.map((stage) => {
-    const stageId = randomUUID();
-    return {
-      id: stageId,
-      stableKey: stage.stableKey,
-      title: stage.title,
-      description: stage.description,
-      position: stage.position,
-      ...(stage.guideStepId ? { guideStepId: stage.guideStepId } : {}),
-      dependsOnStageKeys: stage.dependsOnStageKeys ?? [],
-      tasks: stage.tasks.map((task) => ({
-        id: randomUUID(),
-        stableKey: task.stableKey,
-        title: task.title,
-        ...(task.description ? { description: task.description } : {}),
-        required: task.required ?? true,
-        countsTowardProgress: task.countsTowardProgress ?? true,
-        weight: task.weight ?? 1,
-        ...(task.dueOffsetDays !== undefined ? { dueOffsetDays: task.dueOffsetDays } : {}),
-        dependsOnTaskKeys: task.dependsOnTaskKeys ?? [],
-      })),
-    };
-  });
+  const stages = createStoredStages(input.stages);
   const planId = randomUUID();
+  const definition = {
+    id: definitionId,
+    ownerId,
+    title: input.title,
+    changeSource,
+    createdBy: ownerId,
+    createdAt: now,
+    sourceReferences,
+    stages,
+  };
+  const impact = {
+    tasksAdded: stages.reduce((total, stage) => total + stage.tasks.length, 0),
+    tasksRetired: 0,
+    completedTasksRetained: 0,
+    completedTasksReset: 0,
+    destructive: false,
+  };
   return {
-    definition: {
-      id: definitionId,
-      ownerId,
-      title: input.title,
-      createdAt: now,
-      stages,
-    },
+    definition,
     plan: {
       id: planId,
       sessionId,
       ownerId,
       definitionVersionId: definitionId,
-      activationRequestId: input.clientRequestId,
+      creationRequestId: input.clientRequestId,
       title: input.title,
       status: 'active',
       startAt,
       ...(input.targetAt ? { targetAt: input.targetAt } : {}),
       revision: 0,
       createdAt: now,
-      activatedAt: now,
+      startedAt: now,
     },
     tasks: stages.flatMap((stage) =>
       stage.tasks.map((task) => ({
@@ -169,67 +579,91 @@ function createPlanInput(
         revision: 0,
       })),
     ),
+    creationEvent: {
+      id: randomUUID(),
+      planId,
+      ownerId,
+      actorId: ownerId,
+      toDefinitionVersionId: definitionId,
+      planRevision: 0,
+      commandType: 'create_plan',
+      idempotencyKey: input.clientRequestId,
+      contentHash: hashDefinition(definition),
+      impact,
+      createdAt: now,
+    },
   };
 }
 
-function validateDefinition(input: ActivateOnboardingPlanRequest): void {
-  if (input.approved !== true) throw AppError.validation('Plan activation requires approval.');
-  if (input.stages.length === 0)
-    throw AppError.validation('At least one roadmap stage is required.');
-  const stageKeys = new Set<string>();
-  const taskKeys = new Set<string>();
-  const positions = new Set<number>();
-  for (const stage of input.stages) {
-    if (stageKeys.has(stage.stableKey)) throw AppError.validation('Stage keys must be unique.');
-    if (positions.has(stage.position)) throw AppError.validation('Stage positions must be unique.');
-    stageKeys.add(stage.stableKey);
-    positions.add(stage.position);
-    for (const task of stage.tasks) {
-      if (taskKeys.has(task.stableKey)) throw AppError.validation('Task keys must be unique.');
-      taskKeys.add(task.stableKey);
-    }
+function assertExpectedPlanRevision(
+  current: OnboardingPlanAggregate,
+  expectedRevision: number,
+): void {
+  if (current.plan.revision !== expectedRevision) {
+    throw new AppError('CONFLICT', 'The roadmap was changed by another request.', {
+      actualRevision: current.plan.revision,
+    });
   }
-  for (const stage of input.stages) {
-    if ((stage.dependsOnStageKeys ?? []).some((key) => !stageKeys.has(key))) {
-      throw AppError.validation(`Stage ${stage.stableKey} has an unknown dependency.`);
-    }
-    for (const task of stage.tasks) {
-      if ((task.dependsOnTaskKeys ?? []).some((key) => !taskKeys.has(key))) {
-        throw AppError.validation(`Task ${task.stableKey} has an unknown dependency.`);
-      }
-    }
-  }
-  assertAcyclic(
-    input.stages.map((stage) => ({
-      key: stage.stableKey,
-      dependencies: stage.dependsOnStageKeys ?? [],
-    })),
-    'stage',
-  );
-  assertAcyclic(
-    input.stages.flatMap((stage) =>
-      stage.tasks.map((task) => ({
-        key: task.stableKey,
-        dependencies: task.dependsOnTaskKeys ?? [],
-      })),
-    ),
-    'task',
-  );
 }
 
-function assertAcyclic(nodes: Array<{ key: string; dependencies: string[] }>, label: string): void {
-  const dependencies = new Map(nodes.map((node) => [node.key, node.dependencies]));
-  const visiting = new Set<string>();
-  const visited = new Set<string>();
-  const visit = (key: string) => {
-    if (visiting.has(key)) throw AppError.validation(`The ${label} dependency graph is cyclic.`);
-    if (visited.has(key)) return;
-    visiting.add(key);
-    for (const dependency of dependencies.get(key) ?? []) visit(dependency);
-    visiting.delete(key);
-    visited.add(key);
+function assertDestructiveImpact(
+  prepared: PreparedRoadmapMutation,
+  suppliedHash: string | undefined,
+): void {
+  if (prepared.impact.destructive && suppliedHash !== prepared.impactHash) {
+    throw new AppError(
+      'CONFLICT',
+      'Review the completed-work impact before applying this change.',
+      {
+        impact: prepared.impact,
+      },
+    );
+  }
+}
+
+function toPublicRevisionEvent(event: StoredPlanRevisionEvent): OnboardingPlanRevisionEvent {
+  return {
+    id: event.id,
+    planId: event.planId,
+    planRevision: event.planRevision,
+    commandType: event.commandType,
+    actorId: event.actorId,
+    ...(event.fromDefinitionVersionId
+      ? { fromDefinitionVersionId: event.fromDefinitionVersionId }
+      : {}),
+    toDefinitionVersionId: event.toDefinitionVersionId,
+    impact: event.impact,
+    createdAt: event.createdAt,
   };
-  for (const node of nodes) visit(node.key);
+}
+
+function toPublicProposal(proposal: StoredRoadmapProposal): RoadmapChangeProposal {
+  return {
+    id: proposal.id,
+    planId: proposal.planId,
+    basePlanRevision: proposal.basePlanRevision,
+    baseContentHash: proposal.baseContentHash,
+    proposalHash: proposal.proposalHash,
+    operations: proposal.operations,
+    rationale: proposal.rationale,
+    assumptions: proposal.assumptions,
+    warnings: proposal.warnings,
+    progressImpact: proposal.progressImpact,
+    sourceReferences: proposal.sourceReferences,
+    expiresAt: proposal.expiresAt,
+  };
+}
+
+function validateDates(startAt: string, targetAt: string | undefined): void {
+  const start = Date.parse(startAt);
+  if (!Number.isFinite(start)) throw AppError.validation('Roadmap start date is invalid.');
+  if (targetAt) {
+    const target = Date.parse(targetAt);
+    if (!Number.isFinite(target)) throw AppError.validation('Roadmap target date is invalid.');
+    if (target < start) {
+      throw AppError.validation('Roadmap target date cannot be before its start date.');
+    }
+  }
 }
 
 function canTransition(
@@ -272,7 +706,6 @@ function assertDependenciesSatisfied(
       throw AppError.conflict(`Complete task ${dependencyKey} before starting this task.`);
     }
   }
-
   const stageByKey = new Map(
     aggregate.definition.stages.map((candidate) => [candidate.stableKey, candidate]),
   );
@@ -296,4 +729,8 @@ function addDays(value: string, days: number): string {
   const date = new Date(value);
   date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString();
+}
+
+function emitRoadmapEvent(event: string, details: Record<string, unknown>): void {
+  console.info(JSON.stringify({ event, ...details }));
 }

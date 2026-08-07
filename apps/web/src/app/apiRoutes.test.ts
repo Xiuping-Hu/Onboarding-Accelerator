@@ -32,6 +32,13 @@ void test('Next API handlers create sessions, generate guides, chat, and expose 
   const onboardingRoute = await import('./api/sessions/[sessionId]/onboarding/route');
   const onboardingTaskRoute =
     await import('./api/sessions/[sessionId]/onboarding/tasks/[taskId]/route');
+  const onboardingCommandRoute =
+    await import('./api/sessions/[sessionId]/onboarding/commands/route');
+  const onboardingHistoryRoute =
+    await import('./api/sessions/[sessionId]/onboarding/history/route');
+  const onboardingCancellationImpactRoute =
+    await import('./api/sessions/[sessionId]/onboarding/cancellation-impact/route');
+  const onboardingCancelRoute = await import('./api/sessions/[sessionId]/onboarding/cancel/route');
   const ragWorkflowRoute = await import('./api/sessions/[sessionId]/rag-workflows/route');
   const logsRoute = await import('./api/logs/recent/route');
   const meRoute = await import('./api/auth/me/route');
@@ -43,6 +50,14 @@ void test('Next API handlers create sessions, generate guides, chat, and expose 
   );
   assert.equal(meResponse.status, 200);
   assert.deepEqual(await meResponse.json(), { user: { id: 'api-test-user' } });
+
+  const crossSiteMutation = await sessionsRoute.POST(
+    jsonRequest('http://localhost/api/sessions', { title: 'Rejected cross-site request' }, 'POST', {
+      origin: 'https://attacker.example',
+      'sec-fetch-site': 'cross-site',
+    }),
+  );
+  assert.equal(crossSiteMutation.status, 403);
 
   const createdResponse = await sessionsRoute.POST(
     jsonRequest('http://localhost/api/sessions', {
@@ -65,10 +80,9 @@ void test('Next API handlers create sessions, generate guides, chat, and expose 
     reason: 'no-active-plan',
   });
 
-  const activationResponse = await onboardingRoute.POST(
+  const creationResponse = await onboardingRoute.POST(
     jsonRequest(`http://localhost/api/sessions/${created.session.id}/onboarding`, {
-      approved: true,
-      clientRequestId: 'api-activate-plan',
+      clientRequestId: 'api-create-plan',
       title: 'API onboarding plan',
       startAt: '2026-08-05T12:00:00Z',
       stages: [
@@ -83,11 +97,11 @@ void test('Next API handlers create sessions, generate guides, chat, and expose 
     }),
     { params: Promise.resolve({ sessionId: created.session.id }) },
   );
-  assert.equal(activationResponse.status, 201);
-  const activation = (await activationResponse.json()) as TransitionOnboardingTaskResponse;
-  assert.equal(activation.state.status, 'ready');
-  if (activation.state.status !== 'ready') return;
-  const onboardingTask = activation.state.projection.tasks[0]!;
+  assert.equal(creationResponse.status, 201);
+  const creation = (await creationResponse.json()) as TransitionOnboardingTaskResponse;
+  assert.equal(creation.state.status, 'ready');
+  if (creation.state.status !== 'ready') return;
+  const onboardingTask = creation.state.projection.tasks[0]!;
 
   const transitionResponse = await onboardingTaskRoute.PATCH(
     jsonRequest(
@@ -107,6 +121,36 @@ void test('Next API handlers create sessions, generate guides, chat, and expose 
   assert.equal(
     completed.state.status === 'ready' && completed.state.projection.progress.percentComplete,
     100,
+  );
+  if (completed.state.status !== 'ready') return;
+
+  const commandResponse = await onboardingCommandRoute.POST(
+    jsonRequest(`http://localhost/api/sessions/${created.session.id}/onboarding/commands`, {
+      expectedPlanRevision: completed.state.projection.planRevision,
+      idempotencyKey: 'api-update-roadmap-title',
+      command: { type: 'set_metadata', title: 'Updated API onboarding plan' },
+    }),
+    { params: Promise.resolve({ sessionId: created.session.id }) },
+  );
+  assert.equal(commandResponse.status, 200);
+  const commandResult = (await commandResponse.json()) as TransitionOnboardingTaskResponse;
+  assert.equal(
+    commandResult.state.status === 'ready' && commandResult.state.projection.title,
+    'Updated API onboarding plan',
+  );
+
+  const historyResponse = await onboardingHistoryRoute.GET(
+    new NextRequest(`http://localhost/api/sessions/${created.session.id}/onboarding/history`, {
+      headers: { 'x-user-id': 'api-test-user' },
+    }),
+    { params: Promise.resolve({ sessionId: created.session.id }) },
+  );
+  assert.equal(historyResponse.status, 200);
+  assert.deepEqual(
+    ((await historyResponse.json()) as { events: Array<{ commandType: string }> }).events.map(
+      (event) => event.commandType,
+    ),
+    ['set_metadata', 'create_plan'],
   );
 
   const onboardingReloadResponse = await onboardingRoute.GET(
@@ -178,6 +222,33 @@ void test('Next API handlers create sessions, generate guides, chat, and expose 
     'Mastra RAG workflows are not enabled.',
   );
 
+  const cancellationImpactResponse = await onboardingCancellationImpactRoute.POST(
+    jsonRequest(
+      `http://localhost/api/sessions/${created.session.id}/onboarding/cancellation-impact`,
+      {},
+    ),
+    { params: Promise.resolve({ sessionId: created.session.id }) },
+  );
+  assert.equal(cancellationImpactResponse.status, 200);
+  const cancellationImpact = (await cancellationImpactResponse.json()) as {
+    planRevision: number;
+    impactHash: string;
+  };
+  const cancellationResponse = await onboardingCancelRoute.POST(
+    jsonRequest(`http://localhost/api/sessions/${created.session.id}/onboarding/cancel`, {
+      expectedPlanRevision: cancellationImpact.planRevision,
+      idempotencyKey: 'api-cancel-roadmap',
+      impactHash: cancellationImpact.impactHash,
+      reason: 'API lifecycle smoke test complete',
+    }),
+    { params: Promise.resolve({ sessionId: created.session.id }) },
+  );
+  assert.equal(cancellationResponse.status, 200);
+  assert.deepEqual(await cancellationResponse.json(), {
+    status: 'empty',
+    reason: 'no-active-plan',
+  });
+
   const logsResponse = await logsRoute.GET(
     new NextRequest('http://localhost/api/logs/recent?limit=10', {
       headers: { 'x-user-id': 'api-test-user' },
@@ -219,12 +290,18 @@ void test('retired registration and admin routes do not exist', async () => {
   }
 });
 
-function jsonRequest(url: string, body: unknown, method = 'POST'): NextRequest {
+function jsonRequest(
+  url: string,
+  body: unknown,
+  method = 'POST',
+  headers: Record<string, string> = {},
+): NextRequest {
   return new NextRequest(url, {
     method,
     headers: {
       'content-type': 'application/json',
       'x-user-id': 'api-test-user',
+      ...headers,
     },
     body: JSON.stringify(body),
   });

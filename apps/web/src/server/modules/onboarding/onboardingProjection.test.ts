@@ -42,6 +42,7 @@ function aggregate(): OnboardingPlanAggregate {
       ownerId: 'owner',
       title: 'First month',
       createdAt: '2026-08-01T12:00:00Z',
+      sourceReferences: [],
       stages: [
         {
           id: 'stage-orientation',
@@ -99,13 +100,13 @@ function aggregate(): OnboardingPlanAggregate {
       sessionId: 'session',
       ownerId: 'owner',
       definitionVersionId: 'definition',
-      activationRequestId: 'activation',
+      creationRequestId: 'creation',
       title: 'First month',
       status: 'active',
       startAt: '2026-08-01T12:00:00Z',
       revision: 1,
       createdAt: '2026-08-01T12:00:00Z',
-      activatedAt: '2026-08-01T12:00:00Z',
+      startedAt: '2026-08-01T12:00:00Z',
     },
     tasks: [
       {

@@ -1,0 +1,29 @@
+{
+  "sources": [
+    {
+      "id": "tax-consulting-sharepoint",
+      "kind": "sharepoint_page",
+      "connectorKind": "sharepoint",
+      "uri": "https://taxconsultingza.sharepoint.com/",
+      "title": "Tax Consulting SA SharePoint",
+      "owner": "Knowledge Owner",
+      "accessScope": "all_users",
+      "refreshCadence": "weekly",
+      "allowedTriggers": ["manual", "scheduled", "reindex"],
+      "publicationPolicy": "auto_after_validation",
+      "schedule": {
+        "cron": "0 2 * * 1",
+        "timezone": "America/Chicago",
+        "enabled": true,
+        "maxRuntimeSeconds": 240
+      },
+      "validation": {
+        "maximumReductionRatio": 0.5
+      },
+      "sharepoint": {
+        "crawlAllPages": true,
+        "maxPages": 50
+      }
+    }
+  ]
+}

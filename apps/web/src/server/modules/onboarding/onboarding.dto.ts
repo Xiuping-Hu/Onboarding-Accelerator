@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { RoadmapCommandSchema } from './onboarding.agent';
 
 const StableKeySchema = z
   .string()
@@ -12,6 +13,7 @@ const TaskDefinitionSchema = z
     stableKey: StableKeySchema,
     title: z.string().trim().min(1).max(200),
     description: z.string().trim().max(2_000).optional(),
+    completionCriteria: z.string().trim().max(2_000).optional(),
     required: z.boolean().optional(),
     countsTowardProgress: z.boolean().optional(),
     weight: z.number().positive().max(10_000).optional(),
@@ -28,7 +30,7 @@ const StageDefinitionSchema = z
     position: z.number().int().positive().max(10_000),
     guideStepId: z.string().trim().min(1).max(200).optional(),
     dependsOnStageKeys: z.array(StableKeySchema).max(100).optional(),
-    tasks: z.array(TaskDefinitionSchema).max(200),
+    tasks: z.array(TaskDefinitionSchema).max(20),
   })
   .strict();
 
@@ -37,15 +39,64 @@ export const OnboardingTaskParamsSchema = z.object({
   sessionId: z.string().min(1),
   taskId: z.string().uuid(),
 });
-export const ActivateOnboardingPlanBodySchema = z
+export const OnboardingProposalParamsSchema = z.object({
+  sessionId: z.string().min(1),
+  proposalId: z.string().uuid(),
+});
+export const CreateOnboardingPlanBodySchema = z
   .object({
-    approved: z.literal(true),
     clientRequestId: z.string().trim().min(1).max(200),
     title: z.string().trim().min(1).max(200),
     definitionVersionId: z.string().uuid().optional(),
     startAt: z.string().datetime({ offset: true }).optional(),
     targetAt: z.string().datetime({ offset: true }).optional(),
-    stages: z.array(StageDefinitionSchema).min(1).max(100),
+    stages: z.array(StageDefinitionSchema).max(12).default([]),
+  })
+  .strict();
+
+export const GenerateOnboardingPlanBodySchema = z
+  .object({
+    clientRequestId: z.string().trim().min(1).max(200),
+    goal: z.string().trim().min(3).max(2_000),
+    role: z.string().trim().min(1).max(200).optional(),
+    title: z.string().trim().min(1).max(200).optional(),
+    startAt: z.string().datetime({ offset: true }).optional(),
+    targetAt: z.string().datetime({ offset: true }).optional(),
+  })
+  .strict();
+
+export const RoadmapCommandBodySchema = z
+  .object({
+    expectedPlanRevision: z.number().int().nonnegative(),
+    idempotencyKey: z.string().trim().min(1).max(200),
+    command: RoadmapCommandSchema,
+    destructiveImpactHash: z.string().length(64).optional(),
+  })
+  .strict();
+
+export const RequestRoadmapAiProposalBodySchema = z
+  .object({
+    instruction: z.string().trim().min(3).max(2_000),
+    selectedStageKey: StableKeySchema.optional(),
+    selectedTaskKey: StableKeySchema.optional(),
+  })
+  .strict();
+
+export const ApplyRoadmapAiProposalBodySchema = z
+  .object({
+    expectedPlanRevision: z.number().int().nonnegative(),
+    proposalHash: z.string().length(64),
+    idempotencyKey: z.string().trim().min(1).max(200),
+    destructiveImpactHash: z.string().length(64).optional(),
+  })
+  .strict();
+
+export const CancelOnboardingPlanBodySchema = z
+  .object({
+    expectedPlanRevision: z.number().int().nonnegative(),
+    idempotencyKey: z.string().trim().min(1).max(200),
+    impactHash: z.string().length(64),
+    reason: z.string().trim().min(3).max(1_000),
   })
   .strict();
 
@@ -58,5 +109,10 @@ export const TransitionOnboardingTaskBodySchema = z
   })
   .strict();
 
-export type ActivateOnboardingPlanBody = z.infer<typeof ActivateOnboardingPlanBodySchema>;
+export type CreateOnboardingPlanBody = z.infer<typeof CreateOnboardingPlanBodySchema>;
+export type GenerateOnboardingPlanBody = z.infer<typeof GenerateOnboardingPlanBodySchema>;
+export type RoadmapCommandBody = z.infer<typeof RoadmapCommandBodySchema>;
+export type RequestRoadmapAiProposalBody = z.infer<typeof RequestRoadmapAiProposalBodySchema>;
+export type ApplyRoadmapAiProposalBody = z.infer<typeof ApplyRoadmapAiProposalBodySchema>;
+export type CancelOnboardingPlanBody = z.infer<typeof CancelOnboardingPlanBodySchema>;
 export type TransitionOnboardingTaskBody = z.infer<typeof TransitionOnboardingTaskBodySchema>;

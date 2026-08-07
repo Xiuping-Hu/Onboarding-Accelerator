@@ -27,6 +27,17 @@ Shared contracts live in `packages/shared/src/index.ts`.
 - `PATCH /api/sessions/:sessionId` accepts `UpdateSessionRequest` and returns `UpdateSessionResponse`.
 - `DELETE /api/sessions/:sessionId` returns `204`.
 - `POST /api/sessions/:sessionId/chat` accepts `ChatRequest` and returns `ChatResponse`.
+- `GET /api/sessions/:sessionId/onboarding` returns the active deterministic onboarding projection.
+- `POST /api/sessions/:sessionId/onboarding` and `/generate` create immediate-live manual and AI
+  roadmaps.
+- `POST /api/sessions/:sessionId/onboarding/commands/impact` previews destructive reconciliation;
+  `/commands` applies a typed, revision-bound edit.
+- `POST /api/sessions/:sessionId/onboarding/ai-proposals` creates a persisted AI diff; proposal
+  `/apply` and `/dismiss` routes resolve it.
+- `GET /api/sessions/:sessionId/onboarding/history` returns immutable revision history.
+- `PATCH /api/sessions/:sessionId/onboarding/tasks/:taskId` performs deterministic task transitions.
+- `POST /api/sessions/:sessionId/onboarding/cancellation-impact` and `/cancel` terminate a plan while
+  retaining its versions and events.
 - `POST /api/sessions/:sessionId/guide/root` reads the current authorized published roadmap from Postgres and returns `GenerateGuideRootResponse` without generating session-specific topology.
 - `POST /api/ask` accepts `AskRequest` and returns `AskResponse`.
 - `GET /api/internal/rag/cron` is a `CRON_SECRET`-protected Vercel heartbeat that dispatches due
@@ -34,7 +45,11 @@ Shared contracts live in `packages/shared/src/index.ts`.
 - `GET /api/logs/summary` returns `LogSummaryResponse`.
 - `GET /api/logs/recent?limit=10` returns `LogEventsResponse`.
 
-Protected API routes require the auth session cookie; the Microsoft start/callback routes are public so the OIDC redirect can create that cookie after a verified sign-in. `/health`, `/ready`, and `/metrics` are public operational endpoints. Session access is scoped by the authenticated local user ID.
+Protected API routes require the auth session cookie; the Microsoft start/callback routes are public
+so the OIDC redirect can create that cookie after a verified sign-in. Authenticated mutations reject
+cross-site browser requests using Origin and Fetch Metadata checks. `/health`, `/ready`, and
+`/metrics` are public operational endpoints. Session and onboarding access is scoped by the
+authenticated local user ID.
 
 ## Router And Shared Code Decisions
 
@@ -90,6 +105,26 @@ configure the Entra app credentials, and register
 Existing databases created with the legacy SQL migration workflow must be baselined before the
 first Prisma deployment. Follow [Prisma migration adoption](prisma-migration-adoption.md); do not
 run deploy first against such a database.
+
+## Live Onboarding Operations
+
+Deploy `0011_live_ai_onboarding_roadmap` before exposing live editing. It adds version lineage,
+revision events, retired-task metadata, cancellation metadata, and persisted AI proposals without
+rewriting existing plans. A roadmap command advances the plan pointer, reconciles tasks, and appends
+its revision event in one transaction; a failure leaves the previous version active. Applying an AI
+proposal also resolves that proposal in the same transaction.
+
+Roadmap and task history is append-only. Pending AI proposals expire after 24 hours and cannot be
+applied after their base revision changes. Product data remains owner-scoped; production deletion or
+anonymization requests must remove or anonymize plans, events, and proposals together according to
+the organization's retention policy.
+
+For recovery, first use the returned request ID to find the failed request and structured
+`roadmap.*` events. A successful mutation response means the projection was calculated from the
+committed aggregate. If the client did not receive that response, reload the projection and inspect
+revision history before retrying with the original idempotency key. Never edit version/event rows or
+move a plan pointer manually. Restore earlier content by issuing new forward typed commands; retain
+the prior immutable versions for audit.
 
 ## Deferred Production Choices
 

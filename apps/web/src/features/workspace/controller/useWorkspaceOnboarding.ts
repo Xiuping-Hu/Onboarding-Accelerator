@@ -3,10 +3,26 @@
 import type {
   OnboardingTaskMutationSource,
   OnboardingTaskStatus,
+  OnboardingPlanRevisionEvent,
+  RoadmapChangeProposal,
+  RoadmapCommand,
   WorkspaceOnboardingState,
 } from '@onboarding/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getOnboardingState, transitionOnboardingTask } from '../api';
+import {
+  applyRoadmapAiProposal,
+  applyRoadmapCommand,
+  cancelOnboardingPlan,
+  createOnboardingPlan,
+  dismissRoadmapAiProposal,
+  generateOnboardingPlan,
+  getOnboardingCancellationImpact,
+  getOnboardingPlanHistory,
+  getOnboardingState,
+  previewRoadmapCommand,
+  requestRoadmapAiProposal,
+  transitionOnboardingTask,
+} from '../api';
 import { formatWorkspaceError } from './useWorkspaceSessions';
 
 export function useWorkspaceOnboarding(activeSessionId: string | null) {
@@ -14,12 +30,17 @@ export function useWorkspaceOnboarding(activeSessionId: string | null) {
   const [isLoading, setIsLoading] = useState(false);
   const [pendingTaskIds, setPendingTaskIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [isMutating, setIsMutating] = useState(false);
+  const [proposal, setProposal] = useState<RoadmapChangeProposal | null>(null);
+  const [history, setHistory] = useState<OnboardingPlanRevisionEvent[]>([]);
   const requestSequence = useRef(0);
 
   const reload = useCallback(async () => {
     const sequence = ++requestSequence.current;
     if (!activeSessionId) {
       setState(null);
+      setProposal(null);
+      setHistory([]);
       setError(null);
       setIsLoading(false);
       return;
@@ -68,5 +89,201 @@ export function useWorkspaceOnboarding(activeSessionId: string | null) {
     }
   }
 
-  return { error, isLoading, pendingTaskIds, reload, state, transitionTask };
+  async function createManual(title: string) {
+    if (!activeSessionId || isMutating) return;
+    setIsMutating(true);
+    setError(null);
+    try {
+      const response = await createOnboardingPlan(activeSessionId, {
+        clientRequestId: crypto.randomUUID(),
+        title: title.trim() || 'My onboarding roadmap',
+        stages: [],
+      });
+      setState(response.state);
+      await loadHistory();
+    } catch (cause) {
+      setError(formatWorkspaceError(cause, 'Could not create the onboarding roadmap.'));
+    } finally {
+      setIsMutating(false);
+    }
+  }
+
+  async function generate(goal: string, role?: string) {
+    if (!activeSessionId || isMutating) return;
+    setIsMutating(true);
+    setError(null);
+    try {
+      const response = await generateOnboardingPlan(activeSessionId, {
+        clientRequestId: crypto.randomUUID(),
+        goal,
+        ...(role?.trim() ? { role: role.trim() } : {}),
+      });
+      setState(response.state);
+      await loadHistory();
+    } catch (cause) {
+      setError(formatWorkspaceError(cause, 'Could not generate the onboarding roadmap.'));
+    } finally {
+      setIsMutating(false);
+    }
+  }
+
+  async function command(commandValue: RoadmapCommand) {
+    if (!activeSessionId || state?.status !== 'ready' || isMutating) return;
+    setIsMutating(true);
+    setError(null);
+    const idempotencyKey = crypto.randomUUID();
+    const base = {
+      expectedPlanRevision: state.projection.planRevision,
+      idempotencyKey,
+      command: commandValue,
+    };
+    try {
+      const preview = await previewRoadmapCommand(activeSessionId, base);
+      let destructiveImpactHash: string | undefined;
+      if (preview.impact.destructive) {
+        const confirmed = window.confirm(
+          `This change will reset or remove ${preview.impact.completedTasksReset} completed task(s). Apply it now?`,
+        );
+        if (!confirmed) return;
+        destructiveImpactHash = preview.impact.impactHash;
+      }
+      const response = await applyRoadmapCommand(activeSessionId, {
+        ...base,
+        ...(destructiveImpactHash ? { destructiveImpactHash } : {}),
+      });
+      setState(response.state);
+      setProposal(null);
+      await loadHistory();
+    } catch (cause) {
+      setError(formatWorkspaceError(cause, 'Could not update the onboarding roadmap.'));
+      await reload();
+    } finally {
+      setIsMutating(false);
+    }
+  }
+
+  async function propose(instruction: string, selectedStageKey?: string) {
+    if (!activeSessionId || isMutating) return;
+    setIsMutating(true);
+    setError(null);
+    try {
+      setProposal(
+        await requestRoadmapAiProposal(activeSessionId, {
+          instruction,
+          ...(selectedStageKey ? { selectedStageKey } : {}),
+        }),
+      );
+    } catch (cause) {
+      setError(formatWorkspaceError(cause, 'Could not prepare the AI roadmap change.'));
+    } finally {
+      setIsMutating(false);
+    }
+  }
+
+  async function applyProposal() {
+    if (!activeSessionId || !proposal || state?.status !== 'ready' || isMutating) {
+      return;
+    }
+    setIsMutating(true);
+    setError(null);
+    try {
+      let destructiveImpactHash: string | undefined;
+      if (proposal.progressImpact.destructive) {
+        const confirmed = window.confirm(
+          `This AI change will reset or remove ${proposal.progressImpact.completedTasksReset} completed task(s). Apply it now?`,
+        );
+        if (!confirmed) return;
+        destructiveImpactHash = proposal.progressImpact.impactHash;
+      }
+      const response = await applyRoadmapAiProposal(activeSessionId, proposal.id, {
+        expectedPlanRevision: state.projection.planRevision,
+        proposalHash: proposal.proposalHash,
+        idempotencyKey: crypto.randomUUID(),
+        ...(destructiveImpactHash ? { destructiveImpactHash } : {}),
+      });
+      setState(response.state);
+      setProposal(null);
+      await loadHistory();
+    } catch (cause) {
+      setError(formatWorkspaceError(cause, 'Could not apply the AI roadmap change.'));
+      await reload();
+    } finally {
+      setIsMutating(false);
+    }
+  }
+
+  async function dismissProposal() {
+    if (!activeSessionId || !proposal || isMutating) return;
+    setIsMutating(true);
+    setError(null);
+    try {
+      await dismissRoadmapAiProposal(activeSessionId, proposal.id);
+      setProposal(null);
+    } catch (cause) {
+      setError(formatWorkspaceError(cause, 'Could not dismiss the AI roadmap change.'));
+    } finally {
+      setIsMutating(false);
+    }
+  }
+
+  const loadHistory = useCallback(async () => {
+    if (!activeSessionId) return;
+    try {
+      const response = await getOnboardingPlanHistory(activeSessionId);
+      setHistory(response.events);
+    } catch {
+      setHistory([]);
+    }
+  }, [activeSessionId]);
+
+  useEffect(() => {
+    if (state?.status === 'ready') void loadHistory();
+  }, [loadHistory, state?.status]);
+
+  async function cancel(reason: string) {
+    if (!activeSessionId || state?.status !== 'ready' || isMutating) return;
+    setIsMutating(true);
+    setError(null);
+    try {
+      const impact = await getOnboardingCancellationImpact(activeSessionId);
+      const confirmed = window.confirm(
+        `Cancel this roadmap with ${impact.incompleteTaskCount} incomplete task(s)? Its history will be preserved.`,
+      );
+      if (!confirmed) return;
+      setState(
+        await cancelOnboardingPlan(activeSessionId, {
+          expectedPlanRevision: state.projection.planRevision,
+          idempotencyKey: crypto.randomUUID(),
+          impactHash: impact.impactHash,
+          reason,
+        }),
+      );
+      setProposal(null);
+      setHistory([]);
+    } catch (cause) {
+      setError(formatWorkspaceError(cause, 'Could not cancel the onboarding roadmap.'));
+      await reload();
+    } finally {
+      setIsMutating(false);
+    }
+  }
+
+  return {
+    applyProposal,
+    cancel,
+    command,
+    createManual,
+    dismissProposal,
+    error,
+    generate,
+    history,
+    isLoading,
+    isMutating,
+    pendingTaskIds,
+    proposal,
+    propose,
+    reload,
+    state,
+    transitionTask,
+  };
 }

@@ -77,6 +77,10 @@ export function calculateOnboardingProjection(
     planRevision: aggregate.plan.revision,
     planStatus: aggregate.plan.status,
     definitionVersionId: aggregate.definition.id,
+    title: aggregate.plan.title,
+    startAt: aggregate.plan.startAt,
+    ...(aggregate.plan.targetAt ? { targetAt: aggregate.plan.targetAt } : {}),
+    startedAt: aggregate.plan.startedAt,
     calculatedAt: asOf.toISOString(),
     progress: {
       percentComplete: totalWeight === 0 ? null : Math.round((completedWeight / totalWeight) * 100),
@@ -110,10 +114,13 @@ function toTaskProjection(
     stableKey: definition.stableKey,
     title: definition.title,
     ...(definition.description ? { description: definition.description } : {}),
+    ...(definition.completionCriteria ? { completionCriteria: definition.completionCriteria } : {}),
     status: task.status,
     required: definition.required,
     countsTowardProgress: definition.countsTowardProgress,
     weight: definition.weight,
+    ...(definition.dueOffsetDays !== undefined ? { dueOffsetDays: definition.dueOffsetDays } : {}),
+    dependsOnTaskKeys: definition.dependsOnTaskKeys,
     ...(task.dueAt ? { dueAt: task.dueAt } : {}),
     ...(task.completedAt ? { completedAt: task.completedAt } : {}),
     revision: task.revision,
@@ -159,6 +166,7 @@ function toBaseStageProjection(
             ? 'overdue'
             : 'upcoming',
     ...(stage.guideStepId ? { guideStepId: stage.guideStepId } : {}),
+    dependsOnStageKeys: stage.dependsOnStageKeys,
     ...(dueDates.at(-1) ? { dueAt: dueDates.at(-1) } : {}),
     ...(completed ? { completedAt: completedDates.at(-1) } : {}),
     completedTaskCount: tasks.filter(

@@ -31,10 +31,10 @@ superseded, and future-planning documents can be referenced without competing wi
 
 ## Current specifications
 
-| Number | Spec                                                 | Status   | Notes                                                                    |
-| ------ | ---------------------------------------------------- | -------- | ------------------------------------------------------------------------ |
-| 023    | `023-governed-onboarding-task-progress-roadmap.md`   | Proposed | Governed active-plan task transitions, progress, and roadmap projection. |
-| 025    | `025-client-owned-ai-onboarding-roadmap-workflow.md` | Proposed | Client-owned drafts, AI proposals, CRUD, activation, and plan revisions. |
+| Number | Spec                                                 | Status      | Notes                                                                     |
+| ------ | ---------------------------------------------------- | ----------- | ------------------------------------------------------------------------- |
+| 023    | `023-governed-onboarding-task-progress-roadmap.md`   | Implemented | Governed active-plan task transitions, progress, and roadmap projection.  |
+| 025    | `025-client-owned-ai-onboarding-roadmap-workflow.md` | Implemented | Client-owned live roadmap, AI generation, immediate CRUD, and versioning. |
 
 Current runtime documentation lives in `README.md`, `docs/production-readiness.md`, and the generated
 harness docs under `docs/harness/generated`.
