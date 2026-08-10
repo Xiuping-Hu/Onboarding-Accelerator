@@ -3,6 +3,7 @@ import test from 'node:test';
 import type { PrismaClient } from '@/generated/prisma/client';
 import {
   initialScheduledIdempotencyKey,
+  initialScheduledRetryIdempotencyKey,
   nextScheduledAt,
   synchronizeSourceRegistry,
 } from './ingestionScheduler';
@@ -21,6 +22,10 @@ void test('initial scheduled ingestion keys are stable per source', () => {
   assert.equal(
     initialScheduledIdempotencyKey('tax-consulting-sharepoint'),
     'scheduled-initial:tax-consulting-sharepoint',
+  );
+  assert.equal(
+    initialScheduledRetryIdempotencyKey('tax-consulting-sharepoint'),
+    'scheduled-initial-retry:tax-consulting-sharepoint',
   );
 });
 
@@ -90,14 +95,72 @@ void test('source synchronization queues one initial run and preserves an unchan
     scheduleCount: 1,
     initialRunCount: 1,
     initialDuplicateCount: 0,
+    initialRetryRunCount: 0,
+    initialRetryDuplicateCount: 0,
   });
   assert.deepEqual(second, {
     sourceCount: 1,
     scheduleCount: 1,
     initialRunCount: 0,
     initialDuplicateCount: 1,
+    initialRetryRunCount: 0,
+    initialRetryDuplicateCount: 0,
   });
   assert.equal(createdRuns.size, 1);
   assert.equal(events.length, 1);
   assert.ok(scheduleUpdates.every((update) => !('nextRunAt' in update)));
+});
+
+void test('source synchronization retries a failed initial run exactly once', async () => {
+  const initialKey = initialScheduledIdempotencyKey('tax-consulting-sharepoint');
+  const retryKey = initialScheduledRetryIdempotencyKey('tax-consulting-sharepoint');
+  const createdRuns = new Map<string, { id: string; status: string }>([
+    [initialKey, { id: 'failed-run', status: 'failed' }],
+  ]);
+  const database = {
+    knowledgeSource: {
+      upsert: async () => ({}),
+      findUnique: async () => ({ enabled: true, allowedTriggers: ['scheduled'] }),
+    },
+    ingestionSchedule: {
+      findUnique: async () => ({ cronExpression: '0 2 * * 1', timezone: 'America/Chicago' }),
+      upsert: async () => ({ id: 'schedule-1' }),
+    },
+    ingestionRun: {
+      findUnique: async (input: { where: { idempotencyKey: string } }) =>
+        createdRuns.get(input.where.idempotencyKey) ?? null,
+      create: async (input: { data: { idempotencyKey: string } }) => {
+        const run = { id: 'retry-run', status: 'queued' };
+        createdRuns.set(input.data.idempotencyKey, run);
+        return run;
+      },
+    },
+    ingestionRunEvent: { create: async () => ({}) },
+  } as unknown as PrismaClient;
+  const registry = {
+    sources: [
+      {
+        id: 'tax-consulting-sharepoint',
+        kind: 'sharepoint_page' as const,
+        uri: 'https://taxconsultingza.sharepoint.com/',
+        owner: 'Knowledge Owner',
+        accessScope: 'all_users',
+        allowedTriggers: ['scheduled' as const],
+        schedule: {
+          cron: '0 2 * * 1',
+          timezone: 'America/Chicago',
+          enabled: true,
+        },
+      },
+    ],
+  };
+
+  const first = await synchronizeSourceRegistry(database, registry);
+  const second = await synchronizeSourceRegistry(database, registry);
+
+  assert.equal(first.initialRetryRunCount, 1);
+  assert.equal(first.initialRetryDuplicateCount, 0);
+  assert.equal(second.initialRetryRunCount, 0);
+  assert.equal(second.initialRetryDuplicateCount, 1);
+  assert.equal(createdRuns.get(retryKey)?.status, 'queued');
 });

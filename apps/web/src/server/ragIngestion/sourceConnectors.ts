@@ -236,7 +236,7 @@ export class SharePointConnector implements SourceConnector {
     const credentials = requiredCredentials(this.credentials);
     const token = await this.getGraphToken(credentials);
     const sourceUrl = new URL(source.uri);
-    const siteId = source.sharepoint?.siteId ?? (await this.getSiteId(sourceUrl.hostname, token));
+    const siteId = source.sharepoint?.siteId ?? (await this.getSiteId(sourceUrl, token));
     const maxPages = source.sharepoint?.maxPages ?? 200;
     const listed = await this.listPages(siteId, token, maxPages);
     if (!listed.complete) {
@@ -282,12 +282,15 @@ export class SharePointConnector implements SourceConnector {
     return payload.access_token;
   }
 
-  private async getSiteId(hostname: string, token: string): Promise<string> {
-    const site = await this.graphGet<{ id?: string }>(
-      `https://graph.microsoft.com/v1.0/sites/${hostname}:/`,
-      token,
-    );
-    if (!site.id) throw new Error(`Microsoft Graph did not return an ID for ${hostname}.`);
+  private async getSiteId(sourceUrl: URL, token: string): Promise<string> {
+    const sitePath = sourceUrl.pathname.replace(/\/+$/, '');
+    const siteEndpoint = sitePath
+      ? `https://graph.microsoft.com/v1.0/sites/${sourceUrl.hostname}:${sitePath}`
+      : `https://graph.microsoft.com/v1.0/sites/${sourceUrl.hostname}`;
+    const site = await this.graphGet<{ id?: string }>(siteEndpoint, token);
+    if (!site.id) {
+      throw new Error(`Microsoft Graph did not return an ID for ${sourceUrl.hostname}.`);
+    }
     return site.id;
   }
 

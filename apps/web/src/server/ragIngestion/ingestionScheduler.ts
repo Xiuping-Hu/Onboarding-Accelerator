@@ -51,10 +51,14 @@ export async function synchronizeSourceRegistry(
   scheduleCount: number;
   initialRunCount: number;
   initialDuplicateCount: number;
+  initialRetryRunCount: number;
+  initialRetryDuplicateCount: number;
 }> {
   let scheduleCount = 0;
   let initialRunCount = 0;
   let initialDuplicateCount = 0;
+  let initialRetryRunCount = 0;
+  let initialRetryDuplicateCount = 0;
   for (const source of registry.sources) {
     await ensureKnowledgeSource(db, source);
     if (!source.schedule) continue;
@@ -99,7 +103,20 @@ export async function synchronizeSourceRegistry(
         idempotencyKey: initialScheduledIdempotencyKey(source.id),
       });
       if (initialRun.created) initialRunCount += 1;
-      else initialDuplicateCount += 1;
+      else {
+        initialDuplicateCount += 1;
+        if (initialRun.status === 'failed') {
+          const retryRun = await requestIngestionRun(db, {
+            sourceId: source.id,
+            triggerType: 'scheduled',
+            triggerRef: schedule.id,
+            requestedBy: 'source-registry-sync-retry',
+            idempotencyKey: initialScheduledRetryIdempotencyKey(source.id),
+          });
+          if (retryRun.created) initialRetryRunCount += 1;
+          else initialRetryDuplicateCount += 1;
+        }
+      }
     }
     scheduleCount += 1;
   }
@@ -108,6 +125,8 @@ export async function synchronizeSourceRegistry(
     scheduleCount,
     initialRunCount,
     initialDuplicateCount,
+    initialRetryRunCount,
+    initialRetryDuplicateCount,
   };
 }
 
@@ -482,6 +501,10 @@ export function manualIdempotencyKey(sourceId: string, requestId = randomUUID())
 
 export function initialScheduledIdempotencyKey(sourceId: string): string {
   return `scheduled-initial:${sourceId}`;
+}
+
+export function initialScheduledRetryIdempotencyKey(sourceId: string): string {
+  return `scheduled-initial-retry:${sourceId}`;
 }
 
 function stringArray(value: unknown): string[] {

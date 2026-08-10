@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { HttpWebsiteConnector } from './sourceConnectors';
+import { HttpWebsiteConnector, SharePointConnector } from './sourceConnectors';
 
 const source = {
   id: 'site',
@@ -46,4 +46,41 @@ void test('website connector rejects redirects outside the approved origin', asy
   });
 
   await assert.rejects(connector.acquire(source, { previousDocuments: [] }), /not allowlisted/);
+});
+
+void test('SharePoint connector resolves a tenant root site with the hostname endpoint', async () => {
+  const requestedUrls: string[] = [];
+  const responses = [
+    Response.json({ access_token: 'graph-token' }),
+    Response.json({ id: 'tenant-root-site' }),
+    Response.json({ value: [] }),
+  ];
+  const connector = new SharePointConnector(
+    { tenantId: 'tenant', clientId: 'client', clientSecret: 'secret' },
+    (async (input: RequestInfo | URL) => {
+      requestedUrls.push(input.toString());
+      const response = responses.shift();
+      if (!response) throw new Error('Unexpected SharePoint request.');
+      return response;
+    }) as typeof fetch,
+  );
+
+  const result = await connector.acquire({
+    id: 'sharepoint-root',
+    kind: 'sharepoint_page',
+    uri: 'https://taxconsultingza.sharepoint.com/',
+    owner: 'Owner',
+    accessScope: 'all_users',
+    sharepoint: { crawlAllPages: true },
+  });
+
+  assert.equal(result.status, 'acquired');
+  assert.equal(
+    requestedUrls[1],
+    'https://graph.microsoft.com/v1.0/sites/taxconsultingza.sharepoint.com',
+  );
+  assert.equal(
+    requestedUrls[2],
+    'https://graph.microsoft.com/v1.0/sites/tenant-root-site/pages?$select=id,name,title,lastModifiedDateTime,lastModifiedBy&$top=100',
+  );
 });
