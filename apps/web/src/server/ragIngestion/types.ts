@@ -4,7 +4,8 @@ export type IngestionSourceKind =
   | 'transcript'
   | 'audio'
   | 'website'
-  | 'sharepoint_page';
+  | 'sharepoint_page'
+  | 'sharepoint_folder';
 
 export type IngestionConnectorKind =
   | 'local_artifact'
@@ -52,9 +53,16 @@ export interface IngestionSource {
   };
   sharepoint?: {
     siteId?: string;
+    sitePath?: string;
     pageName?: string;
     crawlAllPages?: boolean;
     maxPages?: number;
+    libraryName?: string;
+    folderPath?: string;
+    recursive?: boolean;
+    maxFiles?: number;
+    maxDepth?: number;
+    maxFileBytes?: number;
   };
 }
 
@@ -110,6 +118,7 @@ export interface AcquiredArtifact {
   title?: string;
   mediaType: string;
   content?: string;
+  data?: Uint8Array;
   path?: string;
   updatedAt: string;
   etag?: string;

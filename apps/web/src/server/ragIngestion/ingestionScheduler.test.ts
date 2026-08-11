@@ -27,6 +27,13 @@ void test('initial scheduled ingestion keys are stable per source', () => {
     initialScheduledRetryIdempotencyKey('tax-consulting-sharepoint'),
     'scheduled-initial-retry:tax-consulting-sharepoint',
   );
+  assert.equal(
+    initialScheduledRetryIdempotencyKey(
+      'tax-consulting-sharepoint',
+      'teamweb-onboarding-folder-v1',
+    ),
+    'scheduled-initial-retry:tax-consulting-sharepoint:teamweb-onboarding-folder-v1',
+  );
 });
 
 void test('source synchronization queues one initial run and preserves an unchanged schedule', async () => {
@@ -113,7 +120,10 @@ void test('source synchronization queues one initial run and preserves an unchan
 
 void test('source synchronization retries a failed initial run exactly once', async () => {
   const initialKey = initialScheduledIdempotencyKey('tax-consulting-sharepoint');
-  const retryKey = initialScheduledRetryIdempotencyKey('tax-consulting-sharepoint');
+  const retryKey = initialScheduledRetryIdempotencyKey(
+    'tax-consulting-sharepoint',
+    'teamweb-onboarding-folder-v1',
+  );
   const createdRuns = new Map<string, { id: string; status: string }>([
     [initialKey, { id: 'failed-run', status: 'failed' }],
   ]);
@@ -145,6 +155,7 @@ void test('source synchronization retries a failed initial run exactly once', as
         uri: 'https://taxconsultingza.sharepoint.com/',
         owner: 'Knowledge Owner',
         accessScope: 'all_users',
+        metadata: { ingestionRevision: 'teamweb-onboarding-folder-v1' },
         allowedTriggers: ['scheduled' as const],
         schedule: {
           cron: '0 2 * * 1',

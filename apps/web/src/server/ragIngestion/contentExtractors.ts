@@ -62,7 +62,8 @@ export class InlineTextExtractor implements ContentExtractor {
 
   canHandle(artifact: AcquiredArtifact): boolean {
     return (
-      artifact.content !== undefined && ['text/plain', 'text/markdown'].includes(artifact.mediaType)
+      artifact.content !== undefined &&
+      ['text/plain', 'text/markdown', 'text/csv'].includes(artifact.mediaType)
     );
   }
 
@@ -102,7 +103,9 @@ export class DocxExtractor implements ContentExtractor {
 
   async extract(artifact: AcquiredArtifact): Promise<IngestionDocument[]> {
     const mammoth = await import('mammoth');
-    const result = await mammoth.extractRawText({ path: requiredPath(artifact) });
+    const result = await mammoth.extractRawText(
+      artifact.data ? { buffer: Buffer.from(artifact.data) } : { path: requiredPath(artifact) },
+    );
     return [documentFromArtifact(artifact, result.value)];
   }
 }
@@ -115,16 +118,20 @@ export class PdfExtractor implements ContentExtractor {
   }
 
   async extract(artifact: AcquiredArtifact): Promise<IngestionDocument[]> {
-    const path = requiredPath(artifact);
-    let text = await pdfToText(path);
+    const data = artifact.data ?? (await readFile(requiredPath(artifact)));
+    let text = await pdfToText(data);
     if (!text.trim()) {
+      const path = artifact.path;
+      if (!path) {
+        throw new Error(`PDF ${artifact.source.id} contained no extractable text.`);
+      }
       const directory = await mkdtemp(join(tmpdir(), 'rag-ocr-'));
       const ocrPath = join(directory, 'ocr.pdf');
       try {
         await execFileAsync('ocrmypdf', ['--skip-text', '--force-ocr', path, ocrPath], {
           maxBuffer: 20 * 1024 * 1024,
         });
-        text = await pdfToText(ocrPath);
+        text = await pdfToText(await readFile(ocrPath));
       } catch {
         throw new Error(
           `PDF ${artifact.source.id} contained no extractable text. Install ocrmypdf or provide an approved text export.`,
@@ -223,14 +230,13 @@ function normalizeTranscript(text: string, extension: string): string {
     .replace(/<[^>]+>/g, '');
 }
 
-async function pdfToText(path: string): Promise<string> {
+async function pdfToText(data: Uint8Array): Promise<string> {
+  const { PDFParse } = await import('pdf-parse');
+  const parser = new PDFParse({ data });
   try {
-    const { stdout } = await execFileAsync('pdftotext', ['-layout', path, '-'], {
-      maxBuffer: 20 * 1024 * 1024,
-    });
-    return stdout;
-  } catch {
-    throw new Error('PDF ingestion requires the pdftotext command from Poppler.');
+    return (await parser.getText()).text;
+  } finally {
+    await parser.destroy();
   }
 }
 

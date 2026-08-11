@@ -15,6 +15,7 @@ const sourceKinds = new Set<IngestionSourceKind>([
   'audio',
   'website',
   'sharepoint_page',
+  'sharepoint_folder',
 ]);
 const connectorKinds = new Set<IngestionConnectorKind>([
   'local_artifact',
@@ -66,6 +67,31 @@ function validateSource(value: unknown): IngestionSource {
   if (publicationPolicy && !publicationPolicies.has(publicationPolicy)) {
     throw new Error(`RAG source ${id} has unsupported publication policy ${publicationPolicy}.`);
   }
+  const sharepoint = isRecord(value.sharepoint)
+    ? {
+        siteId: optionalString(value.sharepoint.siteId),
+        sitePath: optionalString(value.sharepoint.sitePath),
+        pageName: optionalString(value.sharepoint.pageName),
+        crawlAllPages: value.sharepoint.crawlAllPages === true,
+        maxPages: positiveInteger(value.sharepoint.maxPages),
+        libraryName: optionalString(value.sharepoint.libraryName),
+        folderPath: optionalString(value.sharepoint.folderPath),
+        recursive: value.sharepoint.recursive !== false,
+        maxFiles: positiveInteger(value.sharepoint.maxFiles),
+        maxDepth: positiveInteger(value.sharepoint.maxDepth),
+        maxFileBytes: positiveInteger(value.sharepoint.maxFileBytes),
+      }
+    : undefined;
+  if (
+    kind === 'sharepoint_folder' &&
+    (!sharepoint?.libraryName ||
+      !sharepoint.folderPath ||
+      (!sharepoint.siteId && !sharepoint.sitePath))
+  ) {
+    throw new Error(
+      `RAG source ${id} SharePoint folder requires siteId or sitePath, libraryName, and folderPath.`,
+    );
+  }
 
   return {
     id,
@@ -116,20 +142,13 @@ function validateSource(value: unknown): IngestionSource {
           maxRuntimeSeconds: positiveInteger(value.schedule.maxRuntimeSeconds),
         }
       : undefined,
-    sharepoint: isRecord(value.sharepoint)
-      ? {
-          siteId: optionalString(value.sharepoint.siteId),
-          pageName: optionalString(value.sharepoint.pageName),
-          crawlAllPages: value.sharepoint.crawlAllPages === true,
-          maxPages: positiveInteger(value.sharepoint.maxPages),
-        }
-      : undefined,
+    sharepoint,
   };
 }
 
 export function defaultConnectorKind(kind: IngestionSourceKind): IngestionConnectorKind {
   if (kind === 'website') return 'http_website';
-  if (kind === 'sharepoint_page') return 'sharepoint';
+  if (kind === 'sharepoint_page' || kind === 'sharepoint_folder') return 'sharepoint';
   return 'local_artifact';
 }
 

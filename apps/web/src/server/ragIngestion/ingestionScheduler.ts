@@ -111,7 +111,10 @@ export async function synchronizeSourceRegistry(
             triggerType: 'scheduled',
             triggerRef: schedule.id,
             requestedBy: 'source-registry-sync-retry',
-            idempotencyKey: initialScheduledRetryIdempotencyKey(source.id),
+            idempotencyKey: initialScheduledRetryIdempotencyKey(
+              source.id,
+              stringValue(source.metadata?.ingestionRevision),
+            ),
           });
           if (retryRun.created) initialRetryRunCount += 1;
           else initialRetryDuplicateCount += 1;
@@ -503,8 +506,12 @@ export function initialScheduledIdempotencyKey(sourceId: string): string {
   return `scheduled-initial:${sourceId}`;
 }
 
-export function initialScheduledRetryIdempotencyKey(sourceId: string): string {
-  return `scheduled-initial-retry:${sourceId}`;
+export function initialScheduledRetryIdempotencyKey(
+  sourceId: string,
+  ingestionRevision?: string,
+): string {
+  const revision = ingestionRevision ? `:${encodeURIComponent(ingestionRevision)}` : '';
+  return `scheduled-initial-retry:${sourceId}${revision}`;
 }
 
 function stringArray(value: unknown): string[] {
@@ -532,9 +539,16 @@ function sharePointConfig(value: unknown): IngestionSource['sharepoint'] {
   if (!Object.keys(config).length) return undefined;
   return {
     siteId: stringValue(config.siteId),
+    sitePath: stringValue(config.sitePath),
     pageName: stringValue(config.pageName),
     crawlAllPages: config.crawlAllPages === true,
     maxPages: numberValue(config.maxPages),
+    libraryName: stringValue(config.libraryName),
+    folderPath: stringValue(config.folderPath),
+    recursive: config.recursive !== false,
+    maxFiles: numberValue(config.maxFiles),
+    maxDepth: numberValue(config.maxDepth),
+    maxFileBytes: numberValue(config.maxFileBytes),
   };
 }
 

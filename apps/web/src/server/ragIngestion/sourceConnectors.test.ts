@@ -84,3 +84,107 @@ void test('SharePoint connector resolves a tenant root site with the hostname en
     'https://graph.microsoft.com/v1.0/sites/tenant-root-site/pages?$select=id,name,title,lastModifiedDateTime,lastModifiedBy&$top=100',
   );
 });
+
+void test('SharePoint connector recursively acquires supported files from a document folder', async () => {
+  const requestedUrls: string[] = [];
+  const connector = new SharePointConnector(
+    { tenantId: 'tenant', clientId: 'client', clientSecret: 'secret' },
+    (async (input: RequestInfo | URL) => {
+      const url = input.toString();
+      requestedUrls.push(url);
+      if (url.includes('/oauth2/v2.0/token')) {
+        return Response.json({ access_token: 'graph-token' });
+      }
+      if (url.endsWith('/sites/taxconsultingza.sharepoint.com:/sites/TeamWeb')) {
+        return Response.json({ id: 'team-web-site' });
+      }
+      if (url.includes('/sites/team-web-site/drives?')) {
+        return Response.json({
+          value: [
+            {
+              id: 'documents-drive',
+              name: 'Documents',
+              webUrl: 'https://taxconsultingza.sharepoint.com/sites/TeamWeb/Shared%20Documents',
+            },
+          ],
+        });
+      }
+      if (url.includes('/root:/Onboarding%20Accelerator:/children?')) {
+        return Response.json({
+          value: [
+            {
+              id: 'handbook',
+              name: 'Handbook.docx',
+              size: 4,
+              eTag: 'handbook-v1',
+              webUrl: 'https://taxconsultingza.sharepoint.com/Handbook.docx',
+              lastModifiedDateTime: '2026-08-10T12:00:00.000Z',
+              file: {
+                mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+              },
+            },
+            { id: 'policies', name: 'Policies', folder: { childCount: 1 } },
+            {
+              id: 'sheet',
+              name: 'Checklist.xlsx',
+              size: 4,
+              file: {
+                mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+              },
+            },
+          ],
+        });
+      }
+      if (url.includes('/items/policies/children?')) {
+        return Response.json({
+          value: [
+            {
+              id: 'readme',
+              name: 'Readme.txt',
+              size: 7,
+              webUrl: 'https://taxconsultingza.sharepoint.com/Policies/Readme.txt',
+              file: { mimeType: 'text/plain' },
+            },
+          ],
+        });
+      }
+      if (url.endsWith('/items/handbook/content')) {
+        return new Response(new Uint8Array([1, 2, 3, 4]));
+      }
+      if (url.endsWith('/items/readme/content')) return new Response('Welcome');
+      throw new Error(`Unexpected SharePoint request: ${url}`);
+    }) as typeof fetch,
+    1024,
+  );
+
+  const result = await connector.acquire({
+    id: 'sharepoint-folder',
+    kind: 'sharepoint_folder',
+    uri: 'https://taxconsultingza.sharepoint.com/sites/TeamWeb/Shared%20Documents/Onboarding%20Accelerator',
+    owner: 'Owner',
+    accessScope: 'all_users',
+    allowedContentTypes: [
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'text/plain',
+    ],
+    sharepoint: {
+      sitePath: '/sites/TeamWeb',
+      libraryName: 'Shared Documents',
+      folderPath: 'Onboarding Accelerator',
+      recursive: true,
+      maxFiles: 10,
+    },
+  });
+
+  assert.equal(result.status, 'acquired');
+  assert.equal(result.complete, true);
+  assert.equal(result.artifacts.length, 2);
+  assert.deepEqual(Array.from(result.artifacts[0]?.data ?? []), [1, 2, 3, 4]);
+  assert.equal(result.artifacts[1]?.content, 'Welcome');
+  assert.match(result.warnings.join('\n'), /Checklist\.xlsx/);
+  assert.ok(
+    requestedUrls.includes(
+      'https://graph.microsoft.com/v1.0/sites/taxconsultingza.sharepoint.com:/sites/TeamWeb',
+    ),
+  );
+});
