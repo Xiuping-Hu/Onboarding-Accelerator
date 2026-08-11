@@ -44,7 +44,7 @@ export function createDefaultConnectors(
 ): SourceConnector[] {
   return [
     new HttpWebsiteConnector(options),
-    new SharePointConnector(credentials, options.fetch),
+    new SharePointConnector(credentials, options.fetch, options.maximumFileBytes),
     new LocalArtifactConnector(options.maximumFileBytes),
   ];
 }
@@ -224,6 +224,7 @@ export class SharePointConnector implements SourceConnector {
   constructor(
     private readonly credentials: SharePointCredentials,
     fetchImpl?: typeof fetch,
+    private readonly maximumFileBytes = 1024 * 1024,
   ) {
     this.fetchImpl = fetchImpl ?? fetch;
   }
@@ -236,7 +237,17 @@ export class SharePointConnector implements SourceConnector {
     const credentials = requiredCredentials(this.credentials);
     const token = await this.getGraphToken(credentials);
     const sourceUrl = new URL(source.uri);
-    const siteId = source.sharepoint?.siteId ?? (await this.getSiteId(sourceUrl, token));
+    const folderConfigured =
+      source.kind === 'sharepoint_folder' || Boolean(source.sharepoint?.folderPath);
+    if (folderConfigured && !source.sharepoint?.siteId && !source.sharepoint?.sitePath) {
+      throw new Error(`SharePoint folder source ${source.id} requires siteId or sitePath.`);
+    }
+    const siteUrl = folderConfigured
+      ? new URL(source.sharepoint?.sitePath ?? '/', sourceUrl.origin)
+      : sourceUrl;
+    const siteId = source.sharepoint?.siteId ?? (await this.getSiteId(siteUrl, token));
+    if (folderConfigured) return this.acquireFolder(source, siteId, token);
+
     const maxPages = source.sharepoint?.maxPages ?? 200;
     const listed = await this.listPages(siteId, token, maxPages);
     if (!listed.complete) {
@@ -256,6 +267,86 @@ export class SharePointConnector implements SourceConnector {
       artifacts.push(await this.acquirePage(source, sourceUrl, siteId, page, token));
     }
     return { status: 'acquired', artifacts, complete: true, warnings: [] };
+  }
+
+  private async acquireFolder(
+    source: IngestionSource,
+    siteId: string,
+    token: string,
+  ): Promise<AcquisitionResult> {
+    const libraryName = source.sharepoint?.libraryName;
+    const folderPath = source.sharepoint?.folderPath;
+    if (!libraryName || !folderPath) {
+      throw new Error(`SharePoint folder source ${source.id} requires libraryName and folderPath.`);
+    }
+
+    const drive = this.selectDrive(libraryName, await this.listDrives(siteId, token));
+    const maxFiles = source.sharepoint?.maxFiles ?? 100;
+    const listing = await this.listFolderFiles(
+      drive.id,
+      folderPath,
+      source.sharepoint?.recursive !== false,
+      maxFiles,
+      source.sharepoint?.maxDepth ?? 8,
+      token,
+    );
+    if (!listing.complete) {
+      return {
+        status: 'acquired',
+        artifacts: [],
+        complete: false,
+        warnings: listing.warnings,
+      };
+    }
+
+    const artifacts: AcquiredArtifact[] = [];
+    const warnings = [...listing.warnings];
+    const maximumBytes = source.sharepoint?.maxFileBytes ?? this.maximumFileBytes;
+    for (const listed of listing.files) {
+      const mediaType = mediaTypeForDriveItem(listed.item);
+      if (!mediaType || !SUPPORTED_REMOTE_MEDIA_TYPES.has(mediaType)) {
+        warnings.push(`Skipped unsupported SharePoint file ${listed.relativePath}.`);
+        continue;
+      }
+      if (source.allowedContentTypes?.length && !source.allowedContentTypes.includes(mediaType)) {
+        warnings.push(`Skipped disallowed SharePoint media type ${mediaType}.`);
+        continue;
+      }
+      if ((listed.item.size ?? 0) > maximumBytes) {
+        warnings.push(
+          `Skipped SharePoint file ${listed.relativePath} because it exceeded ${maximumBytes} bytes.`,
+        );
+        continue;
+      }
+
+      const data = await this.downloadDriveItem(drive.id, listed.item, maximumBytes, token);
+      const inline = INLINE_REMOTE_MEDIA_TYPES.has(mediaType);
+      artifacts.push({
+        artifactKey: `${source.id}:drive-item:${listed.item.id}`,
+        source: {
+          ...source,
+          id: `${source.id}:${listed.item.id}`,
+          uri: listed.item.webUrl ?? source.uri,
+          title: listed.item.name,
+          metadata: { ...source.metadata, rootSourceId: source.id },
+        },
+        uri: listed.item.webUrl ?? source.uri,
+        title: listed.item.name,
+        mediaType,
+        content: inline ? Buffer.from(data).toString('utf8') : undefined,
+        data: inline ? undefined : data,
+        updatedAt: isoDate(listed.item.lastModifiedDateTime),
+        etag: listed.item.eTag,
+        metadata: {
+          siteId,
+          driveId: drive.id,
+          driveItemId: listed.item.id,
+          relativePath: listed.relativePath,
+          fileBytes: data.byteLength,
+        },
+      });
+    }
+    return { status: 'acquired', artifacts, complete: true, warnings };
   }
 
   private async getGraphToken(credentials: Required<SharePointCredentials>): Promise<string> {
@@ -292,6 +383,138 @@ export class SharePointConnector implements SourceConnector {
       throw new Error(`Microsoft Graph did not return an ID for ${sourceUrl.hostname}.`);
     }
     return site.id;
+  }
+
+  private async listDrives(siteId: string, token: string): Promise<GraphDrive[]> {
+    let nextUrl: string | undefined =
+      `https://graph.microsoft.com/v1.0/sites/${siteId}/drives?` +
+      '$select=id,name,webUrl,driveType&$top=100';
+    const drives: GraphDrive[] = [];
+    while (nextUrl) {
+      const response: GraphDriveList = await this.graphGet<GraphDriveList>(nextUrl, token);
+      drives.push(...(response.value ?? []).filter(hasGraphId));
+      nextUrl = response['@odata.nextLink'];
+    }
+    return drives;
+  }
+
+  private selectDrive(libraryName: string, drives: GraphDrive[]): GraphDrive & { id: string } {
+    const expected = libraryName.toLowerCase();
+    const drive = drives.find((candidate) => {
+      const webName = candidate.webUrl ? lastUrlPathSegment(candidate.webUrl) : undefined;
+      return candidate.name?.toLowerCase() === expected || webName?.toLowerCase() === expected;
+    });
+    if (!drive?.id) {
+      throw new Error(`SharePoint document library ${libraryName} was not found.`);
+    }
+    return drive as GraphDrive & { id: string };
+  }
+
+  private async listFolderFiles(
+    driveId: string,
+    folderPath: string,
+    recursive: boolean,
+    maxFiles: number,
+    maxDepth: number,
+    token: string,
+  ): Promise<{
+    files: Array<{ item: GraphDriveItem & { id: string; name: string }; relativePath: string }>;
+    complete: boolean;
+    warnings: string[];
+  }> {
+    const files: Array<{
+      item: GraphDriveItem & { id: string; name: string };
+      relativePath: string;
+    }> = [];
+    const warnings: string[] = [];
+    const folders: Array<{ url: string; depth: number; relativePath: string }> = [
+      {
+        url:
+          `https://graph.microsoft.com/v1.0/drives/${driveId}/root:/` +
+          `${encodeGraphPath(folderPath)}:/children?${DRIVE_ITEM_SELECT}&$top=200`,
+        depth: 0,
+        relativePath: folderPath,
+      },
+    ];
+    let visitedFolders = 0;
+    while (folders.length) {
+      const folder = folders.shift();
+      if (!folder) break;
+      visitedFolders += 1;
+      if (visitedFolders > maxFiles) {
+        return {
+          files: [],
+          complete: false,
+          warnings: [`SharePoint crawl exceeded the ${maxFiles}-folder safety limit.`],
+        };
+      }
+      let nextUrl: string | undefined = folder.url;
+      while (nextUrl) {
+        const response: GraphDriveItemList = await this.graphGet<GraphDriveItemList>(
+          nextUrl,
+          token,
+        );
+        for (const item of response.value ?? []) {
+          if (!item.id || !item.name) continue;
+          const relativePath = joinGraphPath(folder.relativePath, item.name);
+          if (item.folder) {
+            if (!recursive) continue;
+            if (folder.depth >= maxDepth) {
+              return {
+                files: [],
+                complete: false,
+                warnings: [`SharePoint crawl exceeded the configured depth of ${maxDepth}.`],
+              };
+            }
+            folders.push({
+              url:
+                `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${item.id}/children?` +
+                `${DRIVE_ITEM_SELECT}&$top=200`,
+              depth: folder.depth + 1,
+              relativePath,
+            });
+          } else if (item.file) {
+            files.push({
+              item: item as GraphDriveItem & { id: string; name: string },
+              relativePath,
+            });
+            if (files.length > maxFiles) {
+              return {
+                files: [],
+                complete: false,
+                warnings: [`SharePoint crawl exceeded the ${maxFiles}-file limit.`],
+              };
+            }
+          }
+        }
+        nextUrl = response['@odata.nextLink'];
+      }
+    }
+    return { files, complete: true, warnings };
+  }
+
+  private async downloadDriveItem(
+    driveId: string,
+    item: GraphDriveItem & { id: string },
+    maximumBytes: number,
+    token: string,
+  ): Promise<Uint8Array> {
+    const response = await this.fetchImpl(
+      `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${item.id}/content`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    if (!response.ok) {
+      throw new Error(`Microsoft Graph download failed with status ${response.status}.`);
+    }
+    const declaredBytes = Number.parseInt(response.headers.get('content-length') ?? '0', 10);
+    if (declaredBytes > maximumBytes) {
+      throw new Error(`SharePoint file ${item.name ?? item.id} exceeded ${maximumBytes} bytes.`);
+    }
+    const data = new Uint8Array(await response.arrayBuffer());
+    if (data.byteLength > maximumBytes) {
+      throw new Error(`SharePoint file ${item.name ?? item.id} exceeded ${maximumBytes} bytes.`);
+    }
+    return data;
   }
 
   private async listPages(
@@ -441,6 +664,61 @@ function mediaTypeForPath(path: string, sourceKind: IngestionSource['kind']): st
   throw new Error(`Unsupported artifact extension ${extension}.`);
 }
 
+const SUPPORTED_REMOTE_MEDIA_TYPES = new Set([
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'text/csv',
+  'text/html',
+  'text/markdown',
+  'text/plain',
+]);
+
+const INLINE_REMOTE_MEDIA_TYPES = new Set(['text/csv', 'text/html', 'text/markdown', 'text/plain']);
+
+const DRIVE_ITEM_SELECT =
+  '$select=id,name,webUrl,size,eTag,lastModifiedDateTime,file,folder,parentReference';
+
+function mediaTypeForDriveItem(item: GraphDriveItem): string | undefined {
+  const graphMediaType = item.file?.mimeType?.split(';')[0]?.trim().toLowerCase();
+  const byExtension: Record<string, string> = {
+    '.csv': 'text/csv',
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    '.html': 'text/html',
+    '.htm': 'text/html',
+    '.md': 'text/markdown',
+    '.pdf': 'application/pdf',
+    '.txt': 'text/plain',
+  };
+  const extension = extname(item.name ?? '').toLowerCase();
+  return byExtension[extension] ?? graphMediaType;
+}
+
+function encodeGraphPath(path: string): string {
+  return path
+    .split('/')
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
+}
+
+function joinGraphPath(parent: string, child: string): string {
+  return `${parent.replace(/\/+$/, '')}/${child}`;
+}
+
+function lastUrlPathSegment(value: string): string | undefined {
+  try {
+    const segments = new URL(value).pathname.split('/').filter(Boolean);
+    const segment = segments.at(-1);
+    return segment ? decodeURIComponent(segment) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function hasGraphId<T extends { id?: string }>(value: T): value is T & { id: string } {
+  return Boolean(value.id);
+}
+
 function collectCanvasText(value: unknown): string {
   const parts: string[] = [];
   const visit = (node: unknown): void => {
@@ -487,5 +765,33 @@ interface GraphPage {
 
 interface GraphPageList {
   value?: GraphPage[];
+  '@odata.nextLink'?: string;
+}
+
+interface GraphDrive {
+  id?: string;
+  name?: string;
+  webUrl?: string;
+  driveType?: string;
+}
+
+interface GraphDriveList {
+  value?: GraphDrive[];
+  '@odata.nextLink'?: string;
+}
+
+interface GraphDriveItem {
+  id?: string;
+  name?: string;
+  webUrl?: string;
+  size?: number;
+  eTag?: string;
+  lastModifiedDateTime?: string;
+  file?: { mimeType?: string };
+  folder?: { childCount?: number };
+}
+
+interface GraphDriveItemList {
+  value?: GraphDriveItem[];
   '@odata.nextLink'?: string;
 }

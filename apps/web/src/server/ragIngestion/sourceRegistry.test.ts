@@ -62,3 +62,42 @@ void test('source registry rejects unsupported trigger modes', async () => {
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+void test('source registry retains bounded SharePoint folder configuration', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'rag-registry-'));
+  const path = join(directory, 'sources.json');
+  try {
+    await writeFile(
+      path,
+      JSON.stringify({
+        sources: [
+          {
+            id: 'sharepoint-folder',
+            kind: 'sharepoint_folder',
+            uri: 'https://taxconsultingza.sharepoint.com/sites/TeamWeb/Shared%20Documents/Onboarding%20Accelerator',
+            owner: 'Owner',
+            accessScope: 'all_users',
+            sharepoint: {
+              sitePath: '/sites/TeamWeb',
+              libraryName: 'Shared Documents',
+              folderPath: 'Onboarding Accelerator',
+              recursive: true,
+              maxFiles: 100,
+              maxDepth: 8,
+              maxFileBytes: 10485760,
+            },
+          },
+        ],
+      }),
+    );
+
+    const registry = await loadSourceRegistry(path);
+
+    assert.equal(registry.sources[0]?.connectorKind, undefined);
+    assert.equal(registry.sources[0]?.sharepoint?.sitePath, '/sites/TeamWeb');
+    assert.equal(registry.sources[0]?.sharepoint?.folderPath, 'Onboarding Accelerator');
+    assert.equal(registry.sources[0]?.sharepoint?.maxFileBytes, 10485760);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});

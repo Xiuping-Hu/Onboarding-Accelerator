@@ -2,15 +2,26 @@
   "sources": [
     {
       "id": "tax-consulting-sharepoint",
-      "kind": "sharepoint_page",
+      "kind": "sharepoint_folder",
       "connectorKind": "sharepoint",
-      "uri": "https://taxconsultingza.sharepoint.com/",
-      "title": "Tax Consulting SA SharePoint",
+      "uri": "https://taxconsultingza.sharepoint.com/sites/TeamWeb/Shared%20Documents/Onboarding%20Accelerator",
+      "title": "Onboarding Accelerator SharePoint Documents",
       "owner": "Knowledge Owner",
       "accessScope": "all_users",
       "refreshCadence": "weekly",
+      "allowedContentTypes": [
+        "application/pdf",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "text/csv",
+        "text/html",
+        "text/markdown",
+        "text/plain"
+      ],
       "allowedTriggers": ["manual", "scheduled", "reindex"],
       "publicationPolicy": "auto_after_validation",
+      "metadata": {
+        "ingestionRevision": "teamweb-onboarding-folder-v1"
+      },
       "schedule": {
         "cron": "0 2 * * 1",
         "timezone": "America/Chicago",
@@ -21,8 +32,13 @@
         "maximumReductionRatio": 0.5
       },
       "sharepoint": {
-        "crawlAllPages": true,
-        "maxPages": 50
+        "sitePath": "/sites/TeamWeb",
+        "libraryName": "Shared Documents",
+        "folderPath": "Onboarding Accelerator",
+        "recursive": true,
+        "maxFiles": 100,
+        "maxDepth": 8,
+        "maxFileBytes": 10485760
       }
     }
   ]

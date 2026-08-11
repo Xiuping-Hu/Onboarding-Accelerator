@@ -23,7 +23,10 @@ export type IngestionWorkerOutcome =
       attempt: number;
       status: 'indexed' | 'unchanged' | 'requires_review' | 'skipped' | 'failed' | 'requeued';
       chunkCount: number;
+      documentCount?: number;
+      characterCount?: number;
       safeErrorCode?: string;
+      safeErrorMessage?: string;
     };
 
 export async function processNextIngestionRun(
@@ -61,7 +64,10 @@ export async function processNextIngestionRun(
           attempt: run.attempt,
           status: 'requeued',
           chunkCount: report.chunkCount,
+          documentCount: report.documentCount,
+          characterCount: report.characterCount,
           safeErrorCode,
+          safeErrorMessage: report.error,
         };
       }
     }
@@ -73,7 +79,10 @@ export async function processNextIngestionRun(
       attempt: run.attempt,
       status: report.status === 'dry_run' ? 'failed' : report.status,
       chunkCount: report.chunkCount,
+      documentCount: report.documentCount,
+      characterCount: report.characterCount,
       safeErrorCode,
+      safeErrorMessage: report.error,
     };
   } catch (error) {
     await failClaimedIngestionRun(runtime.database, run.id, error);
@@ -85,6 +94,7 @@ export async function processNextIngestionRun(
       status: 'failed',
       chunkCount: 0,
       safeErrorCode: 'worker_failed',
+      safeErrorMessage: error instanceof Error ? error.message.slice(0, 500) : undefined,
     };
   } finally {
     clearInterval(heartbeat);

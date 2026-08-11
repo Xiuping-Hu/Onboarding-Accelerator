@@ -25,6 +25,9 @@ export function createRagIngestionCronController() {
             sourceId: true,
             status: true,
             attempt: true,
+            documentCount: true,
+            characterCount: true,
+            chunkCount: true,
             safeErrorCode: true,
             safeErrorMessage: true,
             completedAt: true,
@@ -41,9 +44,17 @@ export function createRagIngestionCronController() {
         sourceId: result.worker.processed ? result.worker.sourceId : latestRun?.sourceId,
         attempt: result.worker.processed ? result.worker.attempt : latestRun?.attempt,
         status: result.worker.processed ? result.worker.status : 'idle',
+        documentCount: result.worker.processed
+          ? result.worker.documentCount
+          : latestRun?.documentCount,
+        characterCount: result.worker.processed
+          ? result.worker.characterCount
+          : latestRun?.characterCount,
+        chunkCount: result.worker.processed ? result.worker.chunkCount : latestRun?.chunkCount,
         safeErrorCode: result.worker.processed
           ? result.worker.safeErrorCode
           : latestRun?.safeErrorCode,
+        safeErrorMessage: result.worker.processed ? result.worker.safeErrorMessage : undefined,
         latestRunId: latestRun?.id,
         latestRunStatus: latestRun?.status,
         latestRunErrorMessage: latestRun?.safeErrorMessage,
