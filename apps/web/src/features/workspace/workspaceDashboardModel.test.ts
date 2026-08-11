@@ -129,6 +129,20 @@ void test('keeps missing and empty lifecycle state explicit', () => {
   });
   assert.deepEqual(empty.progress, { status: 'empty', summary: null });
   assert.deepEqual(empty.upcomingTasks, { status: 'empty', items: [] });
+
+  const legacyEmptyPlan: WorkspaceOnboardingState = structuredClone(readyState);
+  if (legacyEmptyPlan.status !== 'ready') return;
+  legacyEmptyPlan.projection.roadmap = [];
+  legacyEmptyPlan.projection.tasks = [];
+  legacyEmptyPlan.projection.upcomingTasks = [];
+  legacyEmptyPlan.projection.progress.percentComplete = null;
+  const recovery = createWorkspaceDashboardModel(null, legacyEmptyPlan);
+  assert.deepEqual(recovery.roadmap, {
+    status: 'empty',
+    stages: [],
+    reason: 'no-roadmap-content',
+  });
+  assert.deepEqual(recovery.progress, { status: 'empty', summary: null });
 });
 
 void test('reports a zero progress denominator as unavailable', () => {

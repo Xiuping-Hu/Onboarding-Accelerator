@@ -24,7 +24,7 @@ export function ProgressCard({
         <DashboardEmptyState
           description={
             progress.status === 'empty'
-              ? 'Your progress will appear after you generate or create a live onboarding roadmap.'
+              ? 'Your progress will appear after you generate a live onboarding roadmap.'
               : 'Progress cannot be calculated until a complete roadmap is available.'
           }
           title={progress.status === 'empty' ? 'No roadmap yet' : 'Progress unavailable'}

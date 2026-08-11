@@ -29,7 +29,7 @@ void test('repairs an invalid roadmap once and validates domain dependencies', a
                     description: '',
                     position: 1,
                     dependsOnStageKeys: ['missing'],
-                    tasks: [],
+                    tasks: [generatedTask()],
                   },
                 ],
                 assumptions: [],
@@ -45,7 +45,7 @@ void test('repairs an invalid roadmap once and validates domain dependencies', a
                     description: '',
                     position: 1,
                     dependsOnStageKeys: [],
-                    tasks: [],
+                    tasks: [generatedTask()],
                   },
                 ],
                 assumptions: [],
@@ -135,7 +135,7 @@ void test('rejects source references outside the authorized retrieval result', a
       return {
         content: JSON.stringify({
           title: 'Unsafe references',
-          stages: [],
+          stages: [generatedStage()],
           assumptions: [],
           warnings: [],
           sourceReferences: ['other-tenant-source'],
@@ -155,16 +155,18 @@ void test('rejects source references outside the authorized retrieval result', a
 
 void test('marks retrieved prompt instructions as untrusted and never grants write tools', async () => {
   let system = '';
+  let prompt = '';
   const answers: AnswerProvider = {
     async answer() {
       return undefined;
     },
     async generateStructured(input) {
       system = input.system;
+      prompt = input.prompt;
       return {
         content: JSON.stringify({
           title: 'Safe plan',
-          stages: [],
+          stages: [generatedStage()],
           assumptions: [],
           warnings: ['Ignored source instructions'],
           sourceReferences: ['authorized-source'],
@@ -195,8 +197,28 @@ void test('marks retrieved prompt instructions as untrusted and never grants wri
   );
   assert.match(system, /untrusted reference data/i);
   assert.match(system, /never include SQL|never.*tool calls/i);
+  assert.match(prompt, /Never copy placeholder source IDs/);
   assert.equal(result.sourceReferences[0], 'authorized-source');
 });
+
+function generatedStage() {
+  return {
+    stableKey: 'start',
+    title: 'Start',
+    description: '',
+    position: 1,
+    dependsOnStageKeys: [],
+    tasks: [generatedTask()],
+  };
+}
+
+function generatedTask() {
+  return {
+    stableKey: 'first-task',
+    title: 'First task',
+    completionCriteria: 'The task is complete.',
+  };
+}
 
 function emptyRag(): RagRetriever {
   return {

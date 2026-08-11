@@ -395,6 +395,85 @@ void test('generates and applies a bounded AI roadmap proposal', async () => {
   );
 });
 
+void test('generates into a legacy empty active roadmap without replacing its plan', async () => {
+  const sessions = new InMemorySessionRepository();
+  const session = await sessions.create({ title: 'Legacy empty roadmap' }, 'owner');
+  const repository = new InMemoryOnboardingRepository();
+  const answers: AnswerProvider = {
+    async answer() {
+      return undefined;
+    },
+    async generateStructured() {
+      return {
+        content: JSON.stringify({
+          title: 'Generated recovery roadmap',
+          stages: [
+            {
+              stableKey: 'first-week',
+              title: 'First week',
+              description: 'Start with the essentials',
+              position: 1,
+              tasks: [
+                {
+                  stableKey: 'meet-manager',
+                  title: 'Meet your manager',
+                  completionCriteria: 'The first manager meeting is complete',
+                },
+              ],
+            },
+          ],
+          assumptions: [],
+          warnings: [],
+          sourceReferences: [],
+        }),
+      };
+    },
+  };
+  const service = new OnboardingService(
+    repository,
+    sessions,
+    new OnboardingRoadmapAgent(answers, {
+      async retrieve(query) {
+        return {
+          query,
+          sources: [],
+          knowledgeBaseSources: [],
+          webSources: [],
+        };
+      },
+    }),
+  );
+  const actor = { id: 'owner', role: 'user' };
+  const empty = await service.create(
+    session.id,
+    {
+      clientRequestId: 'legacy-manual-plan',
+      title: 'My onboarding roadmap',
+      stages: [],
+    },
+    actor,
+  );
+  assert.equal(empty.state.status, 'ready');
+  if (empty.state.status !== 'ready') return;
+
+  const request = { clientRequestId: 'recover-with-ai', goal: 'Succeed in my first month' };
+  const generated = await service.generate(session.id, request, actor);
+  assert.equal(generated.state.status, 'ready');
+  if (generated.state.status !== 'ready') return;
+  assert.equal(generated.state.projection.planId, empty.state.projection.planId);
+  assert.equal(generated.state.projection.planRevision, 1);
+  assert.equal(generated.state.projection.roadmap[0]?.title, 'First week');
+  assert.equal(generated.state.projection.tasks[0]?.title, 'Meet your manager');
+
+  const replay = await service.generate(session.id, request, actor);
+  assert.equal(replay.idempotentReplay, true);
+  const history = await service.history(session.id, actor);
+  assert.deepEqual(
+    history.events.map((event) => event.commandType),
+    ['generate_plan', 'create_plan'],
+  );
+});
+
 void test('cancels a live roadmap with a revision-bound impact while retaining history', async () => {
   const sessions = new InMemorySessionRepository();
   const session = await sessions.create({ title: 'Cancellation' }, 'owner');

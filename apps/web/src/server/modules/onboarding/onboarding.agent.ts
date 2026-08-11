@@ -45,10 +45,14 @@ const StageSchema = z
   })
   .strict();
 
+const GeneratedStageSchema = StageSchema.extend({
+  tasks: z.array(TaskSchema).min(1).max(20),
+});
+
 const GeneratedPlanSchema = z
   .object({
     title: z.string().trim().min(1).max(200),
-    stages: z.array(StageSchema).max(12),
+    stages: z.array(GeneratedStageSchema).min(1).max(12),
     assumptions: z.array(z.string().trim().min(1).max(500)).max(20).default([]),
     warnings: z.array(z.string().trim().min(1).max(500)).max(20).default([]),
     sourceReferences: z.array(z.string().trim().min(1).max(300)).max(20).default([]),
@@ -366,8 +370,11 @@ Limits: at most 12 stages, 20 tasks per stage, 120 tasks total. Stable keys must
 Authorized sources:
 ${formatSources(sources)}
 
+Use sourceReferences only for exact IDs shown in brackets above. Return an empty array when no
+authorized source was used or no sources were retrieved. Never copy placeholder source IDs.
+
 Output:
-{"title":"...","stages":[{"stableKey":"...","title":"...","description":"...","position":1,"dependsOnStageKeys":[],"tasks":[{"stableKey":"...","title":"...","description":"...","completionCriteria":"...","required":true,"countsTowardProgress":true,"weight":1,"dueOffsetDays":1,"dependsOnTaskKeys":[]}]}],"assumptions":[],"warnings":[],"sourceReferences":["authorized-source-id"]}`;
+{"title":"...","stages":[{"stableKey":"...","title":"...","description":"...","position":1,"dependsOnStageKeys":[],"tasks":[{"stableKey":"...","title":"...","description":"...","completionCriteria":"...","required":true,"countsTowardProgress":true,"weight":1,"dueOffsetDays":1,"dependsOnTaskKeys":[]}]}],"assumptions":[],"warnings":[],"sourceReferences":[]}`;
 }
 
 function buildProposalPrompt(

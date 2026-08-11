@@ -10,6 +10,7 @@ import type {
   OnboardingPlanRevisionEvent,
   OnboardingTaskStatus,
   RequestRoadmapAiProposal,
+  RoadmapCommand,
   RoadmapChangeProposal,
   RoadmapCommandRequest,
   TransitionOnboardingTaskRequest,
@@ -78,14 +79,56 @@ export class OnboardingService {
           idempotentReplay: true,
         };
       }
-      throw AppError.conflict('An active onboarding plan already exists.');
+      const replay = await this.replayMutation(existing, input.clientRequestId, 'generate_plan');
+      if (replay) return replay;
+      if (!isEmptyRoadmap(existing)) {
+        throw AppError.conflict('An active onboarding plan already exists.');
+      }
     }
     if (!this.agent) {
-      throw AppError.featureDisabled(
-        'AI roadmap generation is not configured. Create the roadmap manually.',
-      );
+      throw AppError.featureDisabled('AI roadmap generation is not configured.');
     }
     const generated = await this.agent.generate(input, await this.resolveAccessScopes(actor.id));
+    if (existing) {
+      const commands: RoadmapCommand[] = [
+        {
+          type: 'set_metadata',
+          title: input.title ?? generated.title,
+          ...(input.startAt ? { startAt: input.startAt } : {}),
+          ...(input.targetAt ? { targetAt: input.targetAt } : {}),
+        },
+        ...generated.stages.map((stage) => ({
+          type: 'add_stage' as const,
+          stage: {
+            stableKey: stage.stableKey,
+            title: stage.title,
+            description: stage.description,
+            ...(stage.guideStepId ? { guideStepId: stage.guideStepId } : {}),
+            ...(stage.dependsOnStageKeys ? { dependsOnStageKeys: stage.dependsOnStageKeys } : {}),
+            tasks: stage.tasks,
+          },
+        })),
+      ];
+      const now = new Date().toISOString();
+      const prepared = prepareRoadmapMutation({
+        current: existing,
+        commands,
+        actorId: actor.id,
+        idempotencyKey: input.clientRequestId,
+        now,
+        changeSource: 'ai_generated_recovery',
+        sourceReferences: generated.sourceReferences,
+      });
+      return this.persistMutation({
+        sessionId,
+        actor,
+        current: existing,
+        prepared,
+        idempotencyKey: input.clientRequestId,
+        commandType: 'generate_plan',
+        now,
+      });
+    }
     return this.createPrepared(
       sessionId,
       {
@@ -517,6 +560,10 @@ export class OnboardingService {
       revisionEvent: toPublicRevisionEvent(result.event),
     };
   }
+}
+
+function isEmptyRoadmap(aggregate: OnboardingPlanAggregate): boolean {
+  return aggregate.definition.stages.length === 0 && aggregate.tasks.length === 0;
 }
 
 function createPlanInput(

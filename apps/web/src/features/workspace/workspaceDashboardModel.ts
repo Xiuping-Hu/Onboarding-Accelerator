@@ -10,7 +10,7 @@ export type WorkspaceRoadmapStage = RoadmapStageProjection;
 
 export type WorkspaceRoadmapState =
   | { status: 'unavailable'; stages: []; reason: 'onboarding-unavailable' }
-  | { status: 'empty'; stages: []; reason: 'no-active-plan' }
+  | { status: 'empty'; stages: []; reason: 'no-active-plan' | 'no-roadmap-content' }
   | { status: 'ready'; stages: WorkspaceRoadmapStage[] };
 
 export interface WorkspaceProgressSummary {
@@ -71,6 +71,9 @@ export function deriveWorkspaceRoadmap(
   if (onboarding.status === 'empty') {
     return { status: 'empty', stages: [], reason: 'no-active-plan' };
   }
+  if (onboarding.projection.roadmap.length === 0) {
+    return { status: 'empty', stages: [], reason: 'no-roadmap-content' };
+  }
   return { status: 'ready', stages: onboarding.projection.roadmap };
 }
 
@@ -82,6 +85,7 @@ export function deriveWorkspaceProgress(
   }
   if (onboarding.status === 'empty') return { status: 'empty', summary: null };
   const { progress, roadmap } = onboarding.projection;
+  if (roadmap.length === 0) return { status: 'empty', summary: null };
   if (progress.percentComplete === null) {
     return { status: 'unavailable', summary: null, reason: 'no-progress-tasks' };
   }
