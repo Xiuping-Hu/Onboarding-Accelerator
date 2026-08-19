@@ -171,37 +171,91 @@ Guide maps are created from the workspace agent flow. A new session starts with 
 the agent for domain knowledge, then use Create map when the response includes a draft map proposal.
 The created map is saved with the session guide state.
 
-## Onboarding plans, tasks, and progress
+## Ingestion-driven onboarding roadmap
 
-Onboarding lifecycle state is separate from guide navigation state. AI generation or manual
-creation makes a plan live immediately. Every edit creates an immutable journey-definition version,
-reconciles learner task instances, records revision/task events, and recalculates progress
-deterministically from progress-bearing task weights. Guide nodes are never interpreted as completed
-tasks, and there is no draft or activation lifecycle.
+The roadmap is one system-owned, versioned artifact derived from the latest successfully published
+version of one approved `all_users` knowledge source. Set exactly one source's
+`roadmapAuthoritative` registry field to `true`, and make its ID match
+`STATIC_ROADMAP_AUTHORITATIVE_SOURCE_ID`. Changed publication enqueues generation; unchanged or
+derivation-equivalent content does not roll out another learner version.
 
-Authenticated lifecycle endpoints are rooted at `/api/sessions/:sessionId/onboarding`:
+Canonical roadmap content and learner state are deliberately separate. A rollout preserves matching
+task status/history, retains prior canonical versions and retired item rows for audit, initializes
+new items, and advances each user's independent `stateRevision`. Chat sessions continue to own chat
+and guide state only; selecting or deleting a chat cannot change roadmap content, progress, or
+notices.
 
-- `GET` returns the current learner's active plan projection or an explicit `no-active-plan` state;
-- `POST` creates an empty or populated live manual plan using a client request ID;
-- `POST /generate` creates a validated, grounded live plan with AI;
-- `POST /commands/impact` previews completed-work impact and `POST /commands` applies one typed,
-  revision-bound live edit;
-- `POST /ai-proposals` creates a persisted typed AI diff, while `/apply` and `/dismiss` resolve it;
-- `GET /history` returns immutable plan-revision events;
-- `POST /cancellation-impact` and `POST /cancel` perform an explicit, reasoned cancellation; and
-- `PATCH /tasks/:taskId` performs a revisioned, idempotent task transition and returns the updated
-  unified projection.
+The authenticated browser contract is user-scoped and sessionless:
 
-Overview, Roadmap, Upcoming Tasks, and Tasks consume that same projection. Learner progress follows
-the active learner across chat sessions, and deleting the originating chat does not delete the plan.
-File-backed development stores lifecycle data beside `SESSION_STORE_PATH` in
-`onboarding-plans.json`; PostgreSQL deployments require migrations
-`0009_onboarding_task_progress` through `0011_live_ai_onboarding_roadmap`.
+- `GET /api/onboarding` returns either the ingestion-driven preparing state or the applied canonical
+  version plus the current user's progress, tasks, and newest unread roadmap notice;
+- `PATCH /api/onboarding/tasks/:taskId` accepts only
+  `{ status, expectedTaskRevision, expectedStateRevision, clientRequestId }`; and
+- `PATCH /api/onboarding/notices/:noticeId` accepts `{ read: true }` and returns `204`.
+
+The workspace renders canonical title/version, stages, sources, and personal progress as read-only.
+Only personal task status is editable. After a changed-version rollout, each successfully reconciled
+existing user receives one durable in-app notice; the initial v1/backfill does not create notices.
+
+Static roadmap processing is disabled by default. `STATIC_ROADMAP_ENABLED=true` requires
+`DATABASE_URL`. `STATIC_ROADMAP_REFRESH_CLAIMS_ENABLED=false` is the kill switch: it pauses new
+refresh claims/publication while ingestion, existing roadmap reads, notices, and personal task
+transitions remain available. The remaining `STATIC_ROADMAP_*` values in `.env.example` bound
+retrieval, retries, leases, user-sync batches, and version the generation inputs.
+
+After the migration, source registry, and environment are ready, enqueue or replay the current
+authorized source with a durable operator-controlled request ID, then run bounded worker cycles:
+
+```powershell
+npm run roadmap:bootstrap -- --request-id <durable-id>
+npm run roadmap:worker -- --limit <1-100>
+```
+
+Each worker cycle processes at most one newest eligible refresh and one configured user-sync batch.
+Both commands require `STATIC_ROADMAP_ENABLED=true`; the bootstrap request ID is the idempotency key.
+Bootstrap first runs the mandatory legacy-integrity preflight and persists its record counts and
+fingerprint. Duplicate active plans or stable keys, missing/non-UUID/inactive owners, and invalid
+task statuses quarantine only their affected owners. Canonical v1 and valid active-user backfill may
+proceed; quarantined owners receive no sync or notice until their integrity exceptions are resolved.
+After activation or repair, the next workspace read re-audits that owner, records an idempotent
+resolution decision, and queues an initial no-notice sync when the legacy state is unambiguous.
+
+For a temporary serverless bootstrap, set `STATIC_ROADMAP_BOOTSTRAP_REQUEST_ID` to one stable,
+operator-controlled value (1-128 letters, numbers, `.`, `_`, `:`, or `-`). The existing
+`CRON_SECRET`-protected static-roadmap heartbeat attempts that bootstrap before each worker cycle; it
+returns `waiting_for_source` and keeps processing existing work until the authoritative source has a
+published version. Repeated heartbeats reuse the same durable idempotency key, and the raw key is not
+returned or logged. Keep the variable set until canonical v1 is the current version and its initial
+rollout is complete—`enqueued` or `duplicate` alone is not a completion signal—then remove it. A
+`duplicate` result includes the durable job's current status. A stable ID cannot retry a terminally
+`failed` or `cancelled` refresh; diagnose the outcome and rotate to a new reviewed ID before retrying.
+The protected heartbeat is the only HTTP path for this temporary mechanism; no public bootstrap
+endpoint is added.
+
+The first configured heartbeat can perform the full legacy audit, generate canonical v1, and apply
+one user-sync batch in the route's 300-second budget. Monitor its duration and use the CLI or a
+dedicated worker if it approaches that limit. The checked-in ten-minute Vercel schedule requires a
+plan with per-minute cron support; Vercel's
+[current cron limits](https://vercel.com/docs/cron-jobs/usage-and-pricing) limit Hobby schedules to
+once per day, so that schedule requires Pro or Enterprise.
+
+For an existing database, deploy additive migration `0012_ingestion_driven_static_roadmap` after
+`0011_live_ai_onboarding_roadmap` before enabling this feature. Roll out in this order:
+
+1. Deploy the migration and application with static roadmap processing disabled.
+2. Synchronize and verify the single enabled, `all_users`, authoritative source and its published
+   current version.
+3. Enable the feature with refresh claims paused, then run the idempotent bootstrap. Review its
+   persisted legacy-integrity audit and owner-quarantine report before processing canonical v1 and
+   the valid-user backfill.
+4. Enable claims, run the bounded worker until refresh and user-sync queues drain, and verify applied
+   versions, preserved completion, and the absence of synthetic v1 notices.
+5. Keep the kill switch available; rollback by pausing claims and serving the last applied good
+   version rather than deleting versions or user history.
+
 Production Vercel builds apply pending committed Prisma migrations before compiling the application
-and fail closed if the database cannot be migrated. When the migration history is absent, the build
-first verifies the complete legacy schema from migrations `0001` through `0007` before recording
-that baseline; it refuses partial or drifted schemas. Preview and local builds do not mutate the
-production schema.
+and fail closed if the database cannot be migrated. When migration history is absent, the build
+verifies the legacy schema before recording its baseline; it refuses partial or drifted schemas.
 
 ## Mastra RAG workflows
 

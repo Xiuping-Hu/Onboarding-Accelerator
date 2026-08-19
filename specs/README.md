@@ -31,10 +31,11 @@ superseded, and future-planning documents can be referenced without competing wi
 
 ## Current specifications
 
-| Number | Spec                                                 | Status      | Notes                                                                     |
-| ------ | ---------------------------------------------------- | ----------- | ------------------------------------------------------------------------- |
-| 023    | `023-governed-onboarding-task-progress-roadmap.md`   | Implemented | Governed active-plan task transitions, progress, and roadmap projection.  |
-| 025    | `025-client-owned-ai-onboarding-roadmap-workflow.md` | Implemented | Client-owned live roadmap, AI generation, immediate CRUD, and versioning. |
+| Number | Spec                                                 | Status      | Notes                                                                                       |
+| ------ | ---------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------- |
+| 023    | `023-governed-onboarding-task-progress-roadmap.md`   | Implemented | Governed active-plan task transitions, progress, and roadmap projection.                    |
+| 025    | `025-client-owned-ai-onboarding-roadmap-workflow.md` | Superseded  | Historical client-owned workflow; ownership and mutation decisions are superseded by 026.   |
+| 026    | `026-ingestion-driven-static-onboarding-roadmap.md`  | Implemented | System-owned static roadmap refreshed after knowledge publication with per-user state sync. |
 
 Current runtime documentation lives in `README.md`, `docs/production-readiness.md`, and the generated
 harness docs under `docs/harness/generated`.
