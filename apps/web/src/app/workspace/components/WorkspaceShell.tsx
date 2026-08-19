@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import type { ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 import type { AccountSession } from '@/features/workspace/api';
 import { useWorkspaceController } from '@/features/workspace/controller/useWorkspaceController';
 import { WorkspaceAssistantPanel } from './assistant/WorkspaceAssistantPanel';
@@ -25,6 +25,7 @@ export function WorkspaceShell({
 }) {
   const pathname = usePathname();
   const controller = useWorkspaceController({ account, pathname });
+  const [isAssistantExpanded, setIsAssistantExpanded] = useState(false);
 
   return (
     <WorkspaceRouteProvider
@@ -46,7 +47,9 @@ export function WorkspaceShell({
         assistant={
           <WorkspaceAssistantPanel
             assistant={controller.assistant}
+            isExpanded={isAssistantExpanded}
             isLoading={controller.route.isLoading}
+            onExpandedChange={setIsAssistantExpanded}
             userLabel={controller.account.label}
           />
         }
@@ -60,6 +63,7 @@ export function WorkspaceShell({
           />
         }
         isAssistantMinimized={controller.assistant.isMinimized}
+        isAssistantExpanded={isAssistantExpanded}
         isLoading={controller.route.isLoading}
         isMobileViewport={controller.navigation.isMobileViewport}
         mobileNavigationOpen={controller.navigation.mobileOpen}

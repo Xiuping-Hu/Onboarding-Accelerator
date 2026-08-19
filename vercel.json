@@ -7,7 +7,7 @@
     },
     {
       "path": "/api/internal/static-roadmap/cron",
-      "schedule": "*/10 * * * *"
+      "schedule": "0 10 * * *"
     }
   ]
 }

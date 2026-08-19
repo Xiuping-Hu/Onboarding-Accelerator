@@ -116,6 +116,39 @@ void test('keeps the header in the main column and removes the account icon abov
   assert.equal(screen.queryByRole('img', { name: 'Alex Morgan, Member' }), null);
 });
 
+void test('expands and restores the onboarding assistant from its left-edge handle', async () => {
+  installWorkspaceFetch([createSessionFixture('plan-1', 'First plan')]);
+  const user = userEvent.setup({ document: dom.window.document });
+  render(shellAt('/workspace', <p>Overview route body</p>));
+
+  const assistant = screen.getByRole('complementary', { name: 'Onboarding assistant' });
+  const frame = assistant.closest('[data-assistant-expanded]');
+  const expandHandle = await screen.findByRole('button', {
+    name: 'Expand onboarding assistant',
+  });
+
+  assert.equal(expandHandle.getAttribute('aria-pressed'), 'false');
+  assert.equal(frame?.getAttribute('data-assistant-expanded'), 'false');
+
+  await user.click(expandHandle);
+
+  const restoreHandle = screen.getByRole('button', {
+    name: 'Restore onboarding assistant width',
+  });
+  assert.equal(restoreHandle.getAttribute('aria-pressed'), 'true');
+  assert.equal(frame?.getAttribute('data-assistant-expanded'), 'true');
+
+  await user.click(restoreHandle);
+
+  assert.equal(
+    screen
+      .getByRole('button', { name: 'Expand onboarding assistant' })
+      .getAttribute('aria-pressed'),
+    'false',
+  );
+  assert.equal(frame?.getAttribute('data-assistant-expanded'), 'false');
+});
+
 void test('keeps the routed workspace mounted when logout fails', async () => {
   installWorkspaceFetch([createSessionFixture('plan-1', 'First plan')], {
     failLogout: true,
