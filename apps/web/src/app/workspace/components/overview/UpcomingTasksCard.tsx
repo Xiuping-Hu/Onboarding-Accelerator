@@ -1,4 +1,4 @@
-import type { OnboardingTaskMutationSource, OnboardingTaskStatus } from '@onboarding/shared';
+import type { OnboardingTaskStatus } from '@onboarding/shared';
 import Link from 'next/link';
 import React from 'react';
 import type { WorkspaceUpcomingTasksState } from '@/features/workspace/workspaceDashboardModel';
@@ -17,8 +17,7 @@ export function UpcomingTasksCard({
   onTransitionTask: (
     taskId: string,
     status: OnboardingTaskStatus,
-    expectedRevision: number,
-    source: OnboardingTaskMutationSource,
+    expectedTaskRevision: number,
   ) => Promise<void>;
   pendingTaskIds: string[];
   tasks: WorkspaceUpcomingTasksState;
@@ -46,10 +45,9 @@ export function UpcomingTasksCard({
           {tasks.items.map((task) => (
             <OnboardingTaskRow
               compact
-              key={task.id}
+              key={task.taskInstanceId}
               onTransitionTask={onTransitionTask}
-              pending={pendingTaskIds.includes(task.id)}
-              source="overview_ui"
+              pending={pendingTaskIds.includes(task.taskInstanceId)}
               task={task}
             />
           ))}
@@ -59,7 +57,7 @@ export function UpcomingTasksCard({
           compact
           description={
             tasks.status === 'empty'
-              ? 'There are no incomplete tasks in the active onboarding plan.'
+              ? 'There are no incomplete tasks in your current roadmap.'
               : 'Upcoming tasks are temporarily unavailable.'
           }
           title={tasks.status === 'empty' ? 'No upcoming tasks' : 'Tasks unavailable'}

@@ -26,23 +26,46 @@ model OnboardingSession {
 }
 
 model OnboardingJourneyVersion {
-  id                  String                        @id @db.Uuid
-  ownerId             String                        @map("owner_id")
-  title               String
-  stages              Json
-  sourceReferences    Json                          @default("[]") @map("source_references")
-  supersedesVersionId String?                       @map("supersedes_version_id") @db.Uuid
-  changeSource        String                        @default("created") @map("change_source")
-  createdBy           String?                       @map("created_by")
-  createdAt           DateTime                      @default(now()) @map("created_at") @db.Timestamptz(6)
-  plans               OnboardingPlan[]
-  revisionEventsFrom  OnboardingPlanRevisionEvent[] @relation("OnboardingRevisionFrom")
-  revisionEventsTo    OnboardingPlanRevisionEvent[] @relation("OnboardingRevisionTo")
-  supersedesVersion   OnboardingJourneyVersion?     @relation("OnboardingJourneyLineage", fields: [supersedesVersionId], references: [id], onDelete: SetNull, onUpdate: NoAction)
-  successorVersions   OnboardingJourneyVersion[]    @relation("OnboardingJourneyLineage")
+  id                       String                        @id @db.Uuid
+  ownerId                  String?                       @map("owner_id")
+  title                    String
+  stages                   Json
+  sourceReferences         Json                          @default("[]") @map("source_references")
+  supersedesVersionId      String?                       @map("supersedes_version_id") @db.Uuid
+  changeSource             String                        @default("created") @map("change_source")
+  createdBy                String?                       @map("created_by")
+  createdAt                DateTime                      @default(now()) @map("created_at") @db.Timestamptz(6)
+  roadmapId                String?                       @map("roadmap_id") @db.Uuid
+  versionNumber            Int?                          @map("version_number")
+  lifecycleStatus          String?                       @map("lifecycle_status")
+  contentHash              String?                       @map("content_hash")
+  knowledgeSnapshotHash    String?                       @map("knowledge_snapshot_hash")
+  artifactKey              String?                       @map("artifact_key")
+  evidenceHash             String?                       @map("evidence_hash")
+  sourceVersionId          String?                       @map("source_version_id")
+  inputDescriptor          Json?                         @map("input_descriptor")
+  provenance               Json?
+  objectiveVersion         String?                       @map("objective_version")
+  retrievalConfigVersion   String?                       @map("retrieval_config_version")
+  retrievalQuerySetVersion String?                       @map("retrieval_query_set_version")
+  generatorSchemaVersion   String?                       @map("generator_schema_version")
+  promptVersion            String?                       @map("prompt_version")
+  provider                 String?
+  model                    String?
+  decodingConfigVersion    String?                       @map("decoding_config_version")
+  generationJobId          String?                       @unique(map: "onboarding_journey_versions_generation_job_key") @map("generation_job_id") @db.Uuid
+  publishedAt              DateTime?                     @map("published_at") @db.Timestamptz(6)
+  plans                    OnboardingPlan[]
+  revisionEventsFrom       OnboardingPlanRevisionEvent[] @relation("OnboardingRevisionFrom")
+  revisionEventsTo         OnboardingPlanRevisionEvent[] @relation("OnboardingRevisionTo")
+  supersedesVersion        OnboardingJourneyVersion?     @relation("OnboardingJourneyLineage", fields: [supersedesVersionId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  successorVersions        OnboardingJourneyVersion[]    @relation("OnboardingJourneyLineage")
 
+  @@unique([roadmapId, versionNumber], map: "onboarding_journey_versions_roadmap_version_key")
   @@index([ownerId, createdAt(sort: Desc)], map: "onboarding_journey_versions_owner_created_idx")
   @@index([supersedesVersionId], map: "onboarding_journey_versions_supersedes_idx")
+  @@index([roadmapId, artifactKey], map: "onboarding_journey_versions_artifact_idx")
+  @@index([sourceVersionId], map: "onboarding_journey_versions_source_version_idx")
   @@map("onboarding_journey_versions")
 }
 
@@ -61,6 +84,15 @@ model OnboardingPlan {
   startedAt           DateTime                      @map("activated_at") @db.Timestamptz(6)
   cancelledAt         DateTime?                     @map("cancelled_at") @db.Timestamptz(6)
   cancellationReason  String?                       @map("cancellation_reason")
+  roadmapId           String?                       @map("roadmap_id") @db.Uuid
+  canonicalOwnerId    String?                       @map("canonical_owner_id") @db.Uuid
+  appliedVersionId    String?                       @map("applied_version_id") @db.Uuid
+  desiredVersionId    String?                       @map("desired_version_id") @db.Uuid
+  stateRevision       Int                           @default(0) @map("state_revision")
+  syncStatus          String?                       @map("sync_status")
+  firstAppliedAt      DateTime?                     @map("first_applied_at") @db.Timestamptz(6)
+  syncedAt            DateTime?                     @map("synced_at") @db.Timestamptz(6)
+  syncError           String?                       @map("sync_error")
   session             OnboardingSession?            @relation(fields: [sessionId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   definitionVersion   OnboardingJourneyVersion      @relation(fields: [definitionVersionId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   taskInstances       OnboardingTaskInstance[]
@@ -70,27 +102,38 @@ model OnboardingPlan {
 
   @@unique([ownerId, creationRequestId], map: "onboarding_plans_activation_request_key")
   @@index([ownerId, status], map: "onboarding_plans_owner_status_idx")
+  @@index([canonicalOwnerId, roadmapId], map: "onboarding_plans_canonical_owner_roadmap_idx")
+  @@index([roadmapId, desiredVersionId, syncStatus], map: "onboarding_plans_roadmap_sync_idx")
   @@map("onboarding_plans")
 }
 
 model OnboardingTaskInstance {
-  id            String                @id @db.Uuid
-  planId        String                @map("plan_id") @db.Uuid
-  definitionId  String                @map("definition_id") @db.Uuid
-  stableKey     String                @map("stable_key")
-  stageId       String                @map("stage_id") @db.Uuid
-  status        String
-  dueAt         DateTime?             @map("due_at") @db.Timestamptz(6)
-  completedAt   DateTime?             @map("completed_at") @db.Timestamptz(6)
-  completedBy   String?               @map("completed_by")
-  revision      Int                   @default(0)
-  retiredAt     DateTime?             @map("retired_at") @db.Timestamptz(6)
-  retiredReason String?               @map("retired_reason")
-  plan          OnboardingPlan        @relation(fields: [planId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  events        OnboardingTaskEvent[]
+  id                   String                @id @db.Uuid
+  planId               String                @map("plan_id") @db.Uuid
+  definitionId         String                @map("definition_id") @db.Uuid
+  stableKey            String                @map("stable_key")
+  stageId              String                @map("stage_id") @db.Uuid
+  status               String
+  dueAt                DateTime?             @map("due_at") @db.Timestamptz(6)
+  completedAt          DateTime?             @map("completed_at") @db.Timestamptz(6)
+  completedBy          String?               @map("completed_by")
+  revision             Int                   @default(0)
+  retiredAt            DateTime?             @map("retired_at") @db.Timestamptz(6)
+  retiredReason        String?               @map("retired_reason")
+  canonicalItemId      String?               @map("canonical_item_id") @db.Uuid
+  appliedVersionId     String?               @map("applied_version_id") @db.Uuid
+  semanticsHash        String?               @map("semantics_hash")
+  semanticsHashVersion String?               @map("semantics_hash_version")
+  introducedVersionId  String?               @map("introduced_version_id") @db.Uuid
+  lastAppliedVersionId String?               @map("last_applied_version_id") @db.Uuid
+  retiredVersionId     String?               @map("retired_version_id") @db.Uuid
+  plan                 OnboardingPlan        @relation(fields: [planId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  events               OnboardingTaskEvent[]
 
-  @@unique([planId, definitionId], map: "onboarding_task_instances_definition_key")
+  @@index([planId, definitionId], map: "onboarding_task_instances_definition_idx")
   @@index([planId, stageId], map: "onboarding_task_instances_plan_stage_idx")
+  @@index([planId, stableKey, retiredAt], map: "onboarding_task_instances_current_stable_idx")
+  @@index([canonicalItemId], map: "onboarding_task_instances_canonical_item_idx")
   @@map("onboarding_task_instances")
 }
 
@@ -153,12 +196,240 @@ model OnboardingTaskEvent {
   taskRevision   Int                    @map("task_revision")
   planRevision   Int                    @map("plan_revision")
   createdAt      DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  requestHash    String?                @map("request_hash")
+  response       Json?
   plan           OnboardingPlan         @relation(fields: [planId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   task           OnboardingTaskInstance @relation(fields: [taskId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([planId, idempotencyKey], map: "onboarding_task_events_idempotency_key")
   @@index([taskId, createdAt], map: "onboarding_task_events_task_created_idx")
   @@map("onboarding_task_events")
+}
+
+model OnboardingRoadmap {
+  id                           String    @id @db.Uuid
+  key                          String    @unique(map: "onboarding_roadmaps_key_key")
+  currentVersionId             String?   @map("current_version_id") @db.Uuid
+  currentDerivationId          String?   @map("current_derivation_id") @db.Uuid
+  revision                     Int       @default(0)
+  latestRefreshSequence        BigInt    @default(0) @map("latest_refresh_sequence")
+  lastPublishedRefreshSequence BigInt    @default(0) @map("last_published_refresh_sequence")
+  currentKnowledgeSnapshotHash String?   @map("current_knowledge_snapshot_hash")
+  suspendedAt                  DateTime? @map("suspended_at") @db.Timestamptz(6)
+  suspensionReason             String?   @map("suspension_reason")
+  createdAt                    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                    DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@map("onboarding_roadmaps")
+}
+
+model OnboardingRoadmapRefreshJob {
+  id                       String    @id @db.Uuid
+  roadmapId                String    @map("roadmap_id") @db.Uuid
+  publicationEventId       String    @map("publication_event_id")
+  operatorRequestId        String?   @map("operator_request_id")
+  refreshSequence          BigInt    @map("refresh_sequence")
+  sourceId                 String    @map("source_id")
+  sourceVersionId          String    @map("source_version_id")
+  sourceManifestHash       String    @map("source_manifest_hash")
+  accessScope              String    @map("access_scope")
+  embeddingProfileId       String    @map("embedding_profile_id")
+  retrievalConfigVersion   String    @map("retrieval_config_version")
+  retrievalQuerySetVersion String    @map("retrieval_query_set_version")
+  objectiveVersion         String    @map("objective_version")
+  generatorSchemaVersion   String    @map("generator_schema_version")
+  promptVersion            String    @map("prompt_version")
+  provider                 String
+  model                    String
+  decodingConfigVersion    String    @map("decoding_config_version")
+  lineageBaseVersionId     String?   @map("lineage_base_version_id") @db.Uuid
+  lineageBaseContentHash   String?   @map("lineage_base_content_hash")
+  knowledgeSnapshotHash    String    @map("knowledge_snapshot_hash")
+  artifactKey              String    @map("artifact_key")
+  inputDescriptor          Json      @map("input_descriptor")
+  evidenceBundle           Json?     @map("evidence_bundle")
+  evidenceBundleHash       String?   @map("evidence_bundle_hash")
+  generatedArtifact        Json?     @map("generated_artifact")
+  generatedContentHash     String?   @map("generated_content_hash")
+  generatedEvidenceHash    String?   @map("generated_evidence_hash")
+  providerUsage            Json?     @map("provider_usage")
+  status                   String    @default("queued")
+  attempt                  Int       @default(0)
+  availableAt              DateTime  @default(now()) @map("available_at") @db.Timestamptz(6)
+  claimedBy                String?   @map("claimed_by")
+  claimToken               Int       @default(0) @map("claim_token")
+  leaseExpiresAt           DateTime? @map("lease_expires_at") @db.Timestamptz(6)
+  startedAt                DateTime? @map("started_at") @db.Timestamptz(6)
+  completedAt              DateTime? @map("completed_at") @db.Timestamptz(6)
+  errorCode                String?   @map("error_code")
+  errorMessage             String?   @map("error_message")
+  createdAt                DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([roadmapId, publicationEventId], map: "onboarding_roadmap_refresh_jobs_publication_key")
+  @@unique([roadmapId, refreshSequence], map: "onboarding_roadmap_refresh_jobs_sequence_key")
+  @@unique([roadmapId, operatorRequestId], map: "onboarding_roadmap_refresh_jobs_operator_request_key")
+  @@index([status, availableAt, refreshSequence], map: "onboarding_roadmap_refresh_jobs_claim_idx")
+  @@index([roadmapId, artifactKey, evidenceBundleHash], map: "onboarding_roadmap_refresh_jobs_artifact_idx")
+  @@index([sourceVersionId], map: "onboarding_roadmap_refresh_jobs_source_version_idx")
+  @@map("onboarding_roadmap_refresh_jobs")
+}
+
+model OnboardingRoadmapDerivation {
+  id                    String   @id @db.Uuid
+  roadmapId             String   @map("roadmap_id") @db.Uuid
+  contentVersionId      String   @map("content_version_id") @db.Uuid
+  refreshJobId          String   @unique(map: "onboarding_roadmap_derivations_refresh_job_key") @map("refresh_job_id") @db.Uuid
+  sourceVersionId       String   @map("source_version_id")
+  knowledgeSnapshotHash String   @map("knowledge_snapshot_hash")
+  artifactKey           String   @map("artifact_key")
+  evidenceHash          String   @map("evidence_hash")
+  inputDescriptor       Json     @map("input_descriptor")
+  provenance            Json
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([roadmapId, knowledgeSnapshotHash, contentVersionId], map: "onboarding_roadmap_derivations_snapshot_content_key")
+  @@index([sourceVersionId], map: "onboarding_roadmap_derivations_source_version_idx")
+  @@map("onboarding_roadmap_derivations")
+}
+
+model OnboardingRoadmapPublicationEvent {
+  id               String   @id @db.Uuid
+  roadmapId        String   @map("roadmap_id") @db.Uuid
+  refreshJobId     String   @map("refresh_job_id") @db.Uuid
+  priorVersionId   String?  @map("prior_version_id") @db.Uuid
+  contentVersionId String   @map("content_version_id") @db.Uuid
+  derivationId     String?  @map("derivation_id") @db.Uuid
+  eventType        String   @map("event_type")
+  refreshSequence  BigInt   @map("refresh_sequence")
+  rootRevision     Int      @map("root_revision")
+  metadata         Json     @default("{}")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([refreshJobId], map: "onboarding_roadmap_publication_events_refresh_job_key")
+  @@index([roadmapId, createdAt(sort: Desc)], map: "onboarding_roadmap_publication_events_roadmap_created_idx")
+  @@map("onboarding_roadmap_publication_events")
+}
+
+model OnboardingRoadmapRollout {
+  id                 String    @id @db.Uuid
+  roadmapId          String    @map("roadmap_id") @db.Uuid
+  canonicalVersionId String    @unique(map: "onboarding_roadmap_rollouts_version_key") @map("canonical_version_id") @db.Uuid
+  status             String    @default("pending")
+  initialBootstrap   Boolean   @default(false) @map("initial_bootstrap")
+  cohortCapturedAt   DateTime  @map("cohort_captured_at") @db.Timestamptz(6)
+  targetCount        Int       @default(0) @map("target_count")
+  appliedCount       Int       @default(0) @map("applied_count")
+  failedCount        Int       @default(0) @map("failed_count")
+  cursorUserId       String?   @map("cursor_user_id") @db.Uuid
+  startedAt          DateTime? @map("started_at") @db.Timestamptz(6)
+  completedAt        DateTime? @map("completed_at") @db.Timestamptz(6)
+  supersededAt       DateTime? @map("superseded_at") @db.Timestamptz(6)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@index([roadmapId, status, createdAt], map: "onboarding_roadmap_rollouts_status_idx")
+  @@map("onboarding_roadmap_rollouts")
+}
+
+model OnboardingRoadmapUserSync {
+  id                      String    @id @db.Uuid
+  rolloutId               String?   @map("rollout_id") @db.Uuid
+  roadmapId               String    @map("roadmap_id") @db.Uuid
+  userId                  String    @map("user_id") @db.Uuid
+  userStateId             String?   @map("user_state_id") @db.Uuid
+  targetVersionId         String    @map("target_version_id") @db.Uuid
+  status                  String    @default("pending")
+  initialAccount          Boolean   @default(false) @map("initial_account")
+  attempt                 Int       @default(0)
+  availableAt             DateTime  @default(now()) @map("available_at") @db.Timestamptz(6)
+  claimedBy               String?   @map("claimed_by")
+  claimToken              Int       @default(0) @map("claim_token")
+  leaseExpiresAt          DateTime? @map("lease_expires_at") @db.Timestamptz(6)
+  retainedCount           Int       @default(0) @map("retained_count")
+  addedCount              Int       @default(0) @map("added_count")
+  retiredCount            Int       @default(0) @map("retired_count")
+  dueDateChangedCount     Int       @default(0) @map("due_date_changed_count")
+  completedPreservedCount Int       @default(0) @map("completed_preserved_count")
+  errorCode               String?   @map("error_code")
+  errorMessage            String?   @map("error_message")
+  startedAt               DateTime? @map("started_at") @db.Timestamptz(6)
+  completedAt             DateTime? @map("completed_at") @db.Timestamptz(6)
+  createdAt               DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([rolloutId, userId], map: "onboarding_roadmap_user_syncs_rollout_user_key")
+  @@unique([userId, targetVersionId], map: "onboarding_roadmap_user_syncs_user_target_key")
+  @@index([status, availableAt, createdAt], map: "onboarding_roadmap_user_syncs_claim_idx")
+  @@index([userStateId, targetVersionId], map: "onboarding_roadmap_user_syncs_state_target_idx")
+  @@map("onboarding_roadmap_user_syncs")
+}
+
+model OnboardingRoadmapUpdateNotice {
+  id                      String    @id @db.Uuid
+  roadmapId               String    @map("roadmap_id") @db.Uuid
+  userId                  String    @map("user_id") @db.Uuid
+  canonicalVersionId      String    @map("canonical_version_id") @db.Uuid
+  rolloutId               String    @map("rollout_id") @db.Uuid
+  retainedCount           Int       @default(0) @map("retained_count")
+  addedCount              Int       @default(0) @map("added_count")
+  retiredCount            Int       @default(0) @map("retired_count")
+  completedPreservedCount Int       @default(0) @map("completed_preserved_count")
+  readAt                  DateTime? @map("read_at") @db.Timestamptz(6)
+  createdAt               DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([userId, canonicalVersionId], map: "onboarding_roadmap_update_notices_user_version_key")
+  @@index([userId, readAt, createdAt(sort: Desc)], map: "onboarding_roadmap_update_notices_unread_idx")
+  @@map("onboarding_roadmap_update_notices")
+}
+
+model OnboardingRoadmapReconciliationEvent {
+  id              String   @id @db.Uuid
+  roadmapId       String   @map("roadmap_id") @db.Uuid
+  userStateId     String   @map("user_state_id") @db.Uuid
+  userSyncId      String   @map("user_sync_id") @db.Uuid
+  targetVersionId String   @map("target_version_id") @db.Uuid
+  taskInstanceId  String?  @map("task_instance_id") @db.Uuid
+  stableKey       String?  @map("stable_key")
+  eventType       String   @map("event_type")
+  metadata        Json     @default("{}")
+  stateRevision   Int      @map("state_revision")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([userStateId, createdAt], map: "onboarding_roadmap_reconciliation_events_state_created_idx")
+  @@index([userSyncId], map: "onboarding_roadmap_reconciliation_events_sync_idx")
+  @@map("onboarding_roadmap_reconciliation_events")
+}
+
+model OnboardingRoadmapEvidencePin {
+  id                 String    @id @db.Uuid
+  roadmapId          String    @map("roadmap_id") @db.Uuid
+  sourceVersionId    String    @map("source_version_id")
+  refreshJobId       String?   @map("refresh_job_id") @db.Uuid
+  canonicalVersionId String?   @map("canonical_version_id") @db.Uuid
+  derivationId       String?   @map("derivation_id") @db.Uuid
+  evidenceBundleHash String    @map("evidence_bundle_hash")
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  releasedAt         DateTime? @map("released_at") @db.Timestamptz(6)
+
+  @@index([sourceVersionId, releasedAt], map: "onboarding_roadmap_evidence_pins_source_idx")
+  @@index([refreshJobId], map: "onboarding_roadmap_evidence_pins_job_idx")
+  @@map("onboarding_roadmap_evidence_pins")
+}
+
+model OnboardingRoadmapGovernanceEvent {
+  id             String    @id @db.Uuid
+  roadmapId      String    @map("roadmap_id") @db.Uuid
+  sourceId       String    @map("source_id")
+  eventType      String    @map("event_type")
+  decisionStatus String    @default("pending") @map("decision_status")
+  details        Json      @default("{}")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  resolvedAt     DateTime? @map("resolved_at") @db.Timestamptz(6)
+  resolvedBy     String?   @map("resolved_by")
+
+  @@index([roadmapId, decisionStatus, createdAt], map: "onboarding_roadmap_governance_events_status_idx")
+  @@map("onboarding_roadmap_governance_events")
 }
 
 model RagWorkflowRun {
@@ -342,7 +613,7 @@ model KnowledgeSourceVersion {
   mapBindings       KnowledgeMapSourceBinding[]
 
   @@id([id])
-  @@unique([sourceId, contentHash])
+  @@index([sourceId, contentHash], map: "knowledge_source_versions_source_content_idx")
   @@map("knowledge_source_versions")
 }
 

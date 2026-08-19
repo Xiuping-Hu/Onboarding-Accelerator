@@ -1,6 +1,4 @@
 import { createRouteHandler } from '@/server/core/http/createRouteHandler';
+import { retiredOnboardingRoute } from '@/server/modules/onboarding/retiredOnboarding.controller';
 
-export const POST = createRouteHandler(
-  'authenticated',
-  (controllers) => controllers.onboarding.dismissProposal,
-);
+export const POST = createRouteHandler('authenticated', () => retiredOnboardingRoute);

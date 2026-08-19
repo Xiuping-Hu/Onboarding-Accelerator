@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test, { after, afterEach } from 'node:test';
-import type { OnboardingSession } from '@onboarding/shared';
+import type { OnboardingSession, WorkspaceOnboardingState } from '@onboarding/shared';
 import React, { type ReactNode } from 'react';
 import { JSDOM } from 'jsdom';
 
@@ -15,10 +15,13 @@ const { cleanup, fireEvent, render, screen, waitFor, within } =
 const userEvent = (await import('@testing-library/user-event')).default;
 const { PathnameContext } =
   await import('next/dist/shared/lib/hooks-client-context.shared-runtime.js');
+const { AppRouterContext } =
+  await import('next/dist/shared/lib/app-router-context.shared-runtime.js');
 const { WorkspaceExperience } = await import('./WorkspaceExperience');
 const { WorkspaceShell } = await import('./WorkspaceShell');
 
 const originalFetch = globalThis.fetch;
+let pushedPaths: string[] = [];
 const account = {
   userId: 'employee-1',
   displayName: 'Alex Morgan',
@@ -32,6 +35,7 @@ after(() => {
 afterEach(() => {
   cleanup();
   mobileViewport = false;
+  pushedPaths = [];
   globalThis.fetch = originalFetch;
 });
 
@@ -118,11 +122,13 @@ void test('keeps the routed workspace mounted when logout fails', async () => {
   });
   const user = userEvent.setup({ document: dom.window.document });
   render(
-    <PathnameContext.Provider value="/workspace">
-      <WorkspaceExperience initialAccount={account}>
-        <p>Persistent workspace content</p>
-      </WorkspaceExperience>
-    </PathnameContext.Provider>,
+    <AppRouterContext.Provider value={appRouter}>
+      <PathnameContext.Provider value="/workspace">
+        <WorkspaceExperience initialAccount={account}>
+          <p>Persistent workspace content</p>
+        </WorkspaceExperience>
+      </PathnameContext.Provider>
+    </AppRouterContext.Provider>,
   );
 
   await user.click(await screen.findByRole('button', { name: 'Sign out' }));
@@ -157,20 +163,105 @@ void test('isolates the dashboard while the mobile navigation dialog is open', a
   assert.equal(dom.window.document.activeElement, opener);
 });
 
+void test('discovers durable roadmap notices on mount, focus, and visibility return', async () => {
+  const ready = createReadyOnboardingState('notice-2', 'version-2', 2);
+  const requests = installWorkspaceFetch([createSessionFixture('plan-1', 'First plan')], {
+    onboardingState: ready,
+  });
+  render(shellAt('/workspace', <p>Overview route body</p>));
+
+  assert.ok(await screen.findByText(/Your roadmap now reflects the latest knowledge base/u));
+  assert.equal(countRequests(requests, 'GET /api/onboarding'), 1);
+
+  fireEvent(window, new Event('focus'));
+  await waitFor(() => assert.equal(countRequests(requests, 'GET /api/onboarding'), 2));
+
+  Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+  fireEvent(document, new Event('visibilitychange'));
+  await waitFor(() => assert.equal(countRequests(requests, 'GET /api/onboarding'), 3));
+});
+
+void test('View refetches, focuses the exact newest version, then acknowledges it', async () => {
+  const stale = createReadyOnboardingState('notice-2', 'version-2', 2);
+  const latest = createReadyOnboardingState('notice-3', 'version-3', 3);
+  const requests = installWorkspaceFetch([createSessionFixture('plan-1', 'First plan')], {
+    onboardingStates: [stale, latest],
+  });
+  const user = userEvent.setup({ document: dom.window.document });
+  render(
+    shellAt(
+      '/workspace/tasks',
+      <h2 data-roadmap-version-id="version-3" id="onboarding-roadmap" tabIndex={-1}>
+        Tax consultant onboarding
+      </h2>,
+    ),
+  );
+
+  await user.click(await screen.findByRole('button', { name: 'View latest roadmap' }));
+  await waitFor(() => {
+    assert.deepEqual(pushedPaths, ['/workspace#onboarding-roadmap']);
+    assert.equal(dom.window.document.activeElement?.id, 'onboarding-roadmap');
+    assert.ok(requests.includes('PATCH /api/onboarding/notices/notice-3'));
+    assert.equal(requests.includes('PATCH /api/onboarding/notices/notice-2'), false);
+  });
+});
+
+void test('Dismiss acknowledges a notice without navigating and hides it after success', async () => {
+  const requests = installWorkspaceFetch([createSessionFixture('plan-1', 'First plan')], {
+    onboardingState: createReadyOnboardingState('notice-2', 'version-2', 2),
+  });
+  const user = userEvent.setup({ document: dom.window.document });
+  render(shellAt('/workspace/resources', <p>Resources route body</p>));
+
+  await user.click(await screen.findByRole('button', { name: 'Dismiss' }));
+  await waitFor(() => {
+    assert.ok(requests.includes('PATCH /api/onboarding/notices/notice-2'));
+    assert.equal(screen.queryByRole('button', { name: 'Dismiss' }), null);
+    assert.deepEqual(pushedPaths, []);
+  });
+});
+
+void test('a failed notice acknowledgment retains the durable banner with retry feedback', async () => {
+  installWorkspaceFetch([createSessionFixture('plan-1', 'First plan')], {
+    failNoticeAck: true,
+    onboardingState: createReadyOnboardingState('notice-2', 'version-2', 2),
+  });
+  const user = userEvent.setup({ document: dom.window.document });
+  render(shellAt('/workspace', <p>Overview route body</p>));
+
+  await user.click(await screen.findByRole('button', { name: 'Dismiss' }));
+  assert.match((await screen.findByRole('alert')).textContent ?? '', /Could not dismiss/u);
+  assert.ok(screen.getByRole('button', { name: 'View latest roadmap' }));
+  assert.ok(screen.getByRole('button', { name: 'Dismiss' }));
+});
+
 function shellAt(pathname: string, children: ReactNode) {
   return (
-    <PathnameContext.Provider value={pathname}>
-      <WorkspaceShell
-        account={account}
-        isSigningOut={false}
-        logoutError={null}
-        onLogout={() => undefined}
-      >
-        {children}
-      </WorkspaceShell>
-    </PathnameContext.Provider>
+    <AppRouterContext.Provider value={appRouter}>
+      <PathnameContext.Provider value={pathname}>
+        <WorkspaceShell
+          account={account}
+          isSigningOut={false}
+          logoutError={null}
+          onLogout={() => undefined}
+        >
+          {children}
+        </WorkspaceShell>
+      </PathnameContext.Provider>
+    </AppRouterContext.Provider>
   );
 }
+
+const appRouter = {
+  back: () => undefined,
+  forward: () => undefined,
+  refresh: () => undefined,
+  push(href: string) {
+    pushedPaths.push(href);
+  },
+  replace: () => undefined,
+  prefetch: () => undefined,
+};
 
 function createSessionFixture(id: string, title: string): OnboardingSession {
   return {
@@ -190,14 +281,32 @@ function createSessionFixture(id: string, title: string): OnboardingSession {
 
 function installWorkspaceFetch(
   sessions: OnboardingSession[],
-  options: { failLogout?: boolean } = {},
+  options: {
+    failLogout?: boolean;
+    failNoticeAck?: boolean;
+    onboardingState?: WorkspaceOnboardingState;
+    onboardingStates?: WorkspaceOnboardingState[];
+  } = {},
 ) {
   const requests: string[] = [];
+  const onboardingStates = options.onboardingStates ? [...options.onboardingStates] : [];
+  let onboardingState = options.onboardingState ?? createEmptyOnboardingState();
   globalThis.fetch = (async (input, init) => {
     const path = input instanceof Request ? new URL(input.url).pathname : String(input);
     const method = init?.method ?? 'GET';
     requests.push(`${method} ${path}`);
 
+    if (path === '/api/onboarding' && method === 'GET') {
+      onboardingState = onboardingStates.shift() ?? onboardingState;
+      return jsonResponse(onboardingState);
+    }
+    if (/^\/api\/onboarding\/notices\/[^/]+$/u.test(path) && method === 'PATCH') {
+      if (options.failNoticeAck) return jsonResponse({ error: 'notice failed' }, 500);
+      if (onboardingState.status === 'ready') {
+        onboardingState = { ...onboardingState, newestUnreadNotice: null, unreadNoticeCount: 0 };
+      }
+      return new Response(null, { status: 204 });
+    }
     if (path === '/api/sessions' && method === 'GET') {
       return jsonResponse({ sessions });
     }
@@ -232,6 +341,66 @@ function installWorkspaceFetch(
     return jsonResponse({ error: `Unhandled test request: ${method} ${path}` }, 500);
   }) as typeof fetch;
   return requests;
+}
+
+function createEmptyOnboardingState(): WorkspaceOnboardingState {
+  return {
+    status: 'empty',
+    message: 'Roadmap is being prepared from the latest knowledge base.',
+    newestUnreadNotice: null,
+    unreadNoticeCount: 0,
+  };
+}
+
+function createReadyOnboardingState(
+  noticeId: string,
+  versionId: string,
+  versionNumber: number,
+): WorkspaceOnboardingState {
+  return {
+    status: 'ready',
+    roadmap: {
+      roadmapId: 'roadmap-1',
+      versionId,
+      versionNumber,
+      title: 'Tax consultant onboarding',
+      stages: [],
+      sourceReferences: [],
+    },
+    userState: {
+      appliedVersionId: versionId,
+      stateRevision: versionNumber,
+      syncStatus: 'current',
+      progress: {
+        percentComplete: 0,
+        completedWeight: 0,
+        totalWeight: 1,
+        completedTaskCount: 0,
+        totalTaskCount: 1,
+        currentStageId: null,
+      },
+      tasks: [],
+      upcomingTasks: [],
+    },
+    newestUnreadNotice: {
+      id: noticeId,
+      userId: 'employee-1',
+      roadmapVersionId: versionId,
+      roadmapVersionNumber: versionNumber,
+      ingestionRunId: 'ingestion-1',
+      retainedItemCount: 14,
+      addedItemCount: 2,
+      retiredItemCount: 1,
+      preservedCompletedCount: 3,
+      createdAt: '2026-08-13T12:00:00.000Z',
+      readAt: null,
+    },
+    unreadNoticeCount: 1,
+  };
+}
+
+function countRequests(requests: string[], request: string) {
+  return requests.filter((candidate) => candidate === request).length;
 }
 
 function jsonResponse(value: unknown, status = 200) {

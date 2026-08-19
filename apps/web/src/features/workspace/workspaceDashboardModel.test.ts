@@ -1,32 +1,22 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { GuideGraph, KnowledgeSource, WorkspaceOnboardingState } from '@onboarding/shared';
+import type { WorkspaceOnboardingState } from '@onboarding/shared';
 import {
   createWorkspaceDashboardModel,
+  deriveAllTasks,
   deriveWorkspaceProgress,
   deriveWorkspaceResources,
 } from './workspaceDashboardModel';
 
 const readyState = {
   status: 'ready',
-  projection: {
-    planId: 'plan-1',
-    planRevision: 2,
-    planStatus: 'active',
-    definitionVersionId: 'definition-1',
-    title: 'Onboarding',
-    startAt: '2026-08-01T12:00:00.000Z',
-    startedAt: '2026-08-01T12:00:00.000Z',
-    calculatedAt: '2026-08-05T12:00:00.000Z',
-    progress: {
-      percentComplete: 50,
-      completedWeight: 1,
-      totalWeight: 2,
-      completedTaskCount: 1,
-      totalTaskCount: 2,
-      currentStageId: 'stage-2',
-    },
-    roadmap: [
+  roadmap: {
+    roadmapId: 'roadmap-1',
+    versionId: 'version-2',
+    versionNumber: 2,
+    title: 'Tax consultant onboarding',
+    sourceReferences: [],
+    stages: [
       {
         id: 'stage-1',
         stableKey: 'orientation',
@@ -34,9 +24,18 @@ const readyState = {
         title: 'Orientation',
         description: 'Meet the team',
         dependsOnStageKeys: [],
-        status: 'completed',
-        completedTaskCount: 1,
-        totalTaskCount: 1,
+        tasks: [
+          {
+            id: 'canonical-task-1',
+            stableKey: 'meet-team',
+            position: 1,
+            title: 'Meet the team',
+            required: true,
+            countsTowardProgress: true,
+            weight: 1,
+            dependsOnTaskKeys: [],
+          },
+        ],
       },
       {
         id: 'stage-2',
@@ -45,111 +44,126 @@ const readyState = {
         title: 'Tools',
         description: 'Set up access',
         dependsOnStageKeys: [],
-        status: 'in-progress',
-        completedTaskCount: 0,
-        totalTaskCount: 1,
+        tasks: [
+          {
+            id: 'canonical-task-2',
+            stableKey: 'set-up-access',
+            position: 1,
+            title: 'Set up access',
+            description: 'Request access to required systems.',
+            required: true,
+            countsTowardProgress: true,
+            weight: 1,
+            dependsOnTaskKeys: [],
+          },
+        ],
       },
     ],
+  },
+  userState: {
+    appliedVersionId: 'version-2',
+    stateRevision: 4,
+    syncStatus: 'current',
+    progress: {
+      percentComplete: 50,
+      completedWeight: 1,
+      totalWeight: 2,
+      completedTaskCount: 1,
+      totalTaskCount: 2,
+      currentStageId: 'stage-2',
+    },
     tasks: [
       {
-        id: 'task-1',
-        planId: 'plan-1',
-        stageId: 'stage-1',
+        taskInstanceId: 'task-instance-1',
+        canonicalItemId: 'canonical-task-1',
         stableKey: 'meet-team',
-        title: 'Meet the team',
         status: 'completed',
-        required: true,
-        countsTowardProgress: true,
-        weight: 1,
-        dependsOnTaskKeys: [],
         completedAt: '2026-08-04T12:00:00.000Z',
-        revision: 1,
-        overdue: false,
+        taskRevision: 1,
       },
       {
-        id: 'task-2',
-        planId: 'plan-1',
-        stageId: 'stage-2',
+        taskInstanceId: 'task-instance-2',
+        canonicalItemId: 'canonical-task-2',
         stableKey: 'set-up-access',
-        title: 'Set up access',
         status: 'not_started',
-        required: true,
-        countsTowardProgress: true,
-        weight: 1,
-        dependsOnTaskKeys: [],
-        revision: 0,
-        overdue: false,
+        dueAt: '2099-08-20T12:00:00.000Z',
+        taskRevision: 0,
       },
     ],
     upcomingTasks: [
       {
-        id: 'task-2',
-        planId: 'plan-1',
-        stageId: 'stage-2',
+        taskInstanceId: 'task-instance-2',
+        canonicalItemId: 'canonical-task-2',
         stableKey: 'set-up-access',
-        title: 'Set up access',
         status: 'not_started',
-        required: true,
-        countsTowardProgress: true,
-        weight: 1,
-        dependsOnTaskKeys: [],
-        revision: 0,
-        overdue: false,
+        dueAt: '2099-08-20T12:00:00.000Z',
+        taskRevision: 0,
       },
     ],
   },
+  newestUnreadNotice: null,
+  unreadNoticeCount: 0,
 } satisfies WorkspaceOnboardingState;
 
-void test('uses the lifecycle projection for roadmap, progress, and upcoming tasks', () => {
-  const model = createWorkspaceDashboardModel(createGraph([]), readyState);
+void test('joins canonical definitions to personal state without mixing their revisions', () => {
+  const model = createWorkspaceDashboardModel(readyState);
   assert.equal(model.roadmap.status, 'ready');
   assert.equal(model.roadmap.stages[1]?.status, 'in-progress');
+  assert.equal(model.roadmap.title, 'Tax consultant onboarding');
+  assert.equal(model.roadmap.versionNumber, 2);
   assert.deepEqual(model.progress, {
     status: 'ready',
     summary: {
       completedTaskCount: 1,
       totalTaskCount: 2,
       percentComplete: 50,
-      currentStage: readyState.projection.roadmap[1],
+      currentStage: model.roadmap.stages[1],
     },
   });
   assert.equal(model.upcomingTasks.status, 'ready');
-  assert.equal(model.upcomingTasks.items[0]?.id, 'task-2');
+  assert.equal(model.upcomingTasks.items[0]?.taskInstanceId, 'task-instance-2');
+  assert.equal(model.upcomingTasks.items[0]?.title, 'Set up access');
+  assert.equal(model.upcomingTasks.items[0]?.taskRevision, 0);
 });
 
-void test('keeps missing and empty lifecycle state explicit', () => {
-  assert.deepEqual(createWorkspaceDashboardModel(null, null).roadmap, {
+void test('omits user task state that does not match the canonical item identity and stable key', () => {
+  const state: WorkspaceOnboardingState = structuredClone(readyState);
+  if (state.status !== 'ready') return;
+  state.userState.tasks[1]!.stableKey = 'stale-key';
+  assert.deepEqual(
+    deriveAllTasks(state).map((task) => task.taskInstanceId),
+    ['task-instance-1'],
+  );
+});
+
+void test('keeps missing and ingestion-driven empty state explicit', () => {
+  assert.deepEqual(createWorkspaceDashboardModel(null).roadmap, {
     status: 'unavailable',
     stages: [],
     reason: 'onboarding-unavailable',
   });
-  const empty = createWorkspaceDashboardModel(null, {
+  const empty: WorkspaceOnboardingState = {
     status: 'empty',
-    reason: 'no-active-plan',
-  });
-  assert.deepEqual(empty.progress, { status: 'empty', summary: null });
-  assert.deepEqual(empty.upcomingTasks, { status: 'empty', items: [] });
-
-  const legacyEmptyPlan: WorkspaceOnboardingState = structuredClone(readyState);
-  if (legacyEmptyPlan.status !== 'ready') return;
-  legacyEmptyPlan.projection.roadmap = [];
-  legacyEmptyPlan.projection.tasks = [];
-  legacyEmptyPlan.projection.upcomingTasks = [];
-  legacyEmptyPlan.projection.progress.percentComplete = null;
-  const recovery = createWorkspaceDashboardModel(null, legacyEmptyPlan);
-  assert.deepEqual(recovery.roadmap, {
+    message: 'Roadmap is being prepared from the latest knowledge base.',
+    newestUnreadNotice: null,
+    unreadNoticeCount: 0,
+  };
+  assert.deepEqual(createWorkspaceDashboardModel(empty).progress, {
     status: 'empty',
-    stages: [],
-    reason: 'no-roadmap-content',
+    summary: null,
+    message: empty.message,
   });
-  assert.deepEqual(recovery.progress, { status: 'empty', summary: null });
+  assert.deepEqual(createWorkspaceDashboardModel(empty).upcomingTasks, {
+    status: 'empty',
+    items: [],
+  });
 });
 
 void test('reports a zero progress denominator as unavailable', () => {
   const state: WorkspaceOnboardingState = structuredClone(readyState);
   if (state.status !== 'ready') return;
-  state.projection.progress.percentComplete = null;
-  state.projection.progress.totalWeight = 0;
+  state.userState.progress.percentComplete = null;
+  state.userState.progress.totalWeight = 0;
   assert.deepEqual(deriveWorkspaceProgress(state), {
     status: 'unavailable',
     summary: null,
@@ -157,56 +171,53 @@ void test('reports a zero progress denominator as unavailable', () => {
   });
 });
 
-void test('normalizes and deduplicates authorized graph sources as resource candidates', () => {
-  const resources = deriveWorkspaceResources(
-    createGraph([
-      {
-        id: 'handbook#one',
-        title: 'Handbook',
-        excerpt: 'First excerpt',
-        href: '/api/sources/handbook',
-        sourceType: 'knowledge_base',
-        metadata: { rootSourceId: 'handbook' },
-      },
-      {
-        id: 'handbook#two',
-        title: 'Handbook duplicate',
-        excerpt: 'Second excerpt',
-        href: '/api/sources/handbook',
-        sourceType: 'knowledge_base',
-        metadata: { rootSourceId: 'handbook' },
-      },
-      {
-        id: 'policy',
-        title: 'Public policy',
-        excerpt: 'Policy excerpt',
-        href: 'https://example.com/policy',
-        sourceType: 'web',
-      },
-    ]),
-  );
+void test('normalizes and deduplicates canonical browser-safe source references', () => {
+  const state: WorkspaceOnboardingState = structuredClone(readyState);
+  if (state.status !== 'ready') return;
+  state.roadmap.sourceReferences = [
+    {
+      id: 'handbook#one',
+      title: 'Handbook',
+      excerpt: 'First excerpt',
+      href: '/api/sources/handbook',
+      sourceType: 'knowledge_base',
+      metadata: { rootSourceId: 'handbook' },
+    },
+    {
+      id: 'handbook#two',
+      title: 'Handbook duplicate',
+      excerpt: 'Second excerpt',
+      href: '/api/sources/handbook',
+      sourceType: 'knowledge_base',
+      metadata: { rootSourceId: 'handbook' },
+    },
+    {
+      id: 'policy',
+      title: 'Public policy',
+      excerpt: 'Policy excerpt',
+      href: 'https://example.com/policy',
+      sourceType: 'web',
+    },
+  ];
+  const resources = deriveWorkspaceResources(state);
   assert.equal(resources.status, 'ready');
   assert.equal(resources.items.length, 2);
 });
 
-void test('does not expose resources when a source link cannot be normalized', () => {
-  const resources = deriveWorkspaceResources(
-    createGraph([
-      {
-        id: 'private-source',
-        title: 'Private source',
-        excerpt: 'Do not expose this locator',
-        href: 'file:///private/handbook.pdf',
-      },
-    ]),
-  );
-  assert.deepEqual(resources, {
+void test('does not expose a canonical source with an unsafe application link', () => {
+  const state: WorkspaceOnboardingState = structuredClone(readyState);
+  if (state.status !== 'ready') return;
+  state.roadmap.sourceReferences = [
+    {
+      id: 'private-source',
+      title: 'Private title',
+      excerpt: 'Do not expose this locator',
+      href: 'file:///private/handbook.pdf',
+    },
+  ];
+  assert.deepEqual(deriveWorkspaceResources(state), {
     status: 'unavailable',
     items: [],
     reason: 'source-links-unavailable',
   });
 });
-
-function createGraph(sources: KnowledgeSource[]): GuideGraph {
-  return { rootId: 'root', steps: [], edges: [], sources };
-}

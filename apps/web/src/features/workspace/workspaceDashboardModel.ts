@@ -1,17 +1,57 @@
 import type {
-  GuideGraph,
-  OnboardingTaskProjection,
-  RoadmapStageProjection,
+  OnboardingProgress,
+  OnboardingTaskStatus,
+  SourceReference,
+  StaticRoadmapStage,
+  StaticRoadmapTask,
+  UserRoadmapTaskState,
   WorkspaceOnboardingState,
 } from '@onboarding/shared';
 import { getDisplaySourceState, type DisplaySourceLink } from './sourceLinks';
 
-export type WorkspaceRoadmapStage = RoadmapStageProjection;
+export type WorkspaceRoadmapStageStatus =
+  | 'completed'
+  | 'in-progress'
+  | 'upcoming'
+  | 'overdue'
+  | 'status-unavailable';
+
+export interface WorkspaceTask extends StaticRoadmapTask {
+  taskInstanceId: string;
+  stageId: string;
+  status: OnboardingTaskStatus;
+  taskRevision: number;
+  dueAt?: string;
+  completedAt?: string;
+  completedBy?: string;
+  overdue: boolean;
+}
+
+export interface WorkspaceRoadmapStage extends Omit<StaticRoadmapStage, 'tasks'> {
+  status: WorkspaceRoadmapStageStatus;
+  dueAt?: string;
+  completedAt?: string;
+  completedTaskCount: number;
+  totalTaskCount: number;
+}
 
 export type WorkspaceRoadmapState =
   | { status: 'unavailable'; stages: []; reason: 'onboarding-unavailable' }
-  | { status: 'empty'; stages: []; reason: 'no-active-plan' | 'no-roadmap-content' }
-  | { status: 'ready'; stages: WorkspaceRoadmapStage[] };
+  | {
+      status: 'empty';
+      stages: [];
+      reason: 'roadmap-preparing' | 'no-roadmap-content';
+      message: string;
+    }
+  | {
+      status: 'ready';
+      roadmapId: string;
+      versionId: string;
+      versionNumber: number;
+      title: string;
+      sourceReferences: SourceReference[];
+      stages: WorkspaceRoadmapStage[];
+    };
 
 export interface WorkspaceProgressSummary {
   completedTaskCount: number;
@@ -26,19 +66,19 @@ export type WorkspaceProgressState =
       summary: null;
       reason: 'onboarding-unavailable' | 'no-progress-tasks';
     }
-  | { status: 'empty'; summary: null }
+  | { status: 'empty'; summary: null; message: string }
   | { status: 'ready'; summary: WorkspaceProgressSummary };
 
 export type WorkspaceUpcomingTasksState =
   | { status: 'unavailable'; items: []; reason: 'onboarding-unavailable' }
   | { status: 'empty'; items: [] }
-  | { status: 'ready'; items: OnboardingTaskProjection[] };
+  | { status: 'ready'; items: WorkspaceTask[] };
 
 export type WorkspaceResourcesState =
   | {
       status: 'unavailable';
       items: DisplaySourceLink[];
-      reason: 'guide-unavailable' | 'source-links-unavailable';
+      reason: 'onboarding-unavailable' | 'source-links-unavailable';
     }
   | { status: 'empty'; items: DisplaySourceLink[] }
   | { status: 'ready'; items: DisplaySourceLink[] };
@@ -51,14 +91,13 @@ export interface WorkspaceDashboardModel {
 }
 
 export function createWorkspaceDashboardModel(
-  graph: GuideGraph | null,
   onboarding: WorkspaceOnboardingState | null,
 ): WorkspaceDashboardModel {
   return {
     roadmap: deriveWorkspaceRoadmap(onboarding),
     progress: deriveWorkspaceProgress(onboarding),
     upcomingTasks: deriveUpcomingTasks(onboarding),
-    resources: deriveWorkspaceResources(graph),
+    resources: deriveWorkspaceResources(onboarding),
   };
 }
 
@@ -69,12 +108,34 @@ export function deriveWorkspaceRoadmap(
     return { status: 'unavailable', stages: [], reason: 'onboarding-unavailable' };
   }
   if (onboarding.status === 'empty') {
-    return { status: 'empty', stages: [], reason: 'no-active-plan' };
+    return {
+      status: 'empty',
+      stages: [],
+      reason: 'roadmap-preparing',
+      message: onboarding.message,
+    };
   }
-  if (onboarding.projection.roadmap.length === 0) {
-    return { status: 'empty', stages: [], reason: 'no-roadmap-content' };
+  if (onboarding.roadmap.stages.length === 0) {
+    return {
+      status: 'empty',
+      stages: [],
+      reason: 'no-roadmap-content',
+      message: 'Roadmap is being prepared from the latest knowledge base.',
+    };
   }
-  return { status: 'ready', stages: onboarding.projection.roadmap };
+
+  const tasks = joinRoadmapTasks(onboarding.roadmap.stages, onboarding.userState.tasks);
+  return {
+    status: 'ready',
+    roadmapId: onboarding.roadmap.roadmapId,
+    versionId: onboarding.roadmap.versionId,
+    versionNumber: onboarding.roadmap.versionNumber,
+    title: onboarding.roadmap.title,
+    sourceReferences: onboarding.roadmap.sourceReferences,
+    stages: onboarding.roadmap.stages.map((stage) =>
+      createStageProjection(stage, tasks, onboarding.userState.progress),
+    ),
+  };
 }
 
 export function deriveWorkspaceProgress(
@@ -83,9 +144,19 @@ export function deriveWorkspaceProgress(
   if (!onboarding) {
     return { status: 'unavailable', summary: null, reason: 'onboarding-unavailable' };
   }
-  if (onboarding.status === 'empty') return { status: 'empty', summary: null };
-  const { progress, roadmap } = onboarding.projection;
-  if (roadmap.length === 0) return { status: 'empty', summary: null };
+  if (onboarding.status === 'empty') {
+    return { status: 'empty', summary: null, message: onboarding.message };
+  }
+
+  const roadmap = deriveWorkspaceRoadmap(onboarding);
+  if (roadmap.status === 'empty') {
+    return { status: 'empty', summary: null, message: roadmap.message };
+  }
+  if (roadmap.status === 'unavailable') {
+    return { status: 'unavailable', summary: null, reason: 'onboarding-unavailable' };
+  }
+
+  const { progress } = onboarding.userState;
   if (progress.percentComplete === null) {
     return { status: 'unavailable', summary: null, reason: 'no-progress-tasks' };
   }
@@ -95,7 +166,7 @@ export function deriveWorkspaceProgress(
       completedTaskCount: progress.completedTaskCount,
       totalTaskCount: progress.totalTaskCount,
       percentComplete: progress.percentComplete,
-      currentStage: roadmap.find((stage) => stage.id === progress.currentStageId) ?? null,
+      currentStage: roadmap.stages.find((stage) => stage.id === progress.currentStageId) ?? null,
     },
   };
 }
@@ -106,20 +177,123 @@ export function deriveUpcomingTasks(
   if (!onboarding) {
     return { status: 'unavailable', items: [], reason: 'onboarding-unavailable' };
   }
-  if (onboarding.status === 'empty' || onboarding.projection.upcomingTasks.length === 0) {
+  if (onboarding.status === 'empty' || onboarding.userState.upcomingTasks.length === 0) {
     return { status: 'empty', items: [] };
   }
-  return { status: 'ready', items: onboarding.projection.upcomingTasks };
+  const items = joinRoadmapTasks(onboarding.roadmap.stages, onboarding.userState.upcomingTasks);
+  return items.length > 0 ? { status: 'ready', items } : { status: 'empty', items: [] };
 }
 
-export function deriveWorkspaceResources(graph: GuideGraph | null): WorkspaceResourcesState {
-  if (!graph) {
-    return { status: 'unavailable', items: [], reason: 'guide-unavailable' };
+export function deriveAllTasks(onboarding: WorkspaceOnboardingState): WorkspaceTask[] {
+  if (onboarding.status === 'empty') return [];
+  return joinRoadmapTasks(onboarding.roadmap.stages, onboarding.userState.tasks);
+}
+
+export function deriveWorkspaceResources(
+  onboarding: WorkspaceOnboardingState | null,
+): WorkspaceResourcesState {
+  if (!onboarding || onboarding.status === 'empty') {
+    return { status: 'unavailable', items: [], reason: 'onboarding-unavailable' };
   }
-  const displaySources = getDisplaySourceState(graph.sources);
+  const displaySources = getDisplaySourceState(onboarding.roadmap.sourceReferences);
   if (displaySources.status === 'error') {
     return { status: 'unavailable', items: [], reason: 'source-links-unavailable' };
   }
   if (displaySources.status === 'empty') return { status: 'empty', items: [] };
   return { status: 'ready', items: displaySources.links };
+}
+
+function joinRoadmapTasks(
+  stages: StaticRoadmapStage[],
+  userTasks: UserRoadmapTaskState[],
+): WorkspaceTask[] {
+  const definitions = new Map<
+    string,
+    { definition: StaticRoadmapTask; stageId: string; stagePosition: number }
+  >();
+  for (const stage of stages) {
+    for (const definition of stage.tasks) {
+      definitions.set(definition.id, {
+        definition,
+        stageId: stage.id,
+        stagePosition: stage.position,
+      });
+    }
+  }
+
+  return userTasks
+    .flatMap((userTask) => {
+      const match = definitions.get(userTask.canonicalItemId);
+      if (!match || match.definition.stableKey !== userTask.stableKey) return [];
+      return [toWorkspaceTask(match.definition, match.stageId, match.stagePosition, userTask)];
+    })
+    .sort((left, right) =>
+      left.stagePosition === right.stagePosition
+        ? left.position - right.position
+        : left.stagePosition - right.stagePosition,
+    )
+    .map(({ stagePosition: _, ...task }) => task);
+}
+
+function toWorkspaceTask(
+  definition: StaticRoadmapTask,
+  stageId: string,
+  stagePosition: number,
+  userTask: UserRoadmapTaskState,
+): WorkspaceTask & { stagePosition: number } {
+  const completed = userTask.status === 'completed' || userTask.status === 'waived';
+  return {
+    ...definition,
+    taskInstanceId: userTask.taskInstanceId,
+    stageId,
+    stagePosition,
+    status: userTask.status,
+    taskRevision: userTask.taskRevision,
+    ...(userTask.dueAt ? { dueAt: userTask.dueAt } : {}),
+    ...(userTask.completedAt ? { completedAt: userTask.completedAt } : {}),
+    ...(userTask.completedBy ? { completedBy: userTask.completedBy } : {}),
+    overdue: !completed && Boolean(userTask.dueAt && Date.parse(userTask.dueAt) < Date.now()),
+  };
+}
+
+function createStageProjection(
+  stage: StaticRoadmapStage,
+  tasks: WorkspaceTask[],
+  progress: OnboardingProgress,
+): WorkspaceRoadmapStage {
+  const stageTasks = tasks.filter((task) => task.stageId === stage.id);
+  const completedTasks = stageTasks.filter(
+    (task) => task.status === 'completed' || task.status === 'waived',
+  );
+  const dueDates = stageTasks.flatMap((task) => (task.dueAt ? [task.dueAt] : []));
+  const completionDates = completedTasks.flatMap((task) =>
+    task.completedAt ? [task.completedAt] : [],
+  );
+
+  let status: WorkspaceRoadmapStageStatus = 'upcoming';
+  if (stageTasks.length === 0) status = 'status-unavailable';
+  else if (stageTasks.some((task) => task.overdue)) status = 'overdue';
+  else if (completedTasks.length === stageTasks.length) status = 'completed';
+  else if (
+    progress.currentStageId === stage.id ||
+    stageTasks.some((task) => task.status !== 'not_started')
+  ) {
+    status = 'in-progress';
+  }
+
+  return {
+    id: stage.id,
+    stableKey: stage.stableKey,
+    position: stage.position,
+    title: stage.title,
+    description: stage.description,
+    dependsOnStageKeys: stage.dependsOnStageKeys,
+    status,
+    ...(dueDates.length > 0 ? { dueAt: dueDates.sort().at(-1) } : {}),
+    ...(status === 'completed' && completionDates.length > 0
+      ? { completedAt: completionDates.sort().at(-1) }
+      : {}),
+    completedTaskCount: completedTasks.length,
+    totalTaskCount: stageTasks.length,
+  };
 }

@@ -8,13 +8,10 @@ import { deriveWorkspaceResources } from '@/features/workspace/workspaceDashboar
 import { ResourceCard, resourceCardClass } from './ResourceCard';
 
 export function ResourcesDashboard() {
-  const { graph, isLoading, sources } = useWorkspaceRoute();
-  const resources = useMemo(
-    () => deriveWorkspaceResources(graph ? { ...graph, sources } : null),
-    [graph, sources],
-  );
+  const { onboarding, onboardingIsLoading } = useWorkspaceRoute();
+  const resources = useMemo(() => deriveWorkspaceResources(onboarding), [onboarding]);
 
-  if (isLoading && resources.status === 'unavailable') {
+  if (onboardingIsLoading && resources.status === 'unavailable') {
     return (
       <div
         aria-label="Loading onboarding resources"

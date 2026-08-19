@@ -37,17 +37,7 @@ export function WorkspaceShell({
         onboarding: controller.route.onboarding,
         onboardingIsLoading: controller.route.onboardingIsLoading,
         pendingTaskIds: controller.route.pendingTaskIds,
-        roadmapHistory: controller.route.roadmapHistory,
-        roadmapIsMutating: controller.route.roadmapIsMutating,
-        roadmapProposal: controller.route.roadmapProposal,
-        onReferenceStep: controller.route.onReferenceStep,
         onRetry: controller.route.onRetry,
-        onGenerateRoadmap: controller.route.onGenerateRoadmap,
-        onRoadmapCommand: controller.route.onRoadmapCommand,
-        onProposeRoadmapChange: controller.route.onProposeRoadmapChange,
-        onApplyRoadmapProposal: controller.route.onApplyRoadmapProposal,
-        onDismissRoadmapProposal: controller.route.onDismissRoadmapProposal,
-        onCancelRoadmap: controller.route.onCancelRoadmap,
         onTransitionTask: controller.route.onTransitionTask,
         sources: controller.route.sources,
       }}
@@ -83,8 +73,22 @@ export function WorkspaceShell({
             apiError={controller.route.apiError}
             isSigningOut={isSigningOut}
             logoutError={logoutError}
+            noticeActionPending={controller.route.noticeActionPending}
+            noticeError={controller.route.noticeError}
             onLogout={onLogout}
+            onDismissRoadmapNotice={controller.route.onDismissRoadmapNotice}
             onRetry={controller.route.onRetry}
+            onViewRoadmapNotice={controller.route.onViewRoadmapNotice}
+            roadmapNotice={
+              controller.route.onboarding?.status === 'ready'
+                ? controller.route.onboarding.newestUnreadNotice
+                : null
+            }
+            syncStatus={
+              controller.route.onboarding?.status === 'ready'
+                ? controller.route.onboarding.userState.syncStatus
+                : null
+            }
           />
         }
       >

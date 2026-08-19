@@ -12,26 +12,22 @@ export async function writeKnowledgeChunks(
   sourceVersionId?: string,
 ): Promise<void> {
   for (const { chunk, embedding } of chunks) {
-    const metadata = JSON.stringify({ ...chunk.metadata, embeddingProfile, sourceVersionId });
+    const metadata = JSON.stringify({
+      ...chunk.metadata,
+      embeddingProfile,
+      sourceVersionId,
+      logicalChunkId: chunk.id,
+    });
     const vector = formatVector(embedding);
     if (sourceVersionId) {
+      const physicalChunkId = `${sourceVersionId}:${chunk.id}`;
       await db.$executeRaw(Prisma.sql`insert into knowledge_chunks (
          id, embedding_profile, title, excerpt, uri, source_type, metadata, embedding,
          source_id, source_version_id, section_key, updated_at
-       ) values (${chunk.id}, ${embeddingProfile}, ${chunk.title}, ${chunk.text}, ${chunk.uri},
+       ) values (${physicalChunkId}, ${embeddingProfile}, ${chunk.title}, ${chunk.text}, ${chunk.uri},
          'knowledge_base', ${metadata}::jsonb, ${vector}::vector, ${rootSourceId},
          ${sourceVersionId}, ${String(chunk.metadata.section ?? chunk.metadata.chunkIndex ?? '')}, now())
-       on conflict (id, embedding_profile) do update set
-         title = excluded.title,
-         excerpt = excluded.excerpt,
-         uri = excluded.uri,
-         source_type = excluded.source_type,
-         metadata = excluded.metadata,
-         embedding = excluded.embedding,
-         source_id = excluded.source_id,
-         source_version_id = excluded.source_version_id,
-         section_key = excluded.section_key,
-         updated_at = excluded.updated_at`);
+       on conflict (id, embedding_profile) do nothing`);
     } else {
       await db.$executeRaw(Prisma.sql`insert into knowledge_chunks (
            id, embedding_profile, title, excerpt, uri, source_type, metadata, embedding, updated_at
@@ -48,12 +44,7 @@ export async function writeKnowledgeChunks(
     }
   }
 
-  if (sourceVersionId) {
-    await db.$executeRaw(Prisma.sql`delete from knowledge_chunks
-       where source_version_id = ${sourceVersionId}
-         and embedding_profile = ${embeddingProfile}
-         and id not in (${Prisma.join(chunks.map(({ chunk }) => chunk.id))})`);
-  } else {
+  if (!sourceVersionId) {
     await db.$executeRaw(Prisma.sql`delete from knowledge_chunks
        where metadata->>'rootSourceId' = ${rootSourceId}
          and embedding_profile = ${embeddingProfile}

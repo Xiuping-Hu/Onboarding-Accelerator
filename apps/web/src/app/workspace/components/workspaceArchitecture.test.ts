@@ -72,6 +72,36 @@ void test('Radix imports are confined to source-owned shadcn primitives', async 
   }
 });
 
+void test('roadmap definition controls and their browser mutation surfaces are retired', async () => {
+  const overviewRoot = join(workspaceComponentsRoot, 'overview');
+  for (const retiredFile of [
+    join(overviewRoot, 'RoadmapSetup.tsx'),
+    join(overviewRoot, 'RoadmapSetup.test.tsx'),
+    join(overviewRoot, 'LiveRoadmapEditor.tsx'),
+  ]) {
+    await assert.rejects(access(retiredFile));
+  }
+
+  const roadmapSources = [
+    ...(await findFiles(overviewRoot, '.tsx')),
+    ...(await findFiles(join(appRoot, 'workspace', 'tasks'), '.tsx')),
+  ];
+  for (const file of roadmapSources) {
+    const source = await readFile(file, 'utf8');
+    assert.doesNotMatch(
+      source,
+      /Generate with AI|Create manually|Edit roadmap|Apply AI change|Cancel process|Version history|Ask assistant about this stage/u,
+    );
+  }
+
+  const workspaceApi = await readFile(join(sourceRoot, 'features', 'workspace', 'api.ts'), 'utf8');
+  assert.doesNotMatch(
+    workspaceApi,
+    /generateOnboardingPlan|createOnboardingPlan|RoadmapCommand|RoadmapAiProposal|OnboardingPlanHistory|CancellationImpact|cancelOnboardingPlan/u,
+  );
+  assert.doesNotMatch(workspaceApi, /sessions\/\$\{[^}]+\}\/onboarding/u);
+});
+
 async function findFiles(root: string, suffix: string): Promise<string[]> {
   const entries = await readdir(root, { withFileTypes: true });
   const files = await Promise.all(

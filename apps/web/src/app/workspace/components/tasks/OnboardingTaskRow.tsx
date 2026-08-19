@@ -1,30 +1,24 @@
-import type {
-  OnboardingTaskMutationSource,
-  OnboardingTaskProjection,
-  OnboardingTaskStatus,
-} from '@onboarding/shared';
+import type { OnboardingTaskStatus } from '@onboarding/shared';
 import { Badge } from '@/components/ui/badge';
+import type { WorkspaceTask } from '@/features/workspace/workspaceDashboardModel';
 import { cn } from '@/lib/utils';
 
 export function OnboardingTaskRow({
   compact = false,
   onTransitionTask,
   pending,
-  source,
   task,
 }: {
   compact?: boolean;
   onTransitionTask: (
     taskId: string,
     status: OnboardingTaskStatus,
-    expectedRevision: number,
-    source: OnboardingTaskMutationSource,
+    expectedTaskRevision: number,
   ) => Promise<void>;
   pending: boolean;
-  source: OnboardingTaskMutationSource;
-  task: OnboardingTaskProjection;
+  task: WorkspaceTask;
 }) {
-  const inputId = `onboarding-task-${task.id}`;
+  const inputId = `onboarding-task-${task.taskInstanceId}`;
   const completed = task.status === 'completed' || task.status === 'waived';
   return (
     <li
@@ -45,7 +39,7 @@ export function OnboardingTaskRow({
           id={inputId}
           onChange={(event) => {
             if (event.currentTarget.checked) {
-              void onTransitionTask(task.id, 'completed', task.revision, source);
+              void onTransitionTask(task.taskInstanceId, 'completed', task.taskRevision);
             }
           }}
           type="checkbox"

@@ -4,18 +4,17 @@ import type {
   CancelOnboardingPlanRequest,
   CreateOnboardingPlanRequest,
   GenerateOnboardingPlanRequest,
+  LegacyWorkspaceOnboardingState,
   MutateOnboardingRoadmapResponse,
   OnboardingCancellationImpact,
   OnboardingPlanHistoryResponse,
   OnboardingPlanRevisionEvent,
+  OnboardingTaskMutationSource,
   OnboardingTaskStatus,
   RequestRoadmapAiProposal,
   RoadmapCommand,
   RoadmapChangeProposal,
   RoadmapCommandRequest,
-  TransitionOnboardingTaskRequest,
-  TransitionOnboardingTaskResponse,
-  WorkspaceOnboardingState,
 } from '@onboarding/shared';
 import type { AuthenticatedUser } from '../../auth';
 import { AppError } from '../../core/errors/appError';
@@ -40,6 +39,20 @@ import { calculateOnboardingProjection } from './onboardingProjection';
 
 type ResolveAccessScopes = (ownerId: string) => Promise<string[]>;
 
+/** @deprecated Input retained only for the session-scoped compatibility service. */
+interface LegacyTransitionOnboardingTaskRequest {
+  status: OnboardingTaskStatus;
+  expectedRevision: number;
+  idempotencyKey: string;
+  source: OnboardingTaskMutationSource;
+}
+
+/** @deprecated Response retained only for the session-scoped compatibility service. */
+interface LegacyOnboardingMutationResponse {
+  state: LegacyWorkspaceOnboardingState;
+  idempotentReplay: boolean;
+}
+
 export class OnboardingService {
   constructor(
     private readonly repository: OnboardingRepository,
@@ -48,7 +61,7 @@ export class OnboardingService {
     private readonly resolveAccessScopes: ResolveAccessScopes = async () => ['all_users'],
   ) {}
 
-  async get(sessionId: string, ownerId: string): Promise<WorkspaceOnboardingState> {
+  async get(sessionId: string, ownerId: string): Promise<LegacyWorkspaceOnboardingState> {
     await this.sessions.get(sessionId, ownerId);
     const aggregate = await this.repository.getActive(sessionId, ownerId);
     return aggregate
@@ -60,7 +73,7 @@ export class OnboardingService {
     sessionId: string,
     input: CreateOnboardingPlanRequest,
     actor: AuthenticatedUser,
-  ): Promise<TransitionOnboardingTaskResponse> {
+  ): Promise<LegacyOnboardingMutationResponse> {
     await this.sessions.get(sessionId, actor.id);
     return this.createPrepared(sessionId, input, actor, 'manual');
   }
@@ -69,7 +82,7 @@ export class OnboardingService {
     sessionId: string,
     input: GenerateOnboardingPlanRequest,
     actor: AuthenticatedUser,
-  ): Promise<TransitionOnboardingTaskResponse> {
+  ): Promise<LegacyOnboardingMutationResponse> {
     await this.sessions.get(sessionId, actor.id);
     const existing = await this.repository.getActive(sessionId, actor.id);
     if (existing) {
@@ -367,7 +380,7 @@ export class OnboardingService {
     sessionId: string,
     input: CancelOnboardingPlanRequest,
     actor: AuthenticatedUser,
-  ): Promise<WorkspaceOnboardingState> {
+  ): Promise<LegacyWorkspaceOnboardingState> {
     await this.sessions.get(sessionId, actor.id);
     const replay = await this.repository.getRevisionEventByIdempotency(
       actor.id,
@@ -412,9 +425,9 @@ export class OnboardingService {
   async transitionTask(
     sessionId: string,
     taskId: string,
-    input: TransitionOnboardingTaskRequest,
+    input: LegacyTransitionOnboardingTaskRequest,
     actor: AuthenticatedUser,
-  ): Promise<TransitionOnboardingTaskResponse> {
+  ): Promise<LegacyOnboardingMutationResponse> {
     const aggregate = await this.requireActive(sessionId, actor.id);
     const task = aggregate.tasks.find((candidate) => candidate.id === taskId);
     if (!task) throw AppError.notFound('Onboarding task not found.');
@@ -467,7 +480,7 @@ export class OnboardingService {
     actor: AuthenticatedUser,
     changeSource: string,
     sourceReferences: string[] = [],
-  ): Promise<TransitionOnboardingTaskResponse> {
+  ): Promise<LegacyOnboardingMutationResponse> {
     const creation = createPlanInput(sessionId, input, actor.id, changeSource, sourceReferences);
     try {
       const result = await this.repository.createPlan(creation);

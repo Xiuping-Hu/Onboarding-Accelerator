@@ -460,23 +460,127 @@ export interface WorkspaceOnboardingProjection {
   upcomingTasks: OnboardingTaskProjection[];
 }
 
-export type WorkspaceOnboardingState =
+/**
+ * @deprecated Compatibility shape for the retired session-owned onboarding service.
+ * New browser code must use WorkspaceOnboardingState.
+ */
+export type LegacyWorkspaceOnboardingState =
   | { status: 'empty'; reason: 'no-active-plan' }
   | { status: 'ready'; projection: WorkspaceOnboardingProjection };
 
+export interface StaticRoadmapTask {
+  id: string;
+  stableKey: string;
+  position: number;
+  title: string;
+  description?: string;
+  completionCriteria?: string;
+  required: boolean;
+  countsTowardProgress: boolean;
+  weight: number;
+  dueOffsetDays?: number;
+  dependsOnTaskKeys: string[];
+}
+
+export interface StaticRoadmapStage {
+  id: string;
+  stableKey: string;
+  position: number;
+  title: string;
+  description: string;
+  dependsOnStageKeys: string[];
+  tasks: StaticRoadmapTask[];
+}
+
+export interface SourceReference {
+  id: string;
+  title: string;
+  excerpt?: string;
+  href: string;
+  sourceType?: SourceType;
+  metadata?: Record<string, string | number | boolean | undefined>;
+}
+
+export interface OnboardingProgress {
+  percentComplete: number | null;
+  completedWeight: number;
+  totalWeight: number;
+  completedTaskCount: number;
+  totalTaskCount: number;
+  currentStageId: string | null;
+}
+
+export interface UserRoadmapTaskState {
+  taskInstanceId: string;
+  canonicalItemId: string;
+  stableKey: string;
+  status: OnboardingTaskStatus;
+  taskRevision: number;
+  dueAt?: string;
+  completedAt?: string;
+  completedBy?: string;
+}
+
+export interface RoadmapUpdateNotice {
+  id: string;
+  userId: string;
+  roadmapVersionId: string;
+  roadmapVersionNumber: number;
+  ingestionRunId: string | null;
+  retainedItemCount: number;
+  addedItemCount: number;
+  retiredItemCount: number;
+  preservedCompletedCount: number;
+  createdAt: string;
+  readAt: string | null;
+}
+
+export type WorkspaceOnboardingState =
+  | {
+      status: 'empty';
+      message: 'Roadmap is being prepared from the latest knowledge base.';
+      newestUnreadNotice: null;
+      unreadNoticeCount: 0;
+    }
+  | {
+      status: 'ready';
+      roadmap: {
+        roadmapId: string;
+        versionId: string;
+        versionNumber: number;
+        title: string;
+        stages: StaticRoadmapStage[];
+        sourceReferences: SourceReference[];
+      };
+      userState: {
+        appliedVersionId: string;
+        stateRevision: number;
+        syncStatus: 'current' | 'pending' | 'failed';
+        progress: OnboardingProgress;
+        tasks: UserRoadmapTaskState[];
+        upcomingTasks: UserRoadmapTaskState[];
+      };
+      newestUnreadNotice: RoadmapUpdateNotice | null;
+      unreadNoticeCount: number;
+    };
+
 export interface TransitionOnboardingTaskRequest {
   status: OnboardingTaskStatus;
-  expectedRevision: number;
-  idempotencyKey: string;
-  source: OnboardingTaskMutationSource;
+  expectedTaskRevision: number;
+  expectedStateRevision: number;
+  clientRequestId: string;
 }
 
 export interface TransitionOnboardingTaskResponse {
-  state: WorkspaceOnboardingState;
-  idempotentReplay: boolean;
+  task: UserRoadmapTaskState;
+  taskRevision: number;
+  stateRevision: number;
 }
 
-export interface MutateOnboardingRoadmapResponse extends TransitionOnboardingTaskResponse {
+/** @deprecated Retired session-owned roadmap mutation response. */
+export interface MutateOnboardingRoadmapResponse {
+  state: LegacyWorkspaceOnboardingState;
+  idempotentReplay: boolean;
   impact: RoadmapChangeImpact;
   revisionEvent?: OnboardingPlanRevisionEvent;
 }

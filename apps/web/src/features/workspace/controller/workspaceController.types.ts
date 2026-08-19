@@ -4,11 +4,7 @@ import type {
   GuideStep,
   KnowledgeSource,
   OnboardingSession,
-  OnboardingTaskMutationSource,
   OnboardingTaskStatus,
-  OnboardingPlanRevisionEvent,
-  RoadmapChangeProposal,
-  RoadmapCommand,
   WorkspaceOnboardingState,
 } from '@onboarding/shared';
 import type { RefObject } from 'react';
@@ -32,24 +28,17 @@ export interface WorkspaceController {
     knowledgeMapEnabled: boolean;
     onboarding: WorkspaceOnboardingState | null;
     onboardingIsLoading: boolean;
+    noticeActionPending: boolean;
+    noticeError: string | null;
     pendingTaskIds: string[];
-    roadmapHistory: OnboardingPlanRevisionEvent[];
-    roadmapIsMutating: boolean;
-    roadmapProposal: RoadmapChangeProposal | null;
     meta: WorkspacePageMeta;
-    onReferenceStep: (stepId: string) => void;
+    onDismissRoadmapNotice: (noticeId: string) => Promise<boolean>;
     onRetry: () => void;
-    onGenerateRoadmap: (goal: string, role?: string) => Promise<void>;
-    onRoadmapCommand: (command: RoadmapCommand) => Promise<void>;
-    onProposeRoadmapChange: (instruction: string, selectedStageKey?: string) => Promise<void>;
-    onApplyRoadmapProposal: () => Promise<void>;
-    onDismissRoadmapProposal: () => Promise<void>;
-    onCancelRoadmap: (reason: string) => Promise<void>;
+    onViewRoadmapNotice: () => Promise<void>;
     onTransitionTask: (
       taskId: string,
       status: OnboardingTaskStatus,
-      expectedRevision: number,
-      source: OnboardingTaskMutationSource,
+      expectedTaskRevision: number,
     ) => Promise<void>;
     sources: KnowledgeSource[];
   };

@@ -1,6 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import type { Prisma } from '@/generated/prisma/client';
 import type { PrismaDatabase } from '../infrastructure/prisma/prismaTypes';
+import { enqueueStaticRoadmapRefreshForPublication } from '../modules/static-roadmap/publicationHook';
+import {
+  staticRoadmapPublicationConfigFromEnv,
+  suspendStaticRoadmapForSourceGovernance,
+} from '../modules/static-roadmap/publicationHook';
 import { chunkerVersion } from './chunker';
 import { defaultConnectorKind } from './sourceRegistry';
 import type {
@@ -22,6 +27,17 @@ export async function ensureKnowledgeSource(
   db: PrismaDatabase,
   source: IngestionSource,
 ): Promise<void> {
+  if ('$transaction' in db) {
+    await db.$transaction((transaction) => ensureKnowledgeSourceRecord(transaction, source));
+    return;
+  }
+  await ensureKnowledgeSourceRecord(db, source);
+}
+
+async function ensureKnowledgeSourceRecord(
+  db: Prisma.TransactionClient,
+  source: IngestionSource,
+): Promise<void> {
   const connectorConfig = jsonValue({
     legacyKind: source.kind,
     path: source.path,
@@ -31,7 +47,7 @@ export async function ensureKnowledgeSource(
     website: source.website,
     validation: source.validation,
   });
-  await db.knowledgeSource.upsert({
+  const stored = await db.knowledgeSource.upsert({
     where: { id: source.id },
     create: {
       id: source.id,
@@ -66,6 +82,24 @@ export async function ensureKnowledgeSource(
       updatedAt: new Date(),
     },
   });
+  const roadmapConfig = staticRoadmapPublicationConfigFromEnv();
+  if (
+    roadmapConfig.enabled &&
+    stored.id === roadmapConfig.authoritativeSourceId &&
+    (!stored.enabled || stored.accessScope !== 'all_users')
+  ) {
+    const root = await db.onboardingRoadmap.upsert({
+      where: { key: 'default' },
+      create: { id: randomUUID(), key: 'default' },
+      update: {},
+    });
+    await suspendStaticRoadmapForSourceGovernance(db, {
+      roadmapId: root.id,
+      sourceId: stored.id,
+      enabled: stored.enabled,
+      accessScope: stored.accessScope,
+    });
+  }
 }
 
 export async function loadCurrentSourceState(
@@ -118,23 +152,6 @@ export async function stageSourceVersion(
   producingRunId?: string,
 ): Promise<string> {
   await ensureKnowledgeSource(db, source);
-  const existing = await db.knowledgeSourceVersion.findUnique({
-    where: { sourceId_contentHash: { sourceId: source.id, contentHash: manifest.hash } },
-    select: { id: true },
-  });
-  if (existing) {
-    await db.knowledgeSourceVersion.update({
-      where: { id: existing.id },
-      data: {
-        status: 'candidate',
-        producingRunId,
-        rejectedAt: null,
-        validationSummary: jsonValue({}),
-      },
-    });
-    return existing.id;
-  }
-
   const versionId = randomUUID();
   await db.knowledgeSourceVersion.create({
     data: {
@@ -181,13 +198,19 @@ export async function publishSourceVersion(
   runId?: string,
 ): Promise<void> {
   const now = new Date();
+  // A retried publish for the same durable ingestion occurrence must replay the same outbox row.
+  // Rollback creates a fresh synthetic run, while direct/operator publications supply their own
+  // occurrence identity or intentionally receive a new one.
+  const publicationEventId = runId
+    ? `ingestion:${runId}:${sourceVersionId}`
+    : `publication:${randomUUID()}`;
   await db.$transaction(async (transaction) => {
     await transaction.knowledgeSourceVersion.updateMany({
       where: { sourceId, id: { not: sourceVersionId }, status: 'published' },
       data: { status: 'superseded' },
     });
-    await transaction.knowledgeSourceVersion.update({
-      where: { id: sourceVersionId },
+    const published = await transaction.knowledgeSourceVersion.updateMany({
+      where: { id: sourceVersionId, sourceId },
       data: {
         status: 'published',
         publishedAt: now,
@@ -195,9 +218,18 @@ export async function publishSourceVersion(
         validationSummary: jsonValue(validationSummary),
       },
     });
+    if (published.count !== 1) {
+      throw new Error(`Source version ${sourceVersionId} does not belong to source ${sourceId}.`);
+    }
     await transaction.knowledgeSource.update({
       where: { id: sourceId },
       data: { currentVersionId: sourceVersionId, lastSuccessfulRunAt: now, updatedAt: now },
+    });
+    await enqueueStaticRoadmapRefreshForPublication(transaction, {
+      sourceId,
+      sourceVersionId,
+      publicationEventId,
+      ingestionRunId: runId,
     });
     if (runId) {
       await transaction.ingestionRun.update({
@@ -217,7 +249,7 @@ export async function publishSourceVersion(
           runId,
           eventType: 'version_published',
           outputHash: sourceVersionId,
-          metadata: jsonValue(validationSummary),
+          metadata: jsonValue({ ...validationSummary, publicationEventId }),
         },
       });
     }

@@ -35,7 +35,39 @@ export async function loadSourceRegistry(path: string): Promise<IngestionRegistr
     throw new Error('RAG source registry must contain a sources array.');
   }
 
-  return { sources: parsed.sources.map(validateSource) };
+  const registry = { sources: parsed.sources.map(validateSource) };
+  if (process.env.STATIC_ROADMAP_ENABLED === 'true') {
+    assertSingleStaticRoadmapAuthoritativeSource(
+      registry,
+      process.env.STATIC_ROADMAP_AUTHORITATIVE_SOURCE_ID?.trim() || 'tax-consulting-sharepoint',
+    );
+  }
+  return registry;
+}
+
+export function assertSingleStaticRoadmapAuthoritativeSource(
+  registry: IngestionRegistry,
+  configuredSourceId: string,
+): IngestionSource {
+  const authoritative = registry.sources.filter((source) => source.roadmapAuthoritative === true);
+  if (authoritative.length !== 1) {
+    throw new Error(
+      `Static roadmap generation requires exactly one roadmap-authoritative RAG source; found ${authoritative.length}.`,
+    );
+  }
+  if (authoritative[0]!.id !== configuredSourceId) {
+    throw new Error(
+      `Static roadmap authoritative source ${authoritative[0]!.id} does not match configured source ${configuredSourceId}.`,
+    );
+  }
+  const source = authoritative[0]!;
+  if (source.enabled === false) {
+    throw new Error(`Static roadmap authoritative source ${source.id} must be enabled.`);
+  }
+  if (source.accessScope !== 'all_users') {
+    throw new Error(`Static roadmap authoritative source ${source.id} must use all_users scope.`);
+  }
+  return source;
 }
 
 function validateSource(value: unknown): IngestionSource {
@@ -112,6 +144,7 @@ function validateSource(value: unknown): IngestionSource {
     publicationPolicy,
     reviewed: typeof value.reviewed === 'boolean' ? value.reviewed : undefined,
     enabled: typeof value.enabled === 'boolean' ? value.enabled : true,
+    roadmapAuthoritative: value.roadmapAuthoritative === true,
     metadata: recordOfPrimitives(value.metadata),
     website: isRecord(value.website)
       ? {

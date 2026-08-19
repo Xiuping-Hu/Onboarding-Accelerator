@@ -33,6 +33,7 @@ export interface IngestionSource {
   publicationPolicy?: IngestionPublicationPolicy;
   reviewed?: boolean;
   enabled?: boolean;
+  roadmapAuthoritative?: boolean;
   metadata?: Record<string, string | number | boolean>;
   website?: {
     allowedOrigins?: string[];

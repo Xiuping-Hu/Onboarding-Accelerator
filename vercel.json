@@ -4,6 +4,10 @@
     {
       "path": "/api/internal/rag/cron",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/internal/static-roadmap/cron",
+      "schedule": "*/10 * * * *"
     }
   ]
 }

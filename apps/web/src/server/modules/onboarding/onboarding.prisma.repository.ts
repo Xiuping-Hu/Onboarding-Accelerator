@@ -492,7 +492,10 @@ async function loadAggregate(db: Database, planId: string): Promise<OnboardingPl
   if (!row) throw new Error(`Missing onboarding plan: ${planId}`);
   const definition: StoredJourneyDefinitionVersion = {
     id: row.definitionVersion.id,
-    ownerId: row.definitionVersion.ownerId,
+    // Canonical journey versions are system-owned and therefore have no definition owner. The
+    // legacy aggregate contract still requires an owner, so use the plan owner when a canonical
+    // state is encountered through the compatibility read path.
+    ownerId: row.definitionVersion.ownerId ?? row.ownerId,
     title: row.definitionVersion.title,
     ...(row.definitionVersion.supersedesVersionId
       ? { supersedesVersionId: row.definitionVersion.supersedesVersionId }

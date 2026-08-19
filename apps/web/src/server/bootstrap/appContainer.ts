@@ -20,6 +20,7 @@ import { KnowledgeMapService } from '../modules/knowledge-maps/knowledgeMap.appl
 import { createLogController } from '../modules/logs/log.controller';
 import { LogQueryService } from '../modules/logs/log.service';
 import { createOnboardingController } from '../modules/onboarding/onboarding.controller';
+import { createStaticRoadmapController } from '../modules/onboarding/staticRoadmap.controller';
 import { OnboardingRoadmapAgent } from '../modules/onboarding/onboarding.agent';
 import { PrismaOnboardingRepository } from '../modules/onboarding/onboarding.prisma.repository';
 import { FileOnboardingRepository } from '../modules/onboarding/onboarding.repository';
@@ -33,6 +34,11 @@ import { PgvectorKnowledgeBase } from '../pgvectorKnowledgeBase';
 import { PrismaSessionRepository } from '../postgresSessionRepository';
 import { createConfiguredRagInputAdapters } from '../ragAdapters/index';
 import { RagService } from '../modules/rag/rag.service';
+import {
+  createStaticRoadmapService,
+  DisabledStaticRoadmapService,
+} from '../modules/static-roadmap';
+import { createStaticRoadmapCronController } from '../modules/static-roadmap/staticRoadmapCron.controller';
 import { createRagIngestionCronController } from '../modules/rag-ingestion/ragIngestionCron.controller';
 import { createRagWorkflowController } from '../modules/rag-workflows/ragWorkflow.controller';
 import {
@@ -156,6 +162,10 @@ export function createAppContainer() {
   const onboardingRepository = prisma
     ? new PrismaOnboardingRepository(prisma)
     : new FileOnboardingRepository(join(dirname(config.sessionStorePath), 'onboarding-plans.json'));
+  const staticRoadmapWorker = prisma
+    ? createStaticRoadmapService({ db: prisma, answers, embeddings, config })
+    : undefined;
+  const staticRoadmap = staticRoadmapWorker ?? new DisabledStaticRoadmapService();
   const metrics = {
     startedAt: new Date().toISOString(),
     requestsTotal: 0,
@@ -174,6 +184,7 @@ export function createAppContainer() {
       new OnboardingRoadmapAgent(answers, rag),
       resolveRagAccessScopes,
     ),
+    staticRoadmap,
     ragWorkflows,
     sessions: new SessionService(sessions, sourceLinks),
     sources: sourceLinks,
@@ -198,6 +209,13 @@ export function createAppContainer() {
     guide: createGuideController(services.guide),
     logs: createLogController(services.logs),
     onboarding: createOnboardingController(services.onboarding),
+    staticRoadmap: createStaticRoadmapController(services.staticRoadmap),
+    staticRoadmapCron: createStaticRoadmapCronController({
+      service: staticRoadmapWorker,
+      enabled: config.staticRoadmapEnabled,
+      secret: process.env.CRON_SECRET,
+      bootstrapRequestId: config.staticRoadmapBootstrapRequestId,
+    }),
     ragIngestion: createRagIngestionCronController(),
     ragWorkflows: createRagWorkflowController(services.ragWorkflows),
     sessions: createSessionController(services.sessions),
@@ -217,6 +235,7 @@ export function createAppContainer() {
     ragWorkflowRuntime,
     ragWorkflowRepository,
     onboardingRepository,
+    staticRoadmap,
     metrics,
     services,
     controllers,

@@ -53,6 +53,22 @@ export interface ServerConfig {
   mastraStorageDisableInit: boolean;
   mastraPostgresPoolMax: number;
   mastraSnapshotRetentionDays: number;
+  staticRoadmapEnabled: boolean;
+  staticRoadmapRefreshClaimsEnabled: boolean;
+  staticRoadmapBootstrapRequestId?: string;
+  staticRoadmapAuthoritativeSourceId: string;
+  staticRoadmapRetrievalLimitPerQuery: number;
+  staticRoadmapUserSyncBatchSize: number;
+  staticRoadmapMaxRefreshAttempts: number;
+  staticRoadmapMaxUserSyncAttempts: number;
+  staticRoadmapLeaseMs: number;
+  staticRoadmapRetryBaseMs: number;
+  staticRoadmapObjectiveVersion: string;
+  staticRoadmapRetrievalConfigVersion: string;
+  staticRoadmapRetrievalQuerySetVersion: string;
+  staticRoadmapGeneratorSchemaVersion: string;
+  staticRoadmapPromptVersion: string;
+  staticRoadmapDecodingConfigVersion: string;
 }
 
 export function loadConfig(): ServerConfig {
@@ -121,6 +137,47 @@ export function loadConfig(): ServerConfig {
       process.env.MASTRA_SNAPSHOT_RETENTION_DAYS ?? '90',
       10,
     ),
+    staticRoadmapEnabled: process.env.STATIC_ROADMAP_ENABLED === 'true',
+    staticRoadmapRefreshClaimsEnabled:
+      process.env.STATIC_ROADMAP_REFRESH_CLAIMS_ENABLED !== 'false',
+    staticRoadmapBootstrapRequestId: optionalString(
+      process.env.STATIC_ROADMAP_BOOTSTRAP_REQUEST_ID,
+    ),
+    staticRoadmapAuthoritativeSourceId:
+      process.env.STATIC_ROADMAP_AUTHORITATIVE_SOURCE_ID?.trim() || 'tax-consulting-sharepoint',
+    staticRoadmapRetrievalLimitPerQuery: Number.parseInt(
+      process.env.STATIC_ROADMAP_RETRIEVAL_LIMIT_PER_QUERY ?? '5',
+      10,
+    ),
+    staticRoadmapUserSyncBatchSize: Number.parseInt(
+      process.env.STATIC_ROADMAP_USER_SYNC_BATCH_SIZE ?? '50',
+      10,
+    ),
+    staticRoadmapMaxRefreshAttempts: Number.parseInt(
+      process.env.STATIC_ROADMAP_MAX_REFRESH_ATTEMPTS ?? '5',
+      10,
+    ),
+    staticRoadmapMaxUserSyncAttempts: Number.parseInt(
+      process.env.STATIC_ROADMAP_MAX_USER_SYNC_ATTEMPTS ?? '8',
+      10,
+    ),
+    staticRoadmapLeaseMs: Number.parseInt(process.env.STATIC_ROADMAP_LEASE_MS ?? '120000', 10),
+    staticRoadmapRetryBaseMs: Number.parseInt(
+      process.env.STATIC_ROADMAP_RETRY_BASE_MS ?? '5000',
+      10,
+    ),
+    staticRoadmapObjectiveVersion:
+      process.env.STATIC_ROADMAP_OBJECTIVE_VERSION?.trim() || 'global-onboarding-v1',
+    staticRoadmapRetrievalConfigVersion:
+      process.env.STATIC_ROADMAP_RETRIEVAL_CONFIG_VERSION?.trim() || 'snapshot-pgvector-v1',
+    staticRoadmapRetrievalQuerySetVersion:
+      process.env.STATIC_ROADMAP_RETRIEVAL_QUERY_SET_VERSION?.trim() || 'onboarding-queries-v1',
+    staticRoadmapGeneratorSchemaVersion:
+      process.env.STATIC_ROADMAP_GENERATOR_SCHEMA_VERSION?.trim() || 'static-roadmap-v1',
+    staticRoadmapPromptVersion:
+      process.env.STATIC_ROADMAP_PROMPT_VERSION?.trim() || 'static-roadmap-prompt-v1',
+    staticRoadmapDecodingConfigVersion:
+      process.env.STATIC_ROADMAP_DECODING_CONFIG_VERSION?.trim() || 'provider-default-v1',
   };
 
   config.embeddingProfile = embeddingProfileFor(
@@ -204,6 +261,36 @@ function validateConfig(config: ServerConfig): void {
     config.mastraSnapshotRetentionDays <= 0
   ) {
     throw new Error('MASTRA_SNAPSHOT_RETENTION_DAYS must be a positive integer');
+  }
+
+  for (const [name, value] of [
+    ['STATIC_ROADMAP_RETRIEVAL_LIMIT_PER_QUERY', config.staticRoadmapRetrievalLimitPerQuery],
+    ['STATIC_ROADMAP_USER_SYNC_BATCH_SIZE', config.staticRoadmapUserSyncBatchSize],
+    ['STATIC_ROADMAP_MAX_REFRESH_ATTEMPTS', config.staticRoadmapMaxRefreshAttempts],
+    ['STATIC_ROADMAP_MAX_USER_SYNC_ATTEMPTS', config.staticRoadmapMaxUserSyncAttempts],
+    ['STATIC_ROADMAP_LEASE_MS', config.staticRoadmapLeaseMs],
+    ['STATIC_ROADMAP_RETRY_BASE_MS', config.staticRoadmapRetryBaseMs],
+  ] as const) {
+    if (!Number.isFinite(value) || value <= 0) {
+      throw new Error(`${name} must be a positive integer`);
+    }
+  }
+  if (config.staticRoadmapEnabled && !config.databaseUrl) {
+    throw new Error('STATIC_ROADMAP_ENABLED=true requires DATABASE_URL');
+  }
+  if (
+    config.staticRoadmapBootstrapRequestId &&
+    !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(config.staticRoadmapBootstrapRequestId)
+  ) {
+    throw new Error(
+      'STATIC_ROADMAP_BOOTSTRAP_REQUEST_ID must be 1-128 characters using letters, numbers, dot, underscore, colon, or hyphen',
+    );
+  }
+  if (
+    !config.staticRoadmapAuthoritativeSourceId ||
+    config.staticRoadmapAuthoritativeSourceId.includes(',')
+  ) {
+    throw new Error('STATIC_ROADMAP_AUTHORITATIVE_SOURCE_ID must name exactly one source');
   }
 
   // Next serves the UI and API from the same origin; CORS is only needed if a future client is

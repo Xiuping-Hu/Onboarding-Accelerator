@@ -3,16 +3,12 @@ import type { WorkspaceRoadmapState } from '@/features/workspace/workspaceDashbo
 import { cn } from '@/lib/utils';
 import { DashboardEmptyState, DashboardSkeleton, dashboardCardClass } from './DashboardState';
 import { RoadmapStageCard } from './RoadmapStageCard';
-import { RoadmapSetup } from './RoadmapSetup';
-import { LiveRoadmapEditor } from './LiveRoadmapEditor';
 
 export function RoadmapSection({
   isLoading,
-  onReferenceStep,
   roadmap,
 }: {
   isLoading: boolean;
-  onReferenceStep: (stepId: string) => void;
   roadmap: WorkspaceRoadmapState;
 }) {
   if (isLoading && roadmap.status === 'unavailable') {
@@ -23,31 +19,27 @@ export function RoadmapSection({
     <section aria-labelledby="onboarding-roadmap">
       <h2
         className="m-0 text-base font-bold text-workspace-heading outline-none focus-visible:rounded focus-visible:ring-2 focus-visible:ring-ring"
+        data-roadmap-version-id={roadmap.status === 'ready' ? roadmap.versionId : undefined}
         id="onboarding-roadmap"
         tabIndex={-1}
       >
-        Onboarding Roadmap
+        {roadmap.status === 'ready' ? roadmap.title : 'Onboarding Roadmap'}
       </h2>
       {roadmap.status === 'ready' ? (
         <>
-          {roadmap.stages.length > 0 ? (
-            <ol className="mt-4 grid list-none gap-3 p-0">
-              {roadmap.stages.map((stage) => (
-                <RoadmapStageCard key={stage.id} onReferenceStep={onReferenceStep} stage={stage} />
-              ))}
-            </ol>
-          ) : (
-            <div className={cn(dashboardCardClass, 'mt-4')}>
-              <DashboardEmptyState
-                description="This live roadmap is ready for its first stage and task."
-                title="No stages yet"
-              />
-            </div>
-          )}
-          <LiveRoadmapEditor />
+          <p className="mt-1 mb-0 text-xs font-semibold text-workspace-muted">
+            Version {roadmap.versionNumber}
+          </p>
+          <ol className="mt-4 grid list-none gap-3 p-0">
+            {roadmap.stages.map((stage) => (
+              <RoadmapStageCard key={stage.id} stage={stage} />
+            ))}
+          </ol>
         </>
       ) : roadmap.status === 'empty' ? (
-        <RoadmapSetup />
+        <div className={cn(dashboardCardClass, 'mt-4')}>
+          <DashboardEmptyState description={roadmap.message} title="Roadmap is being prepared" />
+        </div>
       ) : (
         <div className={cn(dashboardCardClass, 'mt-4')}>
           <DashboardEmptyState

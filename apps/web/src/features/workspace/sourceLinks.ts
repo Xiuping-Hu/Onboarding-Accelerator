@@ -1,4 +1,6 @@
-import type { KnowledgeSource } from '@onboarding/shared';
+import type { KnowledgeSource, SourceReference } from '@onboarding/shared';
+
+type DisplaySource = KnowledgeSource | SourceReference;
 
 export interface DisplaySourceLink {
   id: string;
@@ -13,7 +15,7 @@ export type DisplaySourceState =
   | { status: 'error'; links: [] }
   | { status: 'ready'; links: DisplaySourceLink[] };
 
-export function getDisplaySourceState(sources: KnowledgeSource[]): DisplaySourceState {
+export function getDisplaySourceState(sources: DisplaySource[]): DisplaySourceState {
   if (sources.length === 0) {
     return { status: 'empty', links: [] };
   }
@@ -34,7 +36,7 @@ export function getDisplaySourceState(sources: KnowledgeSource[]): DisplaySource
     links.set(key, {
       id: source.id,
       title: source.title,
-      excerpt: source.excerpt,
+      excerpt: source.excerpt ?? '',
       href,
       label: getSourceLabel(source, href),
     });
@@ -62,13 +64,13 @@ export function isSafeResolvedSourceHref(href: string | undefined): href is stri
   return isSafeMarkdownHref(href);
 }
 
-function getResolvedSourceHref(source: KnowledgeSource): string | undefined {
+function getResolvedSourceHref(source: DisplaySource): string | undefined {
   if (isSafeResolvedSourceHref(source.href)) return source.href;
-  if (isSafeMarkdownHref(source.uri)) return source.uri;
+  if ('uri' in source && isSafeMarkdownHref(source.uri)) return source.uri;
   return undefined;
 }
 
-function getCanonicalSourceKey(source: KnowledgeSource, href: string): string {
+function getCanonicalSourceKey(source: DisplaySource, href: string): string {
   const rootSourceId = source.metadata?.rootSourceId;
   if (typeof rootSourceId === 'string' && rootSourceId.trim()) {
     return `root:${rootSourceId}`;
@@ -77,8 +79,8 @@ function getCanonicalSourceKey(source: KnowledgeSource, href: string): string {
   return `href:${href}`;
 }
 
-function getSourceLabel(source: KnowledgeSource, href: string): string {
-  if (source.kind === 'web' || source.sourceType === 'web') {
+function getSourceLabel(source: DisplaySource, href: string): string {
+  if (('kind' in source && source.kind === 'web') || source.sourceType === 'web') {
     try {
       return new URL(href, 'http://local.invalid').hostname || 'Web';
     } catch {

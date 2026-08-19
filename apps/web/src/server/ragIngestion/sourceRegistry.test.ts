@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { loadSourceRegistry } from './sourceRegistry';
+import { assertSingleStaticRoadmapAuthoritativeSource, loadSourceRegistry } from './sourceRegistry';
 
 void test('source registry validates scheduled connector configuration', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'rag-registry-'));
@@ -35,6 +35,53 @@ void test('source registry validates scheduled connector configuration', async (
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+void test('static roadmap source validation fails closed for zero, multiple, or mismatched authorities', () => {
+  const source = {
+    id: 'tax-consulting-sharepoint',
+    kind: 'sharepoint_folder' as const,
+    uri: 'https://example.test',
+    owner: 'owner',
+    accessScope: 'all_users',
+    roadmapAuthoritative: true,
+  };
+  assert.throws(
+    () => assertSingleStaticRoadmapAuthoritativeSource({ sources: [] }, source.id),
+    /exactly one.*found 0/i,
+  );
+  assert.throws(
+    () =>
+      assertSingleStaticRoadmapAuthoritativeSource(
+        { sources: [source, { ...source, id: 'other' }] },
+        source.id,
+      ),
+    /exactly one.*found 2/i,
+  );
+  assert.throws(
+    () => assertSingleStaticRoadmapAuthoritativeSource({ sources: [source] }, 'other'),
+    /does not match/i,
+  );
+  assert.throws(
+    () =>
+      assertSingleStaticRoadmapAuthoritativeSource(
+        { sources: [{ ...source, enabled: false }] },
+        source.id,
+      ),
+    /must be enabled/i,
+  );
+  assert.throws(
+    () =>
+      assertSingleStaticRoadmapAuthoritativeSource(
+        { sources: [{ ...source, accessScope: 'private' }] },
+        source.id,
+      ),
+    /all_users scope/i,
+  );
+  assert.equal(
+    assertSingleStaticRoadmapAuthoritativeSource({ sources: [source] }, source.id).id,
+    source.id,
+  );
 });
 
 void test('source registry rejects unsupported trigger modes', async () => {

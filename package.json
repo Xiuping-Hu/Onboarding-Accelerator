@@ -26,6 +26,8 @@
     "rag:review": "tsx --tsconfig scripts/tsconfig.json scripts/rag-review.ts",
     "rag:rollback": "tsx --tsconfig scripts/tsconfig.json scripts/rag-rollback.ts",
     "rag:reindex-snapshots": "tsx --tsconfig scripts/tsconfig.json scripts/rag-reindex-snapshots.ts",
+    "roadmap:bootstrap": "tsx --tsconfig scripts/tsconfig.json scripts/static-roadmap-bootstrap.ts",
+    "roadmap:worker": "tsx --tsconfig scripts/tsconfig.json scripts/static-roadmap-worker.ts",
     "mastra:storage:init": "tsx scripts/mastra-storage-init.ts",
     "users:create": "tsx scripts/users-create.ts",
     "format": "prettier . --write",

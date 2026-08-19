@@ -4,8 +4,20 @@ export interface SharePointCredentials {
   clientSecret?: string;
 }
 
+type SharePointCredentialEnvironment = Partial<
+  Record<
+    | 'RAG_SHAREPOINT_TENANT_ID'
+    | 'RAG_SHAREPOINT_CLIENT_ID'
+    | 'RAG_SHAREPOINT_CLIENT_SECRET'
+    | 'AUTH_MICROSOFT_TENANT_ID'
+    | 'AUTH_MICROSOFT_CLIENT_ID'
+    | 'AUTH_MICROSOFT_CLIENT_SECRET',
+    string
+  >
+>;
+
 export function loadSharePointCredentials(
-  environment: NodeJS.ProcessEnv = process.env,
+  environment: SharePointCredentialEnvironment = process.env as SharePointCredentialEnvironment,
 ): SharePointCredentials {
   return {
     tenantId: preferred(environment.RAG_SHAREPOINT_TENANT_ID, environment.AUTH_MICROSOFT_TENANT_ID),

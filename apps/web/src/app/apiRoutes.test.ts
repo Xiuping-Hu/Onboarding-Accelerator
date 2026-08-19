@@ -9,8 +9,6 @@ import type {
   CreateSessionResponse,
   GenerateGuideRootResponse,
   GetSessionResponse,
-  TransitionOnboardingTaskResponse,
-  WorkspaceOnboardingState,
 } from '@onboarding/shared';
 import { resetAppContainerForTests } from '../server/bootstrap/appContainer';
 
@@ -29,16 +27,25 @@ void test('Next API handlers create sessions, generate guides, chat, and expose 
   const chatRoute = await import('./api/sessions/[sessionId]/chat/route');
   const sessionRoute = await import('./api/sessions/[sessionId]/route');
   const sourceRoute = await import('./api/sources/[sourceId]/route');
-  const onboardingRoute = await import('./api/sessions/[sessionId]/onboarding/route');
-  const onboardingTaskRoute =
-    await import('./api/sessions/[sessionId]/onboarding/tasks/[taskId]/route');
-  const onboardingCommandRoute =
-    await import('./api/sessions/[sessionId]/onboarding/commands/route');
-  const onboardingHistoryRoute =
-    await import('./api/sessions/[sessionId]/onboarding/history/route');
-  const onboardingCancellationImpactRoute =
-    await import('./api/sessions/[sessionId]/onboarding/cancellation-impact/route');
-  const onboardingCancelRoute = await import('./api/sessions/[sessionId]/onboarding/cancel/route');
+  const onboardingRoute = await import('./api/onboarding/route');
+  const onboardingTaskRoute = await import('./api/onboarding/tasks/[taskId]/route');
+  const onboardingNoticeRoute = await import('./api/onboarding/notices/[noticeId]/route');
+  const legacyOnboardingRoute = await import('./api/sessions/[sessionId]/onboarding/route');
+  const retiredOnboardingRoutes = [
+    legacyOnboardingRoute.POST,
+    (await import('./api/sessions/[sessionId]/onboarding/tasks/[taskId]/route')).PATCH,
+    (await import('./api/sessions/[sessionId]/onboarding/generate/route')).POST,
+    (await import('./api/sessions/[sessionId]/onboarding/commands/route')).POST,
+    (await import('./api/sessions/[sessionId]/onboarding/commands/impact/route')).POST,
+    (await import('./api/sessions/[sessionId]/onboarding/ai-proposals/route')).POST,
+    (await import('./api/sessions/[sessionId]/onboarding/ai-proposals/[proposalId]/apply/route'))
+      .POST,
+    (await import('./api/sessions/[sessionId]/onboarding/ai-proposals/[proposalId]/dismiss/route'))
+      .POST,
+    (await import('./api/sessions/[sessionId]/onboarding/cancellation-impact/route')).POST,
+    (await import('./api/sessions/[sessionId]/onboarding/cancel/route')).POST,
+    (await import('./api/sessions/[sessionId]/onboarding/history/route')).GET,
+  ];
   const ragWorkflowRoute = await import('./api/sessions/[sessionId]/rag-workflows/route');
   const logsRoute = await import('./api/logs/recent/route');
   const meRoute = await import('./api/auth/me/route');
@@ -69,101 +76,102 @@ void test('Next API handlers create sessions, generate guides, chat, and expose 
   assert.equal(created.session.title, 'API route smoke');
 
   const emptyOnboardingResponse = await onboardingRoute.GET(
-    new NextRequest(`http://localhost/api/sessions/${created.session.id}/onboarding`, {
+    new NextRequest('http://localhost/api/onboarding', {
       headers: { 'x-user-id': 'api-test-user' },
     }),
-    { params: Promise.resolve({ sessionId: created.session.id }) },
   );
   assert.equal(emptyOnboardingResponse.status, 200);
   assert.deepEqual(await emptyOnboardingResponse.json(), {
     status: 'empty',
-    reason: 'no-active-plan',
+    message: 'Roadmap is being prepared from the latest knowledge base.',
+    newestUnreadNotice: null,
+    unreadNoticeCount: 0,
   });
 
-  const creationResponse = await onboardingRoute.POST(
-    jsonRequest(`http://localhost/api/sessions/${created.session.id}/onboarding`, {
-      clientRequestId: 'api-create-plan',
-      title: 'API onboarding plan',
-      startAt: '2026-08-05T12:00:00Z',
-      stages: [
-        {
-          stableKey: 'orientation',
-          title: 'Orientation',
-          description: 'Learn the basics',
-          position: 1,
-          tasks: [{ stableKey: 'read-handbook', title: 'Read the handbook' }],
-        },
-      ],
-    }),
-    { params: Promise.resolve({ sessionId: created.session.id }) },
-  );
-  assert.equal(creationResponse.status, 201);
-  const creation = (await creationResponse.json()) as TransitionOnboardingTaskResponse;
-  assert.equal(creation.state.status, 'ready');
-  if (creation.state.status !== 'ready') return;
-  const onboardingTask = creation.state.projection.tasks[0]!;
-
-  const transitionResponse = await onboardingTaskRoute.PATCH(
+  const missingTaskId = '9f158f5e-5333-4dba-a4bd-0ea3f9700435';
+  const invalidTaskTransition = await onboardingTaskRoute.PATCH(
     jsonRequest(
-      `http://localhost/api/sessions/${created.session.id}/onboarding/tasks/${onboardingTask.id}`,
+      `http://localhost/api/onboarding/tasks/${missingTaskId}`,
       {
         status: 'completed',
-        expectedRevision: onboardingTask.revision,
-        idempotencyKey: 'api-complete-task',
-        source: 'tasks_ui',
+        expectedTaskRevision: 0,
+        expectedStateRevision: 0,
+        clientRequestId: 'invalid-definition-edit',
+        title: 'Forbidden client definition field',
       },
       'PATCH',
     ),
-    { params: Promise.resolve({ sessionId: created.session.id, taskId: onboardingTask.id }) },
+    { params: Promise.resolve({ taskId: missingTaskId }) },
   );
-  assert.equal(transitionResponse.status, 200);
-  const completed = (await transitionResponse.json()) as TransitionOnboardingTaskResponse;
-  assert.equal(
-    completed.state.status === 'ready' && completed.state.projection.progress.percentComplete,
-    100,
-  );
-  if (completed.state.status !== 'ready') return;
+  assert.equal(invalidTaskTransition.status, 400);
 
-  const commandResponse = await onboardingCommandRoute.POST(
-    jsonRequest(`http://localhost/api/sessions/${created.session.id}/onboarding/commands`, {
-      expectedPlanRevision: completed.state.projection.planRevision,
-      idempotencyKey: 'api-update-roadmap-title',
-      command: { type: 'set_metadata', title: 'Updated API onboarding plan' },
-    }),
-    { params: Promise.resolve({ sessionId: created.session.id }) },
-  );
-  assert.equal(commandResponse.status, 200);
-  const commandResult = (await commandResponse.json()) as TransitionOnboardingTaskResponse;
-  assert.equal(
-    commandResult.state.status === 'ready' && commandResult.state.projection.title,
-    'Updated API onboarding plan',
-  );
-
-  const historyResponse = await onboardingHistoryRoute.GET(
-    new NextRequest(`http://localhost/api/sessions/${created.session.id}/onboarding/history`, {
-      headers: { 'x-user-id': 'api-test-user' },
-    }),
-    { params: Promise.resolve({ sessionId: created.session.id }) },
-  );
-  assert.equal(historyResponse.status, 200);
-  assert.deepEqual(
-    ((await historyResponse.json()) as { events: Array<{ commandType: string }> }).events.map(
-      (event) => event.commandType,
+  const missingTaskTransition = await onboardingTaskRoute.PATCH(
+    jsonRequest(
+      `http://localhost/api/onboarding/tasks/${missingTaskId}`,
+      {
+        status: 'completed',
+        expectedTaskRevision: 0,
+        expectedStateRevision: 0,
+        clientRequestId: 'missing-task',
+      },
+      'PATCH',
     ),
-    ['set_metadata', 'create_plan'],
+    { params: Promise.resolve({ taskId: missingTaskId }) },
   );
+  assert.equal(missingTaskTransition.status, 404);
 
-  const onboardingReloadResponse = await onboardingRoute.GET(
+  const missingNoticeId = '136a07cb-80a1-4fc9-94c4-512d94003398';
+  const invalidNoticeAcknowledgement = await onboardingNoticeRoute.PATCH(
+    jsonRequest(
+      `http://localhost/api/onboarding/notices/${missingNoticeId}`,
+      { read: false },
+      'PATCH',
+    ),
+    { params: Promise.resolve({ noticeId: missingNoticeId }) },
+  );
+  assert.equal(invalidNoticeAcknowledgement.status, 400);
+
+  const missingNoticeAcknowledgement = await onboardingNoticeRoute.PATCH(
+    jsonRequest(
+      `http://localhost/api/onboarding/notices/${missingNoticeId}`,
+      { read: true },
+      'PATCH',
+    ),
+    { params: Promise.resolve({ noticeId: missingNoticeId }) },
+  );
+  assert.equal(missingNoticeAcknowledgement.status, 404);
+
+  for (const retiredRoute of retiredOnboardingRoutes) {
+    const retiredResponse = await retiredRoute(
+      jsonRequest(
+        `http://localhost/api/sessions/${created.session.id}/onboarding/retired`,
+        'invalid request bodies are deliberately not parsed',
+      ),
+      {
+        params: Promise.resolve({
+          sessionId: created.session.id,
+          proposalId: 'not-parsed',
+        }),
+      },
+    );
+    assert.equal(retiredResponse.status, 410);
+    assert.match(
+      ((await retiredResponse.json()) as { error: string }).error,
+      /session-scoped roadmap endpoint is gone/i,
+    );
+  }
+
+  const legacyOnboardingReloadResponse = await legacyOnboardingRoute.GET(
     new NextRequest(`http://localhost/api/sessions/${created.session.id}/onboarding`, {
       headers: { 'x-user-id': 'api-test-user' },
     }),
     { params: Promise.resolve({ sessionId: created.session.id }) },
   );
-  const onboardingReload = (await onboardingReloadResponse.json()) as WorkspaceOnboardingState;
-  assert.equal(
-    onboardingReload.status === 'ready' && onboardingReload.projection.progress.percentComplete,
-    100,
-  );
+  assert.equal(legacyOnboardingReloadResponse.status, 200);
+  assert.deepEqual(await legacyOnboardingReloadResponse.json(), {
+    status: 'empty',
+    reason: 'no-active-plan',
+  });
 
   const rootResponse = await guideRootRoute.POST(
     jsonRequest(`http://localhost/api/sessions/${created.session.id}/guide/root`, {}),
@@ -222,33 +230,6 @@ void test('Next API handlers create sessions, generate guides, chat, and expose 
     'Mastra RAG workflows are not enabled.',
   );
 
-  const cancellationImpactResponse = await onboardingCancellationImpactRoute.POST(
-    jsonRequest(
-      `http://localhost/api/sessions/${created.session.id}/onboarding/cancellation-impact`,
-      {},
-    ),
-    { params: Promise.resolve({ sessionId: created.session.id }) },
-  );
-  assert.equal(cancellationImpactResponse.status, 200);
-  const cancellationImpact = (await cancellationImpactResponse.json()) as {
-    planRevision: number;
-    impactHash: string;
-  };
-  const cancellationResponse = await onboardingCancelRoute.POST(
-    jsonRequest(`http://localhost/api/sessions/${created.session.id}/onboarding/cancel`, {
-      expectedPlanRevision: cancellationImpact.planRevision,
-      idempotencyKey: 'api-cancel-roadmap',
-      impactHash: cancellationImpact.impactHash,
-      reason: 'API lifecycle smoke test complete',
-    }),
-    { params: Promise.resolve({ sessionId: created.session.id }) },
-  );
-  assert.equal(cancellationResponse.status, 200);
-  assert.deepEqual(await cancellationResponse.json(), {
-    status: 'empty',
-    reason: 'no-active-plan',
-  });
-
   const logsResponse = await logsRoute.GET(
     new NextRequest('http://localhost/api/logs/recent?limit=10', {
       headers: { 'x-user-id': 'api-test-user' },
@@ -268,12 +249,25 @@ void test('protected API handlers reject unauthenticated requests when account a
   resetAppContainerForTests();
 
   const meRoute = await import('./api/auth/me/route');
+  const onboardingRoute = await import('./api/onboarding/route');
+  const retiredOnboardingRoute = await import('./api/sessions/[sessionId]/onboarding/route');
   const response = await meRoute.GET(new NextRequest('http://localhost/api/auth/me'));
 
   assert.equal(response.status, 401);
   const body = (await response.json()) as { error: string; requestId?: string };
   assert.equal(body.error, 'Authentication required');
   assert.match(body.requestId ?? '', /.+/);
+
+  const onboardingResponse = await onboardingRoute.GET(
+    new NextRequest('http://localhost/api/onboarding'),
+  );
+  assert.equal(onboardingResponse.status, 401);
+
+  const retiredResponse = await retiredOnboardingRoute.POST(
+    new NextRequest('http://localhost/api/sessions/session-a/onboarding', { method: 'POST' }),
+    { params: Promise.resolve({ sessionId: 'session-a' }) },
+  );
+  assert.equal(retiredResponse.status, 401);
 });
 
 void test('retired registration and admin routes do not exist', async () => {

@@ -1,6 +1,5 @@
 import React from 'react';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import type { WorkspaceRoadmapStage } from '@/features/workspace/workspaceDashboardModel';
 import { cn } from '@/lib/utils';
 import { dashboardCardClass } from './DashboardState';
@@ -36,13 +35,7 @@ const stageStyles: Record<
   },
 };
 
-export function RoadmapStageCard({
-  onReferenceStep,
-  stage,
-}: {
-  onReferenceStep: (stepId: string) => void;
-  stage: WorkspaceRoadmapStage;
-}) {
+export function RoadmapStageCard({ stage }: { stage: WorkspaceRoadmapStage }) {
   const statusLabel =
     stage.status === 'completed'
       ? 'Completed'
@@ -86,16 +79,6 @@ export function RoadmapStageCard({
               new Date(stage.dueAt),
             )}
           </p>
-        ) : null}
-        {stage.guideStepId ? (
-          <Button
-            className="h-auto p-0 text-workspace-assistant hover:bg-transparent hover:underline"
-            onClick={() => onReferenceStep(stage.guideStepId!)}
-            type="button"
-            variant="ghost"
-          >
-            Ask assistant about this stage
-          </Button>
         ) : null}
       </article>
     </li>

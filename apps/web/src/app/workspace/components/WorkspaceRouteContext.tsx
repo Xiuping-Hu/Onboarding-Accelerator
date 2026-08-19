@@ -3,11 +3,7 @@
 import type {
   GuideGraph,
   KnowledgeSource,
-  OnboardingTaskMutationSource,
   OnboardingTaskStatus,
-  OnboardingPlanRevisionEvent,
-  RoadmapChangeProposal,
-  RoadmapCommand,
   WorkspaceOnboardingState,
 } from '@onboarding/shared';
 import { createContext, useContext, type ReactNode } from 'react';
@@ -21,22 +17,11 @@ export interface WorkspaceRouteState {
   onboarding: WorkspaceOnboardingState | null;
   onboardingIsLoading: boolean;
   pendingTaskIds: string[];
-  roadmapHistory: OnboardingPlanRevisionEvent[];
-  roadmapIsMutating: boolean;
-  roadmapProposal: RoadmapChangeProposal | null;
-  onReferenceStep: (stepId: string) => void;
   onRetry: () => void;
-  onGenerateRoadmap: (goal: string, role?: string) => Promise<void>;
-  onRoadmapCommand: (command: RoadmapCommand) => Promise<void>;
-  onProposeRoadmapChange: (instruction: string, selectedStageKey?: string) => Promise<void>;
-  onApplyRoadmapProposal: () => Promise<void>;
-  onDismissRoadmapProposal: () => Promise<void>;
-  onCancelRoadmap: (reason: string) => Promise<void>;
   onTransitionTask: (
     taskId: string,
     status: OnboardingTaskStatus,
-    expectedRevision: number,
-    source: OnboardingTaskMutationSource,
+    expectedTaskRevision: number,
   ) => Promise<void>;
   sources: KnowledgeSource[];
 }

@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useRef, useState } from 'react';
 import { useWorkspaceChat } from './useWorkspaceChat';
 import { useWorkspaceGuide } from './useWorkspaceGuide';
 import { useWorkspaceNavigationState } from './useWorkspaceNavigationState';
@@ -32,11 +33,14 @@ export function useWorkspaceController({
     state: sessions.state,
   });
   const navigation = useWorkspaceNavigationState();
+  const router = useRouter();
   const headingRef = useWorkspaceRouteFocus(pathname);
   const [isAssistantMinimized, setIsAssistantMinimized] = useState(false);
+  const [isViewingRoadmapNotice, setIsViewingRoadmapNotice] = useState(false);
+  const viewingRoadmapNotice = useRef(false);
 
   const activeSessionId = sessions.state.activeSessionId;
-  const onboarding = useWorkspaceOnboarding(activeSessionId);
+  const onboarding = useWorkspaceOnboarding();
   const activeMessages = activeSessionId
     ? (sessions.state.messagesBySessionId[activeSessionId] ?? [])
     : [];
@@ -55,25 +59,53 @@ export function useWorkspaceController({
       knowledgeMapEnabled: guide.knowledgeMapEnabled,
       onboarding: onboarding.state,
       onboardingIsLoading: onboarding.isLoading,
+      noticeActionPending: isViewingRoadmapNotice || onboarding.pendingNoticeId !== null,
+      noticeError: onboarding.noticeError,
       pendingTaskIds: onboarding.pendingTaskIds,
-      roadmapHistory: onboarding.history,
-      roadmapIsMutating: onboarding.isMutating,
-      roadmapProposal: onboarding.proposal,
       meta: getWorkspacePageMeta(pathname, account.displayName),
-      onReferenceStep(stepId) {
-        guide.referenceStep(stepId);
-        setIsAssistantMinimized(false);
-      },
+      onDismissRoadmapNotice: onboarding.acknowledgeNotice,
       onRetry() {
         guide.retry();
         void onboarding.reload();
       },
-      onGenerateRoadmap: onboarding.generate,
-      onRoadmapCommand: onboarding.command,
-      onProposeRoadmapChange: onboarding.propose,
-      onApplyRoadmapProposal: onboarding.applyProposal,
-      onDismissRoadmapProposal: onboarding.dismissProposal,
-      onCancelRoadmap: onboarding.cancel,
+      async onViewRoadmapNotice() {
+        if (viewingRoadmapNotice.current || onboarding.pendingNoticeId) return;
+        viewingRoadmapNotice.current = true;
+        setIsViewingRoadmapNotice(true);
+        onboarding.clearNoticeError();
+        try {
+          const refreshed = await onboarding.reload();
+          if (refreshed?.status !== 'ready' || !refreshed.newestUnreadNotice) return;
+
+          const notice = refreshed.newestUnreadNotice;
+          if (
+            refreshed.roadmap.versionId !== notice.roadmapVersionId ||
+            refreshed.userState.appliedVersionId !== notice.roadmapVersionId
+          ) {
+            onboarding.reportNoticeError(
+              'The latest roadmap is still syncing. Try viewing it again in a moment.',
+            );
+            return;
+          }
+
+          router.push('/workspace#onboarding-roadmap');
+          try {
+            const heading = await waitForRoadmapVersion(notice.roadmapVersionId);
+            const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            heading.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+            heading.focus({ preventScroll: true });
+          } catch {
+            onboarding.reportNoticeError(
+              'The latest roadmap could not be opened. Try viewing it again.',
+            );
+            return;
+          }
+          await onboarding.acknowledgeNotice(notice.id);
+        } finally {
+          viewingRoadmapNotice.current = false;
+          setIsViewingRoadmapNotice(false);
+        }
+      },
       onTransitionTask: onboarding.transitionTask,
       sources: guide.sources,
     },
@@ -97,6 +129,36 @@ export function useWorkspaceController({
       setMinimized: setIsAssistantMinimized,
     },
   };
+}
+
+function waitForRoadmapVersion(versionId: string): Promise<HTMLElement> {
+  const findHeading = () => {
+    const heading = document.getElementById('onboarding-roadmap');
+    return heading?.dataset.roadmapVersionId === versionId ? heading : null;
+  };
+  const existing = findHeading();
+  if (existing) return Promise.resolve(existing);
+
+  return new Promise((resolve, reject) => {
+    const observer = new MutationObserver(() => {
+      const heading = findHeading();
+      if (!heading) return;
+      window.clearTimeout(timeout);
+      observer.disconnect();
+      resolve(heading);
+    });
+    const timeout = window.setTimeout(() => {
+      observer.disconnect();
+      reject(new Error('Roadmap version did not render in time.'));
+    }, 5_000);
+    observer.observe(document.body, { childList: true, subtree: true });
+    const rendered = findHeading();
+    if (rendered) {
+      window.clearTimeout(timeout);
+      observer.disconnect();
+      resolve(rendered);
+    }
+  });
 }
 
 export function getWorkspacePageMeta(

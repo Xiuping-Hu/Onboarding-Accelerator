@@ -19,6 +19,7 @@
       ],
       "allowedTriggers": ["manual", "scheduled", "reindex"],
       "publicationPolicy": "auto_after_validation",
+      "roadmapAuthoritative": true,
       "metadata": {
         "ingestionRevision": "teamweb-onboarding-folder-v1"
       },
