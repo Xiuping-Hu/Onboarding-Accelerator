@@ -1,15 +1,18 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, RefObject } from 'react';
 import { cn } from '@/lib/utils';
 import { WorkspaceMobileNavigation } from './navigation/WorkspaceMobileNavigation';
 import { WorkspaceNavigationRail } from './navigation/WorkspaceNavigationRail';
 
 export function WorkspaceFrame({
   assistant,
+  assistantWidth,
   children,
   collapsed,
+  dashboardGridRef,
   header,
   isAssistantMinimized,
   isAssistantExpanded,
+  isAssistantResizing,
   isLoading,
   isMobileViewport,
   mobileNavigationOpen,
@@ -21,11 +24,14 @@ export function WorkspaceFrame({
   status,
 }: {
   assistant: ReactNode;
+  assistantWidth: number;
   children: ReactNode;
   collapsed: boolean;
+  dashboardGridRef: RefObject<HTMLDivElement | null>;
   header: ReactNode;
   isAssistantMinimized: boolean;
   isAssistantExpanded: boolean;
+  isAssistantResizing: boolean;
   isLoading: boolean;
   isMobileViewport: boolean;
   mobileNavigationOpen: boolean;
@@ -46,6 +52,8 @@ export function WorkspaceFrame({
       )}
       data-assistant-minimized={isAssistantMinimized ? 'true' : 'false'}
       data-assistant-expanded={isAssistantExpanded ? 'true' : 'false'}
+      data-assistant-resizing={isAssistantResizing ? 'true' : 'false'}
+      data-assistant-width={Math.round(assistantWidth)}
       data-navigation-collapsed={collapsed ? 'true' : 'false'}
     >
       <WorkspaceNavigationRail
@@ -71,14 +79,16 @@ export function WorkspaceFrame({
       >
         <div
           className={cn(
-            'grid h-full min-h-0 min-w-0 items-stretch gap-6 overflow-hidden max-lg:grid-cols-1 max-lg:items-start max-lg:overflow-y-auto max-lg:gap-4 lg:transition-[grid-template-columns] lg:duration-300 lg:ease-out motion-reduce:transition-none',
+            'grid h-full min-h-0 min-w-0 items-stretch gap-6 overflow-hidden max-lg:grid-cols-1 max-lg:items-start max-lg:overflow-y-auto max-lg:gap-4 motion-reduce:transition-none',
+            isAssistantResizing
+              ? 'lg:cursor-col-resize lg:select-none lg:transition-none'
+              : 'lg:transition-[grid-template-columns] lg:duration-300 lg:ease-out',
             isAssistantMinimized
               ? 'lg:grid-cols-[minmax(420px,1fr)_64px]'
-              : isAssistantExpanded
-                ? 'lg:grid-cols-[minmax(360px,1fr)_clamp(400px,46%,720px)]'
-                : 'lg:grid-cols-[minmax(420px,1fr)_clamp(300px,31%,360px)]',
+              : 'lg:grid-cols-[minmax(420px,1fr)_minmax(300px,var(--workspace-assistant-width,360px))]',
           )}
           data-slot="workspace-dashboard-grid"
+          ref={dashboardGridRef}
         >
           <div
             className="flex min-h-0 min-w-0 flex-col overflow-hidden pt-8.5 pr-0 pb-9.5 pl-8.5 max-[1180px]:pt-7 max-[1180px]:pr-0 max-[1180px]:pb-8 max-[1180px]:pl-6 max-lg:min-h-auto max-lg:overflow-visible max-lg:pt-7 max-lg:pr-6 max-lg:pb-0 max-md:pt-5 max-md:pr-4 max-md:pl-4"

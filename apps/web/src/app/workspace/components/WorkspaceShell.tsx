@@ -1,10 +1,11 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useRef } from 'react';
 import type { AccountSession } from '@/features/workspace/api';
 import { useWorkspaceController } from '@/features/workspace/controller/useWorkspaceController';
 import { WorkspaceAssistantPanel } from './assistant/WorkspaceAssistantPanel';
+import { useWorkspaceAssistantSizing } from './assistant/useWorkspaceAssistantSizing';
 import { WorkspaceFrame } from './WorkspaceFrame';
 import { WorkspaceHeader } from './WorkspaceHeader';
 import { WorkspaceRouteProvider } from './WorkspaceRouteContext';
@@ -25,7 +26,8 @@ export function WorkspaceShell({
 }) {
   const pathname = usePathname();
   const controller = useWorkspaceController({ account, pathname });
-  const [isAssistantExpanded, setIsAssistantExpanded] = useState(false);
+  const dashboardGridRef = useRef<HTMLDivElement>(null);
+  const assistantSizing = useWorkspaceAssistantSizing(dashboardGridRef);
 
   return (
     <WorkspaceRouteProvider
@@ -47,13 +49,14 @@ export function WorkspaceShell({
         assistant={
           <WorkspaceAssistantPanel
             assistant={controller.assistant}
-            isExpanded={isAssistantExpanded}
             isLoading={controller.route.isLoading}
-            onExpandedChange={setIsAssistantExpanded}
+            sizing={assistantSizing}
             userLabel={controller.account.label}
           />
         }
+        assistantWidth={assistantSizing.width}
         collapsed={controller.navigation.effectiveCollapsed}
+        dashboardGridRef={dashboardGridRef}
         header={
           <WorkspaceHeader
             headingRef={controller.route.headingRef}
@@ -63,7 +66,8 @@ export function WorkspaceShell({
           />
         }
         isAssistantMinimized={controller.assistant.isMinimized}
-        isAssistantExpanded={isAssistantExpanded}
+        isAssistantExpanded={assistantSizing.isExpanded}
+        isAssistantResizing={assistantSizing.isResizing}
         isLoading={controller.route.isLoading}
         isMobileViewport={controller.navigation.isMobileViewport}
         mobileNavigationOpen={controller.navigation.mobileOpen}

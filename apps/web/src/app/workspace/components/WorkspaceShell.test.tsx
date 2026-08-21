@@ -123,30 +123,91 @@ void test('expands and restores the onboarding assistant from its left-edge hand
 
   const assistant = screen.getByRole('complementary', { name: 'Onboarding assistant' });
   const frame = assistant.closest('[data-assistant-expanded]');
-  const expandHandle = await screen.findByRole('button', {
-    name: 'Expand onboarding assistant',
+  const resizeSeparator = await screen.findByRole('separator', {
+    name: 'Resize onboarding assistant',
+  });
+  const toggleHandle = screen.getByRole('button', {
+    name: 'Toggle onboarding assistant width',
   });
 
-  assert.equal(expandHandle.getAttribute('aria-pressed'), 'false');
+  assert.equal(toggleHandle.getAttribute('aria-pressed'), 'false');
+  assert.equal(resizeSeparator.getAttribute('aria-valuenow'), '360');
   assert.equal(frame?.getAttribute('data-assistant-expanded'), 'false');
 
-  await user.click(expandHandle);
+  await user.click(toggleHandle);
 
-  const restoreHandle = screen.getByRole('button', {
-    name: 'Restore onboarding assistant width',
-  });
-  assert.equal(restoreHandle.getAttribute('aria-pressed'), 'true');
+  assert.equal(toggleHandle.getAttribute('aria-pressed'), 'true');
+  assert.equal(resizeSeparator.getAttribute('aria-valuenow'), '560');
   assert.equal(frame?.getAttribute('data-assistant-expanded'), 'true');
 
-  await user.click(restoreHandle);
+  await user.click(toggleHandle);
 
-  assert.equal(
-    screen
-      .getByRole('button', { name: 'Expand onboarding assistant' })
-      .getAttribute('aria-pressed'),
-    'false',
-  );
+  assert.equal(toggleHandle.getAttribute('aria-pressed'), 'false');
+  assert.equal(resizeSeparator.getAttribute('aria-valuenow'), '360');
   assert.equal(frame?.getAttribute('data-assistant-expanded'), 'false');
+});
+
+void test('drags the assistant within its bounds and remembers the last expanded width', async () => {
+  installWorkspaceFetch([createSessionFixture('plan-1', 'First plan')]);
+  const user = userEvent.setup({ document: dom.window.document });
+  render(shellAt('/workspace', <p>Overview route body</p>));
+
+  const resizeSeparator = await screen.findByRole('separator', {
+    name: 'Resize onboarding assistant',
+  });
+  const toggleHandle = screen.getByRole('button', {
+    name: 'Toggle onboarding assistant width',
+  });
+  const frame = resizeSeparator.closest('[data-assistant-resizing]');
+
+  fireEvent.pointerDown(resizeSeparator, { button: 0, clientX: 900, pointerId: 1 });
+  assert.equal(frame?.getAttribute('data-assistant-resizing'), 'true');
+
+  fireEvent.pointerMove(resizeSeparator, { clientX: 660, pointerId: 1 });
+  assert.equal(resizeSeparator.getAttribute('aria-valuenow'), '600');
+
+  fireEvent.pointerMove(resizeSeparator, { clientX: 0, pointerId: 1 });
+  assert.equal(resizeSeparator.getAttribute('aria-valuenow'), '720');
+
+  fireEvent.pointerMove(resizeSeparator, { clientX: 660, pointerId: 1 });
+  fireEvent.pointerUp(resizeSeparator, { clientX: 660, pointerId: 1 });
+  assert.equal(frame?.getAttribute('data-assistant-resizing'), 'false');
+  assert.equal(resizeSeparator.getAttribute('aria-valuenow'), '600');
+
+  await user.click(toggleHandle);
+  assert.equal(resizeSeparator.getAttribute('aria-valuenow'), '360');
+
+  await user.click(toggleHandle);
+  assert.equal(resizeSeparator.getAttribute('aria-valuenow'), '600');
+});
+
+void test('supports keyboard resizing from the assistant separator', async () => {
+  installWorkspaceFetch([createSessionFixture('plan-1', 'First plan')]);
+  render(shellAt('/workspace', <p>Overview route body</p>));
+
+  const resizeSeparator = await screen.findByRole('separator', {
+    name: 'Resize onboarding assistant',
+  });
+
+  assert.equal(resizeSeparator.getAttribute('aria-orientation'), 'vertical');
+  assert.equal(resizeSeparator.getAttribute('aria-controls'), 'onboarding-assistant-panel-body');
+  assert.equal(resizeSeparator.getAttribute('aria-valuemin'), '300');
+  assert.equal(resizeSeparator.getAttribute('aria-valuemax'), '720');
+
+  fireEvent.keyDown(resizeSeparator, { key: 'ArrowLeft' });
+  assert.equal(resizeSeparator.getAttribute('aria-valuenow'), '376');
+
+  fireEvent.keyDown(resizeSeparator, { key: 'ArrowRight' });
+  assert.equal(resizeSeparator.getAttribute('aria-valuenow'), '360');
+
+  fireEvent.keyDown(resizeSeparator, { key: 'Home' });
+  assert.equal(resizeSeparator.getAttribute('aria-valuenow'), '300');
+
+  fireEvent.keyDown(resizeSeparator, { key: 'End' });
+  assert.equal(resizeSeparator.getAttribute('aria-valuenow'), '720');
+
+  fireEvent.keyDown(resizeSeparator, { key: 'Enter' });
+  assert.equal(resizeSeparator.getAttribute('aria-valuenow'), '360');
 });
 
 void test('keeps the routed workspace mounted when logout fails', async () => {
@@ -483,9 +544,29 @@ function installDomGlobals(window: JSDOM['window']): void {
     value: window,
     writable: true,
   });
+  class TestPointerEvent extends window.MouseEvent {
+    readonly isPrimary: boolean;
+    readonly pointerId: number;
+    readonly pointerType: string;
+
+    constructor(
+      type: string,
+      init: MouseEventInit & { isPrimary?: boolean; pointerId?: number; pointerType?: string } = {},
+    ) {
+      super(type, init);
+      this.isPrimary = init.isPrimary ?? true;
+      this.pointerId = init.pointerId ?? 1;
+      this.pointerType = init.pointerType ?? 'mouse';
+    }
+  }
+  Object.defineProperty(window, 'PointerEvent', {
+    configurable: true,
+    value: TestPointerEvent,
+    writable: true,
+  });
   Object.defineProperty(globalObject, 'PointerEvent', {
     configurable: true,
-    value: window.MouseEvent,
+    value: TestPointerEvent,
     writable: true,
   });
   globalObject.IS_REACT_ACT_ENVIRONMENT = true;

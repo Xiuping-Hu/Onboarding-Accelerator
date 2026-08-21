@@ -5,24 +5,28 @@ import type { WorkspaceController } from '@/features/workspace/controller/worksp
 import { getAssistantDrawerToggleLabel } from '@/features/workspace/workspaceModel';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { AgentChatDrawer } from './AgentChatDrawer';
+import type { WorkspaceAssistantSizing } from './useWorkspaceAssistantSizing';
 import { WorkspaceAssistantRuntimeProvider } from './WorkspaceAssistantRuntimeProvider';
 import { WorkspaceSessionTabs } from './WorkspaceSessionTabs';
 
 export function WorkspaceAssistantPanel({
   assistant,
-  isExpanded,
   isLoading,
-  onExpandedChange,
+  sizing,
   userLabel,
 }: {
   assistant: WorkspaceController['assistant'];
-  isExpanded: boolean;
   isLoading: boolean;
-  onExpandedChange: (expanded: boolean) => void;
+  sizing: WorkspaceAssistantSizing;
   userLabel: string;
 }) {
+  const toggleTooltip = sizing.isExpanded
+    ? 'Click to restore · Drag the divider to resize'
+    : 'Click to expand · Drag the divider to resize';
+
   return (
     <WorkspaceAssistantRuntimeProvider
       activeSessionId={assistant.activeSessionId}
@@ -45,8 +49,9 @@ export function WorkspaceAssistantPanel({
           assistant.isMinimized &&
             'h-16 min-h-16 max-lg:ml-auto max-lg:h-16 max-lg:w-16 max-md:h-16 max-md:w-16',
         )}
-        data-expanded={isExpanded ? 'true' : 'false'}
+        data-expanded={sizing.isExpanded ? 'true' : 'false'}
         data-minimized={assistant.isMinimized ? 'true' : 'false'}
+        data-resizing={sizing.isResizing ? 'true' : 'false'}
         data-slot="workspace-assistant-panel"
       >
         <div
@@ -108,27 +113,57 @@ export function WorkspaceAssistantPanel({
           )}
         </div>
         {!assistant.isMinimized ? (
-          <Button
-            aria-controls="onboarding-assistant-panel-body"
-            aria-label={
-              isExpanded ? 'Restore onboarding assistant width' : 'Expand onboarding assistant'
-            }
-            aria-pressed={isExpanded}
-            className="absolute top-1/2 left-0 z-20 hidden h-14 w-6 -translate-x-1/2 -translate-y-1/2 rounded-full border-indigo-200 bg-white p-0 text-workspace-assistant shadow-[0_4px_14px_rgb(31_38_61_/_14%)] transition-[width,background-color,border-color,color,box-shadow] duration-200 hover:w-7 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 hover:shadow-[0_6px_18px_rgb(31_38_61_/_18%)] focus-visible:ring-2 focus-visible:ring-workspace-assistant focus-visible:ring-offset-2 motion-reduce:transition-none lg:inline-flex"
-            onClick={() => onExpandedChange(!isExpanded)}
-            size="icon"
-            title={
-              isExpanded ? 'Restore onboarding assistant width' : 'Expand onboarding assistant'
-            }
-            type="button"
-            variant="outline"
-          >
-            {isExpanded ? (
-              <ChevronRightIcon aria-hidden="true" className="size-3.5" />
-            ) : (
-              <ChevronLeftIcon aria-hidden="true" className="size-3.5" />
-            )}
-          </Button>
+          <>
+            <div
+              aria-controls="onboarding-assistant-panel-body"
+              aria-label="Resize onboarding assistant"
+              aria-orientation="vertical"
+              aria-valuemax={Math.round(sizing.maxWidth)}
+              aria-valuemin={Math.round(sizing.minWidth)}
+              aria-valuenow={Math.round(sizing.width)}
+              aria-valuetext={`${Math.round(sizing.width)} pixels`}
+              className="group absolute inset-y-0 left-0 z-10 hidden w-4 -translate-x-1/2 touch-none cursor-col-resize outline-none lg:block"
+              data-slot="workspace-assistant-resize-separator"
+              onKeyDown={sizing.onSeparatorKeyDown}
+              onLostPointerCapture={sizing.onSeparatorLostPointerCapture}
+              onPointerCancel={sizing.onSeparatorPointerCancel}
+              onPointerDown={sizing.onSeparatorPointerDown}
+              onPointerUp={sizing.onSeparatorPointerUp}
+              role="separator"
+              tabIndex={0}
+            >
+              <span
+                aria-hidden="true"
+                className={cn(
+                  'pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-indigo-100/70 transition-[width,background-color] duration-150 group-hover:w-1 group-hover:bg-indigo-200 group-focus-visible:w-1 group-focus-visible:bg-indigo-400 motion-reduce:transition-none',
+                  sizing.isResizing && 'w-1 bg-indigo-400',
+                )}
+              />
+            </div>
+            <TooltipProvider delayDuration={250}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    aria-controls="onboarding-assistant-panel-body"
+                    aria-label="Toggle onboarding assistant width"
+                    aria-pressed={sizing.isExpanded}
+                    className="absolute top-1/2 left-0 z-20 hidden h-14 w-6 -translate-x-1/2 -translate-y-1/2 rounded-full border-indigo-200 bg-white p-0 text-workspace-assistant shadow-[0_4px_14px_rgb(31_38_61_/_14%)] transition-[width,background-color,border-color,color,box-shadow] duration-200 hover:w-7 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 hover:shadow-[0_6px_18px_rgb(31_38_61_/_18%)] focus-visible:ring-2 focus-visible:ring-workspace-assistant focus-visible:ring-offset-2 motion-reduce:transition-none lg:inline-flex"
+                    onClick={sizing.onToggle}
+                    size="icon"
+                    type="button"
+                    variant="outline"
+                  >
+                    {sizing.isExpanded ? (
+                      <ChevronRightIcon aria-hidden="true" className="size-3.5" />
+                    ) : (
+                      <ChevronLeftIcon aria-hidden="true" className="size-3.5" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="left">{toggleTooltip}</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </>
         ) : null}
       </aside>
     </WorkspaceAssistantRuntimeProvider>
